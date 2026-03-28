@@ -43,3 +43,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 异步 sendResponse
   }
 });
+
+// 选区变化监听（防抖推送）
+let selectionTimer = null;
+
+document.addEventListener('selectionchange', () => {
+  clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(() => {
+    const text = window.getSelection().toString().trim();
+    chrome.runtime.sendMessage({
+      action: 'selectionChanged',
+      text: text
+    }).catch(() => {
+      // side panel 未打开时 sendMessage 会报错，静默忽略
+    });
+  }, 300);
+});
