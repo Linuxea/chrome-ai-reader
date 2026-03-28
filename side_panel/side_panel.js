@@ -185,7 +185,6 @@ userInput.addEventListener('keydown', (e) => {
         executeQuickCommand(filtered[commandSelectedIndex]);
       } else {
         hideCommandPopup();
-        sendMessage();
       }
       return;
     }

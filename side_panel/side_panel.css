@@ -236,13 +236,13 @@ body {
 
 /* 底部输入区 */
 .input-area {
-  position: relative;
   padding: 12px 16px;
   background: var(--card-bg);
   border-top: 1px solid var(--border);
 }
 
 .input-wrapper {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 8px;
