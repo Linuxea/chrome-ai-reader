@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 阅读助手 - 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>AI 阅读助手设置</h1>
+
+    <div class="form-group">
+      <label for="apiKey">API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+      <p class="hint">你的 API Key 仅保存在本地浏览器中，不会发送到任何第三方服务器。</p>
+    </div>
+
+    <div class="form-group">
+      <label for="apiBase">API 地址（可选）</label>
+      <input type="text" id="apiBase" placeholder="https://api.deepseek.com">
+      <p class="hint">留空使用默认地址（DeepSeek）。如需使用其他兼容接口，可在此填写。</p>
+    </div>
+
+    <button id="saveBtn" class="save-btn">保存设置</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 阅读助手</title>
+  <link rel="stylesheet" href="side_panel.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部标题栏 -->
+    <header class="header">
+      <h1 class="header-title">AI 阅读助手</h1>
+      <button id="settingsBtn" class="icon-btn" title="设置">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- 快捷操作区 -->
+    <div class="quick-actions">
+      <button class="action-btn" data-action="summarize">
+        <span class="action-icon">📋</span>
+        <span>总结页面</span>
+      </button>
+      <button class="action-btn" data-action="translate">
+        <span class="action-icon">🌐</span>
+        <span>翻译</span>
+      </button>
+      <button class="action-btn" data-action="keyInfo">
+        <span class="action-icon">🔑</span>
+        <span>关键信息</span>
+      </button>
+    </div>
+
+    <!-- 对话区域 -->
+    <div id="chatArea" class="chat-area">
+      <div class="welcome-msg">
+        <p>打开任意网页，点击上方按钮或输入问题开始使用。</p>
+      </div>
+    </div>
+
+    <!-- 底部输入区 -->
+    <div class="input-area">
+      <div class="input-wrapper">
+        <textarea id="userInput" placeholder="输入问题，基于当前页面内容回答..." rows="1"></textarea>
+        <button id="sendBtn" class="send-btn" title="发送">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../libs/marked.min.js"></script>
+  <script src="side_panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "AI 阅读助手",
+  "version": "1.0.0",
+  "description": "AI 驱动的网页阅读助手，支持总结、翻译、关键信息提取和自由问答",
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "scripting",
+    "storage"
+  ],
+  "side_panel": {
+    "default_path": "side_panel/side_panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["libs/Readability.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "打开 AI 阅读助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  }
+}
