@@ -35,16 +35,23 @@ content.js listens to document.selectionchange (300ms debounce)
   → On send: quote injected as virtual user/assistant pair into AI messages
 ```
 
+**Model list fetch (settings page gets available models):**
+```
+options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, apiKey })
+  → service_worker.js proxies GET {apiBase}/models (avoids CORS from options page)
+  → returns { success, models: string[] } → options.js populates <datalist>
+```
+
 ### Key files and their roles
 
 | File | Role |
 |------|------|
 | `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
 | `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
-| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages from content script to side panel. Reads `apiKey`/`apiBase` from `chrome.storage.sync`. Reads model name from storage, defaults to `deepseek-chat` |
-| `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, and streaming display. Uses `marked.parse()` for AI response rendering |
+| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads `apiKey`/`apiBase`/`modelName` from `chrome.storage.sync`. Model defaults to `deepseek-chat` |
+| `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, and streaming display. Uses `marked.parse()` for AI response rendering. Shows current model name in status bar |
 | `side_panel/side_panel.html` | Side panel UI with quick-action buttons (summarize, translate, key info) and chat interface |
-| `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, and `systemPrompt` from `chrome.storage.sync` |
+| `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, `modelName`, and `systemPrompt` from `chrome.storage.sync`. Fetches model list from API via service worker relay and populates `<datalist>` |
 | `libs/Readability.js` | Mozilla's Readability library for extracting article content from web pages |
 | `libs/marked.min.js` | Markdown-to-HTML renderer for AI responses |
 
@@ -53,6 +60,7 @@ content.js listens to document.selectionchange (300ms debounce)
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
 - **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
 - **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
+- **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
 - **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, `modelName`, and `systemPrompt`
 - **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps)
 
@@ -73,3 +81,5 @@ content.js listens to document.selectionchange (300ms debounce)
 - CSS uses CSS custom properties defined in `side_panel.css` (`:root` block) for theming
 - No framework — vanilla JS with direct DOM manipulation
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
+- API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`
+- Optional storage fields (`apiBase`, `modelName`, `systemPrompt`) are removed via `chrome.storage.sync.remove()` when empty, not stored as empty strings
