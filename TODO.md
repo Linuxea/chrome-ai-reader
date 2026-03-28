@@ -30,13 +30,14 @@
 - [x] 错误提示（无 API Key、API 错误、页面提取失败）
 - [x] 新建聊天 — 清空会话历史，重新开始对话
 - [x] 历史对话持久化 — chrome.storage.local 保存/加载/删除，最多保留 50 条
+- [x] 导出聊天记录 — 当前对话和历史记录均可导出为 Markdown 文件
 
 ### 基础设施
 - [x] Manifest V3 配置
 - [x] Content Script 自动注入
 - [x] Service Worker 后台服务
 - [x] 长连接通信（`chrome.runtime.connect`）
-- [x] 内容长度截断（快捷操作 ~12000 字符，问答 ~8000 字符）
+- [x] 内容长度截断 — safeTruncate 统一 ~32000 字符，在段落/句子边界断开
 
 ---
 
