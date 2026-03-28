@@ -63,6 +63,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
 - **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, `modelName`, and `systemPrompt`
 - **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps). Export uses `conversationHistory` for raw AI Markdown, with `stripHtml` fallback for old records missing raw text
+- **Quick commands**: `chrome.storage.local` for `quickCommands` (array of `{ name, prompt }`). Managed in settings page with real-time save. Side panel loads on init and listens to `chrome.storage.onChanged`. Triggered by typing `/` in chat input
 
 ### State management in side_panel.js
 
@@ -73,6 +74,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - `currentChatId` — ID of the active conversation in history, `null` for a fresh session
 - `selectedText` — current highlighted text from the page (shown in quote preview bar)
 - `activeTabId` — tab ID the side panel is associated with, used to filter selection messages
+- `quickCommands` — cached array of user-defined quick commands from storage
 - Content is truncated to ~32000 chars for quick actions, Q&A context, and quotes (via `safeTruncate`)
 
 ## Conventions
