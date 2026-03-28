@@ -455,3 +455,12 @@ body {
   color: rgba(255, 255, 255, 0.8);
   font-size: 13px;
 }
+
+/* 模型状态栏 */
+.model-status-bar {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 6px 0 2px;
+  user-select: none;
+}

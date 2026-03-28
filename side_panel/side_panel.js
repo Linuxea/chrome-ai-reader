@@ -628,3 +628,23 @@ function setButtonsDisabled(disabled) {
   actionBtns.forEach(btn => btn.disabled = disabled);
   sendBtn.disabled = disabled;
 }
+
+// === 模型状态栏 ===
+
+const modelStatusBar = document.getElementById('modelStatusBar');
+
+function updateModelStatusBar(name) {
+  modelStatusBar.textContent = '当前模型：' + (name || 'deepseek-chat');
+}
+
+// 加载时读取模型名称
+chrome.storage.sync.get(['modelName'], (data) => {
+  updateModelStatusBar(data.modelName);
+});
+
+// 监听模型名称变化
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && changes.modelName) {
+    updateModelStatusBar(changes.modelName.newValue);
+  }
+});
