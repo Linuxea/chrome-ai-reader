@@ -564,7 +564,7 @@ async function callAI(messages) {
       }
 
       thinkingContentEl.innerHTML = marked.parse(thinkingText);
-      scrollToBottom();
+      smartScrollToBottom();
     } else if (msg.type === 'chunk') {
       // 思考结束后折叠思考区块
       if (thinkingEl) {
@@ -582,7 +582,7 @@ async function callAI(messages) {
       }
 
       contentEl.innerHTML = marked.parse(fullText);
-      scrollToBottom();
+      smartScrollToBottom();
     } else if (msg.type === 'done') {
       removeTypingIndicator(typingEl);
       if (thinkingEl) thinkingEl.open = false;
@@ -673,6 +673,15 @@ function removeTypingIndicator(indicator) {
 
 function scrollToBottom() {
   chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+// 流式生成时使用智能滚动：仅在用户已处于底部附近时自动跟随，否则保持当前位置
+function smartScrollToBottom() {
+  const threshold = 80;
+  const distanceToBottom = chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight;
+  if (distanceToBottom <= threshold) {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
 }
 
 function setButtonsDisabled(disabled) {

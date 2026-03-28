@@ -44,18 +44,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+// 检测扩展上下文是否已失效（扩展被重新加载/更新时会发生）
+function isContextValid() {
+  return !!chrome.runtime?.id;
+}
+
 // 选区变化监听（防抖推送）
 let selectionTimer = null;
 
 document.addEventListener('selectionchange', () => {
+  if (!isContextValid()) return;
   clearTimeout(selectionTimer);
   selectionTimer = setTimeout(() => {
+    if (!isContextValid()) return;
     const text = window.getSelection().toString().trim();
-    chrome.runtime.sendMessage({
-      action: 'selectionChanged',
-      text: text
-    }).catch(() => {
-      // side panel 未打开时 sendMessage 会报错，静默忽略
-    });
+    try {
+      chrome.runtime.sendMessage({
+        action: 'selectionChanged',
+        text: text
+      }).catch(() => {
+        // side panel 未打开或扩展已失效时静默忽略
+      });
+    } catch {
+      // 扩展上下文已失效，静默忽略
+    }
   }, 300);
 });
