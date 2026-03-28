@@ -303,22 +303,38 @@ async function executeQuickCommand(cmd) {
       return;
     }
 
-    let prompt;
-    if (quoteForContext) {
-      // 有引用时，只针对引用内容执行指令
-      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
-      prompt = `请针对以下引用内容执行操作：${cmd.prompt}\n\n网页标题：${pageTitle}\n\n引用内容如下：\n${quote}`;
-    } else {
-      // 无引用时，对完整页面内容执行指令
-      const truncated = safeTruncate(data.textContent, TRUNCATE_LIMITS.QUICK_ACTION);
-      prompt = `${cmd.prompt}\n\n网页标题：${pageTitle}\n\n网页内容如下：\n${truncated}`;
+    // 构建消息列表（与 sendMessage 相同的结构）
+    const messages = [];
+    if (data.textContent) {
+      const context = safeTruncate(data.textContent, TRUNCATE_LIMITS.QA_CONTEXT);
+
+      messages.push({
+        role: 'system',
+        content: `你是一个 AI 阅读助手。用户正在阅读一篇网页文章，以下是文章内容，请基于这些内容回答用户的问题。
+
+文章标题：${pageTitle}
+
+文章内容：
+${context}`
+      });
+
+      if (customSystemPrompt) {
+        messages.push({ role: 'system', content: customSystemPrompt });
+      }
     }
 
-    conversationHistory = [];
-    if (customSystemPrompt) {
-      conversationHistory.push({ role: 'system', content: customSystemPrompt });
+    // 加入历史对话
+    messages.push(...conversationHistory);
+
+    // 构建当前用户消息（引用内容合并到用户消息中）
+    let userContent = cmd.prompt;
+    if (quoteForContext) {
+      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
+      userContent = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${cmd.prompt}`;
     }
-    conversationHistory.push({ role: 'user', content: prompt });
+    conversationHistory = [];
+    conversationHistory.push({ role: 'user', content: userContent });
+    messages.push({ role: 'user', content: userContent });
 
     if (quoteForContext) {
       const truncated = quoteForContext.length > 50
@@ -333,7 +349,7 @@ async function executeQuickCommand(cmd) {
     } else {
       updateLastMessage('user', `/${cmd.name}`);
     }
-    await callAI(conversationHistory);
+    await callAI(messages);
   } catch (e) {
     removeLastMessage();
     appendMessage('error', e.message);
