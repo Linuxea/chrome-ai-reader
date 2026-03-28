@@ -14,8 +14,9 @@ AI 阅读助手 (AI Reading Assistant) — a Chrome Extension (Manifest V3) that
 
 ## Architecture
 
-### Message flow (the core data path)
+### Message flow (the core data paths)
 
+**Page content extraction & AI chat:**
 ```
 User action in side_panel.js
   → chrome.tabs.sendMessage → content.js (extracts page via Readability.js)
@@ -25,16 +26,25 @@ User action in side_panel.js
   → rendered via marked.js into the chat area
 ```
 
+**Selection quote relay (user highlights text on page):**
+```
+content.js listens to document.selectionchange (300ms debounce)
+  → chrome.runtime.sendMessage({ action: 'selectionChanged' })
+  → service_worker.js relays (with forwarded flag to prevent loop)
+  → side_panel.js receives → shows quote preview bar above input
+  → On send: quote injected as virtual user/assistant pair into AI messages
+```
+
 ### Key files and their roles
 
 | File | Role |
 |------|------|
 | `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
-| `content.js` | Content script injected into all pages. Listens for `{ action: 'extract' }` messages, uses `Readability.js` to parse the page, falls back to `document.body.innerText` |
-| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Reads `apiKey`/`apiBase` from `chrome.storage.sync` |
+| `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
+| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages from content script to side panel. Reads `apiKey`/`apiBase` from `chrome.storage.sync`. Reads model name from storage, defaults to `deepseek-chat` |
 | `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, and streaming display. Uses `marked.parse()` for AI response rendering |
 | `side_panel/side_panel.html` | Side panel UI with quick-action buttons (summarize, translate, key info) and chat interface |
-| `options/options.js` | Settings page. Saves/loads `apiKey` and `apiBase` from `chrome.storage.sync` |
+| `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, and `systemPrompt` from `chrome.storage.sync` |
 | `libs/Readability.js` | Mozilla's Readability library for extracting article content from web pages |
 | `libs/marked.min.js` | Markdown-to-HTML renderer for AI responses |
 
@@ -42,7 +52,8 @@ User action in side_panel.js
 
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
 - **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
-- **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, and `systemPrompt`
+- **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
+- **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, `modelName`, and `systemPrompt`
 - **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps)
 
 ### State management in side_panel.js
@@ -52,7 +63,9 @@ User action in side_panel.js
 - `isGenerating` — boolean lock to prevent concurrent API calls
 - `customSystemPrompt` — user-defined system prompt loaded from storage, appended to default prompt
 - `currentChatId` — ID of the active conversation in history, `null` for a fresh session
-- Content is truncated to ~12000 chars for quick actions, ~8000 chars for Q&A context
+- `selectedText` — current highlighted text from the page (shown in quote preview bar)
+- `activeTabId` — tab ID the side panel is associated with, used to filter selection messages
+- Content is truncated to ~12000 chars for quick actions, ~8000 chars for Q&A context, ~2000 chars for quotes
 
 ## Conventions
 
