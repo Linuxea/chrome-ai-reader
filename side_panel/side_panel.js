@@ -505,24 +505,17 @@ ${context}`
       }
     }
 
-    // 插入引用上下文（虚拟 user/assistant 对，不加入 conversationHistory）
-    if (quoteForContext) {
-      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
-      messages.push({
-        role: 'user',
-        content: `以下是用户从页面中引用的内容：\n\n${quote}`
-      });
-      messages.push({
-        role: 'assistant',
-        content: '好的，我已收到引用内容。请问您有什么问题？'
-      });
-    }
-
     // 加入历史对话
     messages.push(...conversationHistory);
-    // 当前用户消息
-    messages.push({ role: 'user', content: text });
-    conversationHistory.push({ role: 'user', content: text });
+
+    // 构建当前用户消息（引用内容合并到用户消息中，加入 conversationHistory 持久化）
+    let userContent = text;
+    if (quoteForContext) {
+      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
+      userContent = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${text}`;
+    }
+    messages.push({ role: 'user', content: userContent });
+    conversationHistory.push({ role: 'user', content: userContent });
 
     await callAI(messages);
   } catch (e) {
