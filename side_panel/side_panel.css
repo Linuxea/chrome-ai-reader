@@ -236,6 +236,7 @@ body {
 
 /* 底部输入区 */
 .input-area {
+  position: relative;
   padding: 12px 16px;
   background: var(--card-bg);
   border-top: 1px solid var(--border);
@@ -538,4 +539,61 @@ body {
 
 .thinking-response-content {
   /* 正式回答区域，无特殊样式 */
+}
+
+/* 快捷指令弹出列表 */
+.command-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 20;
+  margin-bottom: 4px;
+}
+
+.command-popup.hidden {
+  display: none;
+}
+
+.command-popup-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  gap: 8px;
+  transition: background 0.1s;
+}
+
+.command-popup-item:hover,
+.command-popup-item.selected {
+  background: var(--primary-light);
+}
+
+.command-popup-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.command-popup-item-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.command-popup-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
