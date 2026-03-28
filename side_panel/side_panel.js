@@ -32,6 +32,12 @@ let selectedText = '';
 // 当前关联的标签页 ID
 let activeTabId = null;
 
+// 快捷指令
+let quickCommands = [];
+const commandPopup = document.getElementById('commandPopup');
+let commandPopupOpen = false;
+let commandSelectedIndex = 0;
+
 // 内容截断限制（字符数，基于 DeepSeek 128K token 上下文窗口）
 // 128K tokens ≈ 96K~128K 中文字符，截断值需留出对话历史和回复空间
 const TRUNCATE_LIMITS = {
@@ -70,6 +76,24 @@ marked.setOptions({
 chrome.storage.sync.get(['systemPrompt'], (data) => {
   if (data.systemPrompt) {
     customSystemPrompt = data.systemPrompt;
+  }
+});
+
+// 加载快捷指令
+function loadQuickCommands() {
+  chrome.storage.local.get(['quickCommands'], (data) => {
+    quickCommands = data.quickCommands || [];
+  });
+}
+loadQuickCommands();
+
+// 监听快捷指令变化
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.quickCommands) {
+    quickCommands = changes.quickCommands.newValue || [];
+    if (commandPopupOpen) {
+      updateCommandPopup(userInput.value);
+    }
   }
 });
 
@@ -135,17 +159,157 @@ sendBtn.addEventListener('click', sendMessage);
 
 // 输入框：Enter 发送，Shift+Enter 换行
 userInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
+  if (commandPopupOpen) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const filtered = getFilteredCommands(userInput.value);
+      if (filtered.length > 0) {
+        commandSelectedIndex = (commandSelectedIndex + 1) % filtered.length;
+        renderCommandPopup(filtered);
+      }
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const filtered = getFilteredCommands(userInput.value);
+      if (filtered.length > 0) {
+        commandSelectedIndex = (commandSelectedIndex - 1 + filtered.length) % filtered.length;
+        renderCommandPopup(filtered);
+      }
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const filtered = getFilteredCommands(userInput.value);
+      if (filtered.length > 0) {
+        executeQuickCommand(filtered[commandSelectedIndex]);
+      } else {
+        hideCommandPopup();
+        sendMessage();
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideCommandPopup();
+      return;
+    }
+  } else {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   }
 });
 
-// 输入框自动调整高度
+// 输入框自动调整高度 + 快捷指令检测
 userInput.addEventListener('input', () => {
   userInput.style.height = 'auto';
   userInput.style.height = Math.min(userInput.scrollHeight, 100) + 'px';
+
+  const value = userInput.value;
+  if (value.startsWith('/')) {
+    updateCommandPopup(value);
+  } else if (commandPopupOpen) {
+    hideCommandPopup();
+  }
 });
+
+// 获取筛选后的指令列表
+function getFilteredCommands(input) {
+  const query = input.slice(1).toLowerCase();
+  if (!query) return quickCommands;
+  return quickCommands.filter(cmd => cmd.name.toLowerCase().includes(query));
+}
+
+// 更新弹出列表
+function updateCommandPopup(input) {
+  const filtered = getFilteredCommands(input);
+  if (filtered.length === 0 && quickCommands.length === 0) {
+    hideCommandPopup();
+    return;
+  }
+  commandSelectedIndex = 0;
+  commandPopupOpen = true;
+  renderCommandPopup(filtered);
+}
+
+// 渲染弹出列表
+function renderCommandPopup(filtered) {
+  commandPopup.classList.remove('hidden');
+
+  if (filtered.length === 0) {
+    commandPopup.innerHTML = '<div class="command-popup-empty">无匹配的快捷指令</div>';
+    return;
+  }
+
+  commandPopup.innerHTML = filtered.map((cmd, idx) => {
+    const preview = cmd.prompt.length > 30 ? cmd.prompt.slice(0, 30) + '...' : cmd.prompt;
+    return `<div class="command-popup-item${idx === commandSelectedIndex ? ' selected' : ''}" data-idx="${idx}">
+      <span class="command-popup-item-name">/${escapeHtml(cmd.name)}</span>
+      <span class="command-popup-item-preview">${escapeHtml(preview)}</span>
+    </div>`;
+  }).join('');
+}
+
+// 隐藏弹出列表
+function hideCommandPopup() {
+  commandPopupOpen = false;
+  commandSelectedIndex = 0;
+  commandPopup.classList.add('hidden');
+}
+
+// 点击指令项
+commandPopup.addEventListener('click', (e) => {
+  const item = e.target.closest('.command-popup-item');
+  if (!item) return;
+  const idx = parseInt(item.dataset.idx);
+  const filtered = getFilteredCommands(userInput.value);
+  if (filtered[idx]) {
+    executeQuickCommand(filtered[idx]);
+  }
+});
+
+// 点击外部关闭
+document.addEventListener('click', (e) => {
+  if (commandPopupOpen && !commandPopup.contains(e.target) && e.target !== userInput) {
+    hideCommandPopup();
+  }
+});
+
+// 执行快捷指令
+async function executeQuickCommand(cmd) {
+  if (isGenerating) return;
+
+  hideCommandPopup();
+  userInput.value = '';
+
+  try {
+    appendMessage('user', `/${cmd.name}（正在读取页面...）`);
+
+    const data = await extractPageContent();
+    if (!data.textContent.trim()) {
+      removeLastMessage();
+      appendMessage('error', '当前页面没有可读取的内容');
+      return;
+    }
+
+    const truncated = safeTruncate(data.textContent, TRUNCATE_LIMITS.QUICK_ACTION);
+    const prompt = `${cmd.prompt}\n\n网页标题：${pageTitle}\n\n网页内容如下：\n${truncated}`;
+
+    conversationHistory = [];
+    if (customSystemPrompt) {
+      conversationHistory.push({ role: 'system', content: customSystemPrompt });
+    }
+    conversationHistory.push({ role: 'user', content: prompt });
+
+    updateLastMessage('user', `/${cmd.name}`);
+    await callAI(conversationHistory);
+  } catch (e) {
+    removeLastMessage();
+    appendMessage('error', e.message);
+  }
+}
 
 // 监听选区变化消息（经由 service_worker 中转）
 chrome.runtime.onMessage.addListener((msg) => {
