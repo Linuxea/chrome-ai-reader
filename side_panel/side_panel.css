@@ -404,3 +404,54 @@ body {
 .history-item-delete:hover {
   color: #dc2626;
 }
+
+/* 引用预览条 */
+.quote-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--primary-light);
+  border-left: 3px solid var(--primary);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.quote-preview.hidden {
+  display: none;
+}
+
+.quote-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.quote-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.quote-close:hover {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* 用户消息中的引用预览 */
+.quote-in-bubble {
+  border-left: 3px solid rgba(255, 255, 255, 0.5);
+  padding-left: 8px;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+}

@@ -73,6 +73,15 @@
 
     <!-- 底部输入区 -->
     <div class="input-area">
+      <div id="quotePreview" class="quote-preview hidden">
+        <span class="quote-text" id="quoteText"></span>
+        <button class="quote-close" id="quoteClose" title="清除引用" aria-label="清除引用">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
       <div class="input-wrapper">
         <textarea id="userInput" placeholder="输入问题，基于当前页面内容回答..." rows="1"></textarea>
         <button id="sendBtn" class="send-btn" title="发送">
