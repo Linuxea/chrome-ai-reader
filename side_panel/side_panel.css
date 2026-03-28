@@ -397,8 +397,27 @@ body {
   transition: opacity 0.15s, color 0.15s;
 }
 
-.history-item:hover .history-item-delete {
+.history-item-export {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.history-item:hover .history-item-delete,
+.history-item:hover .history-item-export {
   opacity: 1;
+}
+
+.history-item-export:hover {
+  color: var(--primary);
 }
 
 .history-item-delete:hover {

@@ -5,6 +5,7 @@ const userInput = document.getElementById('userInput');
 const sendBtn = document.getElementById('sendBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const newChatBtn = document.getElementById('newChatBtn');
+const exportBtn = document.getElementById('exportBtn');
 const historyBtn = document.getElementById('historyBtn');
 const historyPanel = document.getElementById('historyPanel');
 const historyBackBtn = document.getElementById('historyBackBtn');
@@ -97,6 +98,18 @@ newChatBtn.addEventListener('click', () => {
   currentChatId = null;
   updateQuotePreview('');
   chatArea.innerHTML = '<div class="welcome-msg"><p>打开任意网页，点击上方按钮或输入问题开始使用。</p></div>';
+});
+
+// 导出当前聊天
+exportBtn.addEventListener('click', () => {
+  const messages = getDisplayMessages();
+  if (messages.length === 0) return;
+  exportChatAsMarkdown({
+    title: generateTitle(messages),
+    messages,
+    conversationHistory,
+    pageTitle
+  });
 });
 
 // 历史面板
@@ -315,6 +328,13 @@ async function renderHistoryList() {
         <div class="history-item-title">${escapeHtml(chat.title)}</div>
         <div class="history-item-date">${formatDate(chat.updatedAt)}</div>
       </div>
+      <button class="history-item-export" title="导出">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+      </button>
       <button class="history-item-delete" title="删除">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -326,6 +346,12 @@ async function renderHistoryList() {
     // 点击加载
     item.querySelector('.history-item-info').addEventListener('click', () => {
       loadChat(chat.id);
+    });
+
+    // 导出
+    item.querySelector('.history-item-export').addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportChatAsMarkdown(chat);
     });
 
     // 删除
@@ -359,6 +385,71 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// 文件名安全化：替换非法字符，截断长度
+function sanitizeFilename(title) {
+  return title.replace(/[/\\:*?"<>|\n\r]/g, '_').slice(0, 30);
+}
+
+// 去除 HTML 标签（用于旧历史记录中无原始 Markdown 时的回退）
+function stripHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent;
+}
+
+// 将聊天记录导出为 Markdown 文件
+async function exportChatAsMarkdown(chatData) {
+  const { messages, conversationHistory = [], pageTitle: pTitle } = chatData;
+
+  // 获取当前模型名
+  const modelName = await new Promise(resolve => {
+    chrome.storage.sync.get(['modelName'], data => resolve(data.modelName || 'deepseek-chat'));
+  });
+
+  // 构建元信息
+  const now = new Date();
+  const exportTime = now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + ' ' +
+    String(now.getHours()).padStart(2, '0') + ':' +
+    String(now.getMinutes()).padStart(2, '0');
+
+  let md = '# AI 阅读助手 — 聊天记录\n\n';
+  if (pTitle) md += `> 页面：${pTitle}\n`;
+  md += `> 导出时间：${exportTime}\n`;
+  md += `> 模型：${modelName}\n\n---\n\n`;
+
+  // 构建 assistant 内容索引映射（按顺序取 conversationHistory 中的 assistant 条目）
+  const assistantEntries = conversationHistory.filter(m => m.role === 'assistant');
+  let assistantIdx = 0;
+
+  messages.forEach(msg => {
+    if (msg.role === 'user') {
+      md += '## 👤 用户\n\n' + msg.content + '\n\n';
+    } else if (msg.role === 'assistant') {
+      // 优先用 conversationHistory 中的原始 Markdown，否则回退去 HTML
+      const raw = assistantIdx < assistantEntries.length
+        ? assistantEntries[assistantIdx].content
+        : stripHtml(msg.content);
+      assistantIdx++;
+      md += '## 🤖 AI 助手\n\n' + raw + '\n\n---\n\n';
+    }
+  });
+
+  // 触发下载
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const title = sanitizeFilename(chatData.title || '新对话');
+  const dateStr = now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0');
+  a.href = url;
+  a.download = `AI阅读助手_${dateStr}_${title}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // === 核心功能 ===
