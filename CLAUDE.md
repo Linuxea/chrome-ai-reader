@@ -49,7 +49,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 | `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
 | `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
 | `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads `apiKey`/`apiBase`/`modelName` from `chrome.storage.sync`. Model defaults to `deepseek-chat` |
-| `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, and streaming display. Uses `marked.parse()` for AI response rendering. Shows current model name in status bar |
+| `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, streaming display, and chat export as Markdown. Uses `marked.parse()` for AI response rendering. Shows current model name in status bar |
 | `side_panel/side_panel.html` | Side panel UI with quick-action buttons (summarize, translate, key info) and chat interface |
 | `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, `modelName`, and `systemPrompt` from `chrome.storage.sync`. Fetches model list from API via service worker relay and populates `<datalist>` |
 | `libs/Readability.js` | Mozilla's Readability library for extracting article content from web pages |
@@ -58,11 +58,11 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 ### Communication patterns
 
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
-- **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
+- **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'thinking', content }` (reasoning model), `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
 - **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
 - **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
 - **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, `modelName`, and `systemPrompt`
-- **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps)
+- **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps). Export uses `conversationHistory` for raw AI Markdown, with `stripHtml` fallback for old records missing raw text
 
 ### State management in side_panel.js
 
@@ -73,7 +73,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - `currentChatId` — ID of the active conversation in history, `null` for a fresh session
 - `selectedText` — current highlighted text from the page (shown in quote preview bar)
 - `activeTabId` — tab ID the side panel is associated with, used to filter selection messages
-- Content is truncated to ~12000 chars for quick actions, ~8000 chars for Q&A context, ~2000 chars for quotes
+- Content is truncated to ~32000 chars for quick actions, Q&A context, and quotes (via `safeTruncate`)
 
 ## Conventions
 
