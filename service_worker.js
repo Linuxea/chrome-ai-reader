@@ -7,7 +7,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 // 流式调用 OpenAI API
 async function callOpenAI(messages, port) {
-  const { apiKey, apiBase } = await chrome.storage.sync.get(['apiKey', 'apiBase']);
+  const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']);
 
   if (!apiKey) {
     port.postMessage({ type: 'error', error: '请先在设置页面配置 API Key' });
@@ -24,7 +24,7 @@ async function callOpenAI(messages, port) {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: modelName || 'deepseek-chat',
         messages: messages,
         stream: true,
         temperature: 0.7
@@ -87,9 +87,8 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-// 中转选区变化消息给 side panel
-// 注意：必须检查 !msg.forwarded，否则 service worker 会收到自己转发的消息导致无限循环
-chrome.runtime.onMessage.addListener((msg, sender) => {
+// 消息处理：选区变化中转 + 模型列表请求
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'selectionChanged' && !msg.forwarded) {
     chrome.runtime.sendMessage({
       action: 'selectionChanged',
@@ -99,5 +98,30 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     }).catch(() => {
       // side panel 未打开时 sendMessage 会报错，静默忽略
     });
+  }
+
+  if (msg.action === 'fetchModels') {
+    const baseUrl = msg.apiBase || 'https://api.deepseek.com';
+
+    fetch(`${baseUrl}/models`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${msg.apiKey}`
+      }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error(`获取模型列表失败 (${res.status})`);
+      return res.json();
+    })
+    .then(data => {
+      const models = (data.data || []).map(m => m.id);
+      sendResponse({ success: true, models });
+    })
+    .catch(e => {
+      sendResponse({ success: false, error: e.message });
+    });
+
+    // 返回 true 表示异步发送 sendResponse
+    return true;
   }
 });
