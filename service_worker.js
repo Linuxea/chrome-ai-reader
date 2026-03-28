@@ -86,3 +86,18 @@ chrome.runtime.onConnect.addListener((port) => {
     }
   });
 });
+
+// 中转选区变化消息给 side panel
+// 注意：必须检查 !msg.forwarded，否则 service worker 会收到自己转发的消息导致无限循环
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg.action === 'selectionChanged' && !msg.forwarded) {
+    chrome.runtime.sendMessage({
+      action: 'selectionChanged',
+      text: msg.text,
+      tabId: sender.tab?.id,
+      forwarded: true
+    }).catch(() => {
+      // side panel 未打开时 sendMessage 会报错，静默忽略
+    });
+  }
+});
