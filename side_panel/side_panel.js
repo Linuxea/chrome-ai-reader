@@ -10,6 +10,9 @@ const historyPanel = document.getElementById('historyPanel');
 const historyBackBtn = document.getElementById('historyBackBtn');
 const historyList = document.getElementById('historyList');
 const actionBtns = document.querySelectorAll('.action-btn');
+const quotePreview = document.getElementById('quotePreview');
+const quoteText = document.getElementById('quoteText');
+const quoteClose = document.getElementById('quoteClose');
 
 // 当前页面的内容上下文
 let pageContent = '';
@@ -23,6 +26,10 @@ let isGenerating = false;
 let customSystemPrompt = '';
 // 当前聊天 ID（null 表示新会话）
 let currentChatId = null;
+// 选中的引用文本
+let selectedText = '';
+// 当前关联的标签页 ID
+let activeTabId = null;
 
 // 配置 marked
 marked.setOptions({
@@ -35,6 +42,11 @@ chrome.storage.sync.get(['systemPrompt'], (data) => {
   if (data.systemPrompt) {
     customSystemPrompt = data.systemPrompt;
   }
+});
+
+// 初始化：获取当前标签页 ID
+chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  if (tabs[0]) activeTabId = tabs[0].id;
 });
 
 // === 事件绑定 ===
@@ -55,6 +67,7 @@ newChatBtn.addEventListener('click', () => {
   pageTitle = '';
   conversationHistory = [];
   currentChatId = null;
+  updateQuotePreview('');
   chatArea.innerHTML = '<div class="welcome-msg"><p>打开任意网页，点击上方按钮或输入问题开始使用。</p></div>';
 });
 
@@ -91,6 +104,33 @@ userInput.addEventListener('keydown', (e) => {
 userInput.addEventListener('input', () => {
   userInput.style.height = 'auto';
   userInput.style.height = Math.min(userInput.scrollHeight, 100) + 'px';
+});
+
+// 监听选区变化消息（经由 service_worker 中转）
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === 'selectionChanged') {
+    // 只处理当前关联 tab 的消息
+    if (activeTabId && msg.tabId && msg.tabId !== activeTabId) return;
+    updateQuotePreview(msg.text);
+  }
+});
+
+// 更新引用预览 UI
+function updateQuotePreview(text) {
+  selectedText = text;
+  if (text) {
+    const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
+    quoteText.textContent = truncated;
+    quotePreview.classList.remove('hidden');
+  } else {
+    quoteText.textContent = '';
+    quotePreview.classList.add('hidden');
+  }
+}
+
+// 清除引用按钮
+quoteClose.addEventListener('click', () => {
+  updateQuotePreview('');
 });
 
 // === 历史对话管理 ===
@@ -204,6 +244,7 @@ async function loadChat(id) {
   pageTitle = chat.pageTitle || '';
   pageContent = ''; // 页面内容会在下次发消息时重新提取
   pageExcerpt = '';
+  updateQuotePreview('');
   conversationHistory = chat.conversationHistory || [];
 
   // 渲染消息
@@ -297,6 +338,7 @@ function escapeHtml(text) {
 // 提取当前页面内容
 async function extractPageContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  activeTabId = tab.id;
   if (!tab) throw new Error('无法获取当前标签页');
 
   const response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
