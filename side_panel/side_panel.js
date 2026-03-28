@@ -283,9 +283,19 @@ async function executeQuickCommand(cmd) {
   hideCommandPopup();
   userInput.value = '';
 
-  try {
+  // 保存引用文本（清除前快照）
+  const quoteForContext = selectedText;
+  if (selectedText) {
+    const truncated = selectedText.length > 50
+      ? selectedText.slice(0, 50) + '...'
+      : selectedText;
+    appendMessageWithQuote(truncated, `/${cmd.name}（正在读取页面...）`);
+    updateQuotePreview('');
+  } else {
     appendMessage('user', `/${cmd.name}（正在读取页面...）`);
+  }
 
+  try {
     const data = await extractPageContent();
     if (!data.textContent.trim()) {
       removeLastMessage();
@@ -294,7 +304,12 @@ async function executeQuickCommand(cmd) {
     }
 
     const truncated = safeTruncate(data.textContent, TRUNCATE_LIMITS.QUICK_ACTION);
-    const prompt = `${cmd.prompt}\n\n网页标题：${pageTitle}\n\n网页内容如下：\n${truncated}`;
+    let prompt = `${cmd.prompt}\n\n网页标题：${pageTitle}`;
+    if (quoteForContext) {
+      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
+      prompt += `\n\n用户从页面中引用的内容：\n${quote}`;
+    }
+    prompt += `\n\n网页内容如下：\n${truncated}`;
 
     conversationHistory = [];
     if (customSystemPrompt) {
@@ -302,7 +317,19 @@ async function executeQuickCommand(cmd) {
     }
     conversationHistory.push({ role: 'user', content: prompt });
 
-    updateLastMessage('user', `/${cmd.name}`);
+    if (quoteForContext) {
+      const truncated = quoteForContext.length > 50
+        ? quoteForContext.slice(0, 50) + '...'
+        : quoteForContext;
+      const last = chatArea.querySelectorAll('.message');
+      const msg = last[last.length - 1];
+      if (msg) {
+        msg.className = 'message message-user';
+        msg.innerHTML = `<blockquote class="quote-in-bubble">${escapeHtml(truncated)}</blockquote><span>${escapeHtml(`/${cmd.name}`)}</span>`;
+      }
+    } else {
+      updateLastMessage('user', `/${cmd.name}`);
+    }
     await callAI(conversationHistory);
   } catch (e) {
     removeLastMessage();
