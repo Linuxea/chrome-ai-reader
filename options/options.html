@@ -23,6 +23,16 @@
     </div>
 
     <div class="form-group">
+      <label for="modelName">模型名称</label>
+      <div class="model-input-row">
+        <input type="text" id="modelName" list="model-list" placeholder="点击刷新按钮获取可用模型，或手动输入模型名称">
+        <button id="refreshModelsBtn" class="refresh-btn" type="button">刷新模型列表</button>
+      </div>
+      <datalist id="model-list"></datalist>
+      <p class="hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。</p>
+    </div>
+
+    <div class="form-group">
       <label for="systemPrompt">自定义 System Prompt（可选）</label>
       <textarea id="systemPrompt" rows="4" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
       <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>

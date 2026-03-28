@@ -104,3 +104,34 @@ textarea {
 .status.error {
   color: #dc2626;
 }
+
+.model-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.model-input-row input {
+  flex: 1;
+}
+
+.refresh-btn {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.refresh-btn:hover {
+  background: #4338ca;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
