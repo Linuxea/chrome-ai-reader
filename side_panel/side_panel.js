@@ -403,10 +403,8 @@ async function sendMessage() {
   appendMessage('user', text);
 
   try {
-    // 如果还没有页面内容，先提取
-    if (!pageContent) {
-      await extractPageContent();
-    }
+    // 每次发送消息都重新提取页面内容，确保获取最新内容
+    await extractPageContent();
 
     // 构建消息列表（带页面上下文）
     const messages = [];
