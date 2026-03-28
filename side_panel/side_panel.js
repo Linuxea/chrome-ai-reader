@@ -303,13 +303,16 @@ async function executeQuickCommand(cmd) {
       return;
     }
 
-    const truncated = safeTruncate(data.textContent, TRUNCATE_LIMITS.QUICK_ACTION);
-    let prompt = `${cmd.prompt}\n\n网页标题：${pageTitle}`;
+    let prompt;
     if (quoteForContext) {
+      // 有引用时，只针对引用内容执行指令
       const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
-      prompt += `\n\n用户从页面中引用的内容：\n${quote}`;
+      prompt = `请针对以下引用内容执行操作：${cmd.prompt}\n\n网页标题：${pageTitle}\n\n引用内容如下：\n${quote}`;
+    } else {
+      // 无引用时，对完整页面内容执行指令
+      const truncated = safeTruncate(data.textContent, TRUNCATE_LIMITS.QUICK_ACTION);
+      prompt = `${cmd.prompt}\n\n网页标题：${pageTitle}\n\n网页内容如下：\n${truncated}`;
     }
-    prompt += `\n\n网页内容如下：\n${truncated}`;
 
     conversationHistory = [];
     if (customSystemPrompt) {
