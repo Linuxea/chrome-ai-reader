@@ -520,6 +520,10 @@ async function callAI(messages) {
   const msgEl = appendMessage('ai', '');
   const typingEl = addTypingIndicator(msgEl);
   let fullText = '';
+  let thinkingText = '';
+  let thinkingEl = null;
+  let thinkingContentEl = null;
+  let contentEl = null;
 
   const port = chrome.runtime.connect({ name: 'ai-chat' });
 
@@ -529,13 +533,47 @@ async function callAI(messages) {
   });
 
   port.onMessage.addListener((msg) => {
-    if (msg.type === 'chunk') {
+    if (msg.type === 'thinking') {
+      thinkingText += msg.content;
+      removeTypingIndicator(typingEl);
+
+      if (!thinkingEl) {
+        thinkingEl = document.createElement('details');
+        thinkingEl.className = 'thinking-block';
+        thinkingEl.open = true;
+        const summary = document.createElement('summary');
+        summary.className = 'thinking-summary';
+        summary.textContent = '思考过程';
+        thinkingEl.appendChild(summary);
+        thinkingContentEl = document.createElement('div');
+        thinkingContentEl.className = 'thinking-content';
+        thinkingEl.appendChild(thinkingContentEl);
+        msgEl.appendChild(thinkingEl);
+      }
+
+      thinkingContentEl.innerHTML = marked.parse(thinkingText);
+      scrollToBottom();
+    } else if (msg.type === 'chunk') {
+      // 思考结束后折叠思考区块
+      if (thinkingEl) {
+        thinkingEl.open = false;
+        thinkingEl = null;
+      }
+
       fullText += msg.content;
       removeTypingIndicator(typingEl);
-      msgEl.innerHTML = marked.parse(fullText);
+
+      if (!contentEl) {
+        contentEl = document.createElement('div');
+        contentEl.className = 'thinking-response-content';
+        msgEl.appendChild(contentEl);
+      }
+
+      contentEl.innerHTML = marked.parse(fullText);
       scrollToBottom();
     } else if (msg.type === 'done') {
       removeTypingIndicator(typingEl);
+      if (thinkingEl) thinkingEl.open = false;
       conversationHistory.push({ role: 'assistant', content: fullText });
       isGenerating = false;
       setButtonsDisabled(false);
@@ -544,6 +582,7 @@ async function callAI(messages) {
       saveCurrentChat();
     } else if (msg.type === 'error') {
       removeTypingIndicator(typingEl);
+      if (thinkingEl) thinkingEl.open = false;
       msgEl.innerHTML = `<span style="color:#dc2626">${msg.error}</span>`;
       isGenerating = false;
       setButtonsDisabled(false);

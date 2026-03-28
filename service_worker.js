@@ -60,9 +60,12 @@ async function callOpenAI(messages, port) {
 
         try {
           const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            port.postMessage({ type: 'chunk', content });
+          const delta = parsed.choices?.[0]?.delta;
+          if (delta?.reasoning_content) {
+            port.postMessage({ type: 'thinking', content: delta.reasoning_content });
+          }
+          if (delta?.content) {
+            port.postMessage({ type: 'chunk', content: delta.content });
           }
         } catch {
           // 跳过无法解析的行
