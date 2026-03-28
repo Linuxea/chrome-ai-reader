@@ -51,7 +51,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 | `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads `apiKey`/`apiBase`/`modelName` from `chrome.storage.sync`. Model defaults to `deepseek-chat` |
 | `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, streaming display, and chat export as Markdown. Uses `marked.parse()` for AI response rendering. Shows current model name in status bar |
 | `side_panel/side_panel.html` | Side panel UI with quick-action buttons (summarize, translate, key info) and chat interface |
-| `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, `modelName`, and `systemPrompt` from `chrome.storage.sync`. Fetches model list from API via service worker relay and populates `<datalist>` |
+| `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, `modelName`, and `systemPrompt` from `chrome.storage.sync`. Also manages quick commands CRUD in `chrome.storage.local` with real-time save (separate from the "保存设置" button). Fetches model list from API via service worker relay and populates `<datalist>` |
 | `libs/Readability.js` | Mozilla's Readability library for extracting article content from web pages |
 | `libs/marked.min.js` | Markdown-to-HTML renderer for AI responses |
 
@@ -84,4 +84,5 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - No framework — vanilla JS with direct DOM manipulation
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
 - API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`
-- Optional storage fields (`apiBase`, `modelName`, `systemPrompt`) are removed via `chrome.storage.sync.remove()` when empty, not stored as empty strings
+- Optional storage fields (`apiBase`, `modelName`, `systemPrompt`) are removed via `chrome.storage.sync.remove()` when empty, not stored as empty strings. Same pattern for `quickCommands` in `chrome.storage.local`
+- Two storage areas: `chrome.storage.sync` for small config (apiKey, apiBase, modelName, systemPrompt) synced across devices; `chrome.storage.local` for larger/session data (chatHistories, quickCommands)
