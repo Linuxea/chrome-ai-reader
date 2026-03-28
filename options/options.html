@@ -22,6 +22,12 @@
       <p class="hint">留空使用默认地址（DeepSeek）。如需使用其他兼容接口，可在此填写。</p>
     </div>
 
+    <div class="form-group">
+      <label for="systemPrompt">自定义 System Prompt（可选）</label>
+      <textarea id="systemPrompt" rows="4" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
+      <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
+    </div>
+
     <button id="saveBtn" class="save-btn">保存设置</button>
     <div id="status" class="status"></div>
   </div>

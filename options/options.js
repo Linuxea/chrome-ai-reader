@@ -2,16 +2,20 @@
 
 const apiKeyInput = document.getElementById('apiKey');
 const apiBaseInput = document.getElementById('apiBase');
+const systemPromptInput = document.getElementById('systemPrompt');
 const saveBtn = document.getElementById('saveBtn');
 const statusEl = document.getElementById('status');
 
 // 加载已保存的设置
-chrome.storage.sync.get(['apiKey', 'apiBase'], (data) => {
+chrome.storage.sync.get(['apiKey', 'apiBase', 'systemPrompt'], (data) => {
   if (data.apiKey) {
     apiKeyInput.value = data.apiKey;
   }
   if (data.apiBase) {
     apiBaseInput.value = data.apiBase;
+  }
+  if (data.systemPrompt) {
+    systemPromptInput.value = data.systemPrompt;
   }
 });
 
@@ -19,6 +23,7 @@ chrome.storage.sync.get(['apiKey', 'apiBase'], (data) => {
 saveBtn.addEventListener('click', () => {
   const apiKey = apiKeyInput.value.trim();
   const apiBase = apiBaseInput.value.trim();
+  const systemPrompt = systemPromptInput.value.trim();
 
   if (!apiKey) {
     showStatus('请输入 API Key', 'error');
@@ -36,6 +41,12 @@ saveBtn.addEventListener('click', () => {
   } else {
     // 清除之前保存的自定义地址
     chrome.storage.sync.remove('apiBase');
+  }
+
+  if (systemPrompt) {
+    data.systemPrompt = systemPrompt;
+  } else {
+    chrome.storage.sync.remove('systemPrompt');
   }
 
   chrome.storage.sync.set(data, () => {

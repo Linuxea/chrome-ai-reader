@@ -42,13 +42,16 @@ User action in side_panel.js
 
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
 - **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
-- **Settings**: `chrome.storage.sync` for `apiKey` and `apiBase`
+- **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, and `systemPrompt`
+- **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps)
 
 ### State management in side_panel.js
 
 - `pageContent` / `pageExcerpt` / `pageTitle` — cached extracted page content
 - `conversationHistory` — array of `{ role, content }` messages for the current session
 - `isGenerating` — boolean lock to prevent concurrent API calls
+- `customSystemPrompt` — user-defined system prompt loaded from storage, appended to default prompt
+- `currentChatId` — ID of the active conversation in history, `null` for a fresh session
 - Content is truncated to ~12000 chars for quick actions, ~8000 chars for Q&A context
 
 ## Conventions

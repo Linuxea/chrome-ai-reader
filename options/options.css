@@ -49,8 +49,21 @@ input {
   transition: border-color 0.15s;
 }
 
-input:focus {
+input:focus,
+textarea:focus {
   border-color: #4f46e5;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  resize: vertical;
 }
 
 .hint {
