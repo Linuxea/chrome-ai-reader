@@ -38,6 +38,13 @@
       <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
     </div>
 
+    <div class="form-group">
+      <label>快捷指令</label>
+      <p class="hint">配置快捷指令后，在聊天框输入 <code>/</code> 即可快速调用。</p>
+      <div id="quickCommandsList" class="quick-commands-list"></div>
+      <button id="addCommandBtn" class="add-command-btn" type="button">+ 添加指令</button>
+    </div>
+
     <button id="saveBtn" class="save-btn">保存设置</button>
     <div id="status" class="status"></div>
   </div>
