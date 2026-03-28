@@ -31,6 +31,34 @@ let selectedText = '';
 // 当前关联的标签页 ID
 let activeTabId = null;
 
+// 内容截断限制（字符数，基于 DeepSeek 128K token 上下文窗口）
+// 128K tokens ≈ 96K~128K 中文字符，截断值需留出对话历史和回复空间
+const TRUNCATE_LIMITS = {
+  QUICK_ACTION: 32000,
+  QA_CONTEXT: 32000,
+  QUOTE: 32000,
+};
+
+/**
+ * 安全截断文本，按 code point 切割并在段落/句子边界处断开
+ * 避免在 UTF-16 代理对中间截断（如 emoji、罕见 CJK 字符）
+ */
+function safeTruncate(text, maxLen, suffix = '\n\n[内容过长，已截断]') {
+  if (!text) return text;
+  const chars = [...text]; // 按 code point 展开，避免拆开代理对
+  if (chars.length <= maxLen) return text;
+
+  const truncated = chars.slice(0, maxLen).join('');
+  // 在截断点附近找最近的换行符作为自然断点（回溯 200 字符）
+  const lookback = Math.min(200, maxLen);
+  const tail = truncated.slice(-lookback);
+  const lastBreak = tail.lastIndexOf('\n');
+  if (lastBreak > 0) {
+    return truncated.slice(0, truncated.length - lookback + lastBreak + 1) + suffix;
+  }
+  return truncated + suffix;
+}
+
 // 配置 marked
 marked.setOptions({
   breaks: true,
@@ -395,10 +423,7 @@ async function handleQuickAction(action) {
 
 // 获取 Prompt 模板
 function getPromptTemplate(action, content) {
-  const maxLen = 12000; // 限制内容长度，避免超出 token 限制
-  const truncated = content.length > maxLen
-    ? content.slice(0, maxLen) + '\n\n[内容过长，已截断]'
-    : content;
+  const truncated = safeTruncate(content, TRUNCATE_LIMITS.QUICK_ACTION);
 
   const templates = {
     summarize: `请用中文总结以下网页内容。要求：
@@ -463,10 +488,7 @@ async function sendMessage() {
     // 构建消息列表（带页面上下文）
     const messages = [];
     if (pageContent) {
-      const contextLen = 8000;
-      const context = pageContent.length > contextLen
-        ? pageContent.slice(0, contextLen) + '\n\n[内容过长，已截断]'
-        : pageContent;
+      const context = safeTruncate(pageContent, TRUNCATE_LIMITS.QA_CONTEXT);
 
       messages.push({
         role: 'system',
@@ -485,10 +507,7 @@ ${context}`
 
     // 插入引用上下文（虚拟 user/assistant 对，不加入 conversationHistory）
     if (quoteForContext) {
-      const quoteLen = 2000;
-      const quote = quoteForContext.length > quoteLen
-        ? quoteForContext.slice(0, quoteLen) + '\n\n[引用内容过长，已截断]'
-        : quoteForContext;
+      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
       messages.push({
         role: 'user',
         content: `以下是用户从页面中引用的内容：\n\n${quote}`
