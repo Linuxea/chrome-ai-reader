@@ -442,7 +442,19 @@ async function sendMessage() {
 
   userInput.value = '';
   userInput.style.height = 'auto';
-  appendMessage('user', text);
+  // 保存引用文本（清除前快照）
+  const quoteForContext = selectedText;
+  // 如果有引用，在用户消息中显示引用预览
+  if (selectedText) {
+    const truncated = selectedText.length > 50
+      ? selectedText.slice(0, 50) + '...'
+      : selectedText;
+    appendMessageWithQuote(truncated, text);
+    // 发送后清除引用
+    updateQuotePreview('');
+  } else {
+    appendMessage('user', text);
+  }
 
   try {
     // 每次发送消息都重新提取页面内容，确保获取最新内容
@@ -469,6 +481,22 @@ ${context}`
       if (customSystemPrompt) {
         messages.push({ role: 'system', content: customSystemPrompt });
       }
+    }
+
+    // 插入引用上下文（虚拟 user/assistant 对，不加入 conversationHistory）
+    if (quoteForContext) {
+      const quoteLen = 2000;
+      const quote = quoteForContext.length > quoteLen
+        ? quoteForContext.slice(0, quoteLen) + '\n\n[引用内容过长，已截断]'
+        : quoteForContext;
+      messages.push({
+        role: 'user',
+        content: `以下是用户从页面中引用的内容：\n\n${quote}`
+      });
+      messages.push({
+        role: 'assistant',
+        content: '好的，我已收到引用内容。请问您有什么问题？'
+      });
     }
 
     // 加入历史对话
@@ -539,6 +567,19 @@ function appendMessage(role, content) {
   } else if (content) {
     div.textContent = content;
   }
+
+  chatArea.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+function appendMessageWithQuote(quoteStr, userText) {
+  const welcome = chatArea.querySelector('.welcome-msg');
+  if (welcome) welcome.remove();
+
+  const div = document.createElement('div');
+  div.className = 'message message-user';
+  div.innerHTML = `<blockquote class="quote-in-bubble">${escapeHtml(quoteStr)}</blockquote><span>${escapeHtml(userText)}</span>`;
 
   chatArea.appendChild(div);
   scrollToBottom();
