@@ -141,6 +141,9 @@ saveBtn.addEventListener('click', () => {
   if (ttsResourceId) { data.ttsResourceId = ttsResourceId; } else { chrome.storage.sync.remove('ttsResourceId'); }
   if (ttsSpeaker) { data.ttsSpeaker = ttsSpeaker; } else { chrome.storage.sync.remove('ttsSpeaker'); }
 
+  // 推荐追问
+  data.suggestQuestions = suggestQuestionsCheckbox.checked;
+
   chrome.storage.sync.set(data, () => {
     showStatus('设置已保存', 'success');
   });
@@ -406,10 +409,8 @@ importFile.addEventListener('change', (e) => {
       if (data.suggestQuestions !== undefined) {
         syncData.suggestQuestions = data.suggestQuestions;
         suggestQuestionsCheckbox.checked = data.suggestQuestions;
-      } else {
-        syncData.suggestQuestions = true; // 旧版导出文件默认开启
-        suggestQuestionsCheckbox.checked = true;
       }
+      // 旧版导出文件缺少该字段时，不覆盖用户当前设置（storage 中的值和 checkbox 状态保持不变）
 
       // 清除未导入的字段
       SYNC_FIELDS.forEach(f => {
