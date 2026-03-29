@@ -47,6 +47,7 @@ let ttsBufferAppending = false;
 
 // 推荐追问状态
 let suggestQuestionsEnabled = true;
+let suggestPort = null;
 
 // HTML 转义
 function escapeHtml(text) {
@@ -611,6 +612,10 @@ function addTTSButton(msgEl) {
 
 // 移除当前显示的推荐问题区域
 function removeSuggestQuestions() {
+  if (suggestPort) {
+    try { suggestPort.disconnect(); } catch {}
+    suggestPort = null;
+  }
   const el = chatArea.querySelector('.suggest-questions, .suggest-loading');
   if (el) el.remove();
 }
@@ -655,8 +660,10 @@ function generateSuggestions(msgEl, history) {
   ];
 
   const port = chrome.runtime.connect({ name: 'suggest-questions' });
+  suggestPort = port;
 
   port.onDisconnect.addListener(() => {
+    suggestPort = null;
     // port 断开时清理骨架
     if (loadingEl.parentNode) loadingEl.remove();
   });
@@ -668,6 +675,9 @@ function generateSuggestions(msgEl, history) {
       fullText += msg.content;
     } else if (msg.type === 'done') {
       port.disconnect();
+      suggestPort = null;
+      // 如果 msgEl 已不在 DOM 中（用户新建了聊天），跳过渲染
+      if (!msgEl.parentNode) return;
       // 解析问题列表
       const questions = fullText
         .split('\n')
@@ -702,6 +712,7 @@ function generateSuggestions(msgEl, history) {
       smartScrollToBottom();
     } else if (msg.type === 'error') {
       port.disconnect();
+      suggestPort = null;
       // 静默失败，移除骨架
       if (loadingEl.parentNode) loadingEl.remove();
     }
