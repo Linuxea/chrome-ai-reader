@@ -300,3 +300,90 @@ addCommandBtn.addEventListener('click', () => {
 
 // Load on init
 loadQuickCommands();
+
+// === 设置导入导出 ===
+
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+
+// 导出设置
+exportBtn.addEventListener('click', () => {
+  chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt'], (syncData) => {
+    chrome.storage.local.get([COMMANDS_KEY], (localData) => {
+      const exportData = { version: 1 };
+
+      if (syncData.apiKey) exportData.apiKey = syncData.apiKey;
+      if (syncData.apiBase) exportData.apiBase = syncData.apiBase;
+      if (syncData.modelName) exportData.modelName = syncData.modelName;
+      if (syncData.systemPrompt) exportData.systemPrompt = syncData.systemPrompt;
+
+      const commands = localData[COMMANDS_KEY];
+      if (commands && commands.length > 0) exportData.quickCommands = commands;
+
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-reader-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showStatus('设置已导出', 'success');
+    });
+  });
+});
+
+// 导入设置
+importBtn.addEventListener('click', () => {
+  importFile.click();
+});
+
+importFile.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const data = JSON.parse(evt.target.result);
+
+      if (!data.version || typeof data !== 'object') {
+        showStatus('无效的设置文件格式', 'error');
+        return;
+      }
+
+      // 写入 sync storage
+      const syncData = {};
+      if (data.apiKey) { syncData.apiKey = data.apiKey; apiKeyInput.value = data.apiKey; }
+      if (data.apiBase) { syncData.apiBase = data.apiBase; apiBaseInput.value = data.apiBase; }
+      if (data.modelName) { syncData.modelName = data.modelName; modelNameInput.value = data.modelName; }
+      if (data.systemPrompt) { syncData.systemPrompt = data.systemPrompt; systemPromptInput.value = data.systemPrompt; }
+
+      // 清除未导入的字段
+      const fieldsToClean = ['apiKey', 'apiBase', 'modelName', 'systemPrompt'];
+      fieldsToClean.forEach(f => {
+        if (!(f in data)) chrome.storage.sync.remove(f);
+      });
+
+      chrome.storage.sync.set(syncData, () => {
+        // 写入 quickCommands 到 local storage
+        if (data.quickCommands && Array.isArray(data.quickCommands)) {
+          saveQuickCommands(data.quickCommands);
+          renderQuickCommands(data.quickCommands);
+        }
+
+        // 如果有 apiKey 则刷新模型列表
+        if (syncData.apiKey) fetchModels();
+
+        showStatus('设置已导入并保存', 'success');
+      });
+    } catch (err) {
+      showStatus('解析文件失败：' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+
+  // 重置 input，允许重复选择同一文件
+  importFile.value = '';
+});
