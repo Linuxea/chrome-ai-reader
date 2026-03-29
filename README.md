@@ -12,9 +12,9 @@
 - **自由问答** — 基于当前页面内容进行多轮对话问答
 - **选区引用** — 选中页面文字后自动预览，发送时引用上下文精准提问
 - **自定义指令** — 在设置中配置快捷指令，输入 `/` 即可快速调用
-- **流式输出** — 实时显示 AI 回复，支持推理模型的思考过程展示
+- **流式输出** — 实时显示 AI 回复，支持推理模型的思考过程展示（可折叠）
 - **对话历史** — 自动保存聊天记录（最多 50 条），支持回看和继续对话
-- **导出 Markdown** — 将对话记录导出为格式化的 Markdown 文件
+- **导出 Markdown** — 将对话记录导出为格式化的 Markdown 文件，含页面标题、导出时间和模型信息
 - **多模型支持** — 兼容所有 OpenAI API 格式的服务端点，可自动获取模型列表
 
 ## 安装使用
@@ -51,15 +51,21 @@ chrome-ai-reader/
 ├── content.js                 # 内容脚本：页面提取、选区监听
 ├── side_panel/
 │   ├── side_panel.html        # 侧边栏界面
-│   ├── side_panel.css         # 样式（CSS 自定义属性主题）
-│   └── side_panel.js          # 交互逻辑：聊天、历史、导出
+│   ├── side_panel.css         # 主样式（CSS 自定义属性主题）
+│   ├── side_panel.js          # 交互逻辑：聊天、快捷操作、流式渲染
+│   ├── chat-history.js        # 对话历史管理：保存/加载/删除/导出
+│   ├── history.css            # 历史面板样式（滑入动画）
+│   ├── quick-commands.js      # 快捷指令弹窗逻辑：过滤、键盘导航
+│   ├── quick-commands.css     # 快捷指令弹窗样式
+│   └── ui-helpers.js          # UI 辅助函数：滚动、截断、消息渲染
 ├── options/
 │   ├── options.html           # 设置页面
 │   ├── options.css            # 设置页样式
-│   └── options.js             # 设置逻辑：配置管理、模型列表、快捷指令
+│   └── options.js             # 设置逻辑：配置管理、模型列表、快捷指令 CRUD
 ├── libs/
 │   ├── Readability.js         # Mozilla Readability 页面正文提取
 │   └── marked.min.js          # Markdown 渲染
+├── assets/                    # 产品截图等静态资源
 └── icons/                     # 扩展图标（16/48/128px）
 ```
 
@@ -67,7 +73,7 @@ chrome-ai-reader/
 
 ### 架构概览
 
-无构建系统、无框架依赖，所有文件由 Chrome 直接加载。
+无构建系统、无框架依赖，所有文件由 Chrome 直接加载。侧边栏脚本按依赖顺序加载：`marked.min.js` → `chat-history.js` → `quick-commands.js` → `ui-helpers.js` → `side_panel.js`。
 
 ```
 用户操作 (side_panel.js)
@@ -81,10 +87,11 @@ chrome-ai-reader/
 
 | 通道 | 方式 | 用途 |
 |------|------|------|
-| AI 对话 | `chrome.runtime.connect` 长连接端口 | 流式传输 AI 回复（chunk/done/error） |
+| AI 对话 | `chrome.runtime.connect` 长连接端口 | 流式传输 AI 回复（thinking/chunk/done/error） |
 | 页面提取 | `chrome.tabs.sendMessage` 一次请求 | 获取当前页面正文内容 |
 | 选区中转 | `chrome.runtime.sendMessage` 一次请求 | 页面选区文字经 service worker 中转到侧边栏 |
 | 模型列表 | `chrome.runtime.sendMessage` 一次请求 | 设置页通过 service worker 代理 API 请求（规避 CORS） |
+| 设置同步 | `chrome.storage.onChanged` 监听 | 模型名称、系统指令变更后实时生效，无需刷新 |
 
 ### 兼容的 API 服务
 
