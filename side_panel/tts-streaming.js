@@ -148,14 +148,19 @@ function initTTSPlayback() {
   // loading 状态在按钮实际添加到 DOM 后才生效（延迟到 done 回调)
 
   // 用 MSE 实现流式播放
-  ttsMediaSource = new MediaSource();
+  const ms = new MediaSource();
+  ttsMediaSource = ms;
   ttsAudioEl = new Audio();
-  ttsAudioEl.src = URL.createObjectURL(ttsMediaSource);
+  ttsAudioEl.src = URL.createObjectURL(ms);
 
   let started = false;
 
-  ttsMediaSource.addEventListener('sourceopen', () => {
-    ttsSourceBuffer = ttsMediaSource.addSourceBuffer('audio/mpeg');
+  ms.addEventListener('sourceopen', () => {
+    // 防止旧 MediaSource 的 sourceopen 操作新实例
+    if (ttsMediaSource !== ms) return;
+    if (ms.sourceBuffers.length > 0) return;
+
+    ttsSourceBuffer = ms.addSourceBuffer('audio/mpeg');
     ttsSourceBuffer.addEventListener('updateend', () => {
       ttsBufferAppending = false;
       // 首次有数据后自动播放
@@ -258,14 +263,14 @@ function ttsAppendChunk(content) {
     }
   }
 
-  // 循环切分：每 5 个句末标点切一次
-  while (ttsSentenceCount >= 5) {
+  // 循环切分：每 2 个句末标点切一次
+  while (ttsSentenceCount >= 2) {
     let found = 0;
     let cutPos = -1;
     for (let i = 0; i < ttsTextBuffer.length; i++) {
       if (SENTENCE_ENDS.includes(ttsTextBuffer[i])) {
         found++;
-        if (found >= 5) {
+        if (found >= 2) {
           cutPos = i + 1;
           break;
         }
