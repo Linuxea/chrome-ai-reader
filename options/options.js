@@ -349,7 +349,12 @@ exportBtn.addEventListener('click', () => {
 
       // 导出所有有值的 sync 字段
       for (const key of SYNC_FIELDS) {
-        if (syncData[key]) exportData[key] = syncData[key];
+        if (key === 'suggestQuestions') {
+          // boolean 字段，false 也是有效值
+          if (syncData[key] !== undefined) exportData[key] = syncData[key];
+        } else if (syncData[key]) {
+          exportData[key] = syncData[key];
+        }
       }
 
       const commands = localData[COMMANDS_KEY];
