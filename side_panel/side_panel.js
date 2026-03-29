@@ -332,7 +332,6 @@ ${context}`
       const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
       userContent = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${cmd.prompt}`;
     }
-    conversationHistory = [];
     conversationHistory.push({ role: 'user', content: userContent });
     messages.push({ role: 'user', content: userContent });
 
