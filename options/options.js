@@ -17,8 +17,11 @@ const ttsSpeakerInput = document.getElementById('ttsSpeaker');
 // 推荐追问
 const suggestQuestionsCheckbox = document.getElementById('suggestQuestions');
 
+// TTS 自动播放
+const ttsAutoPlayCheckbox = document.getElementById('ttsAutoPlay');
+
 // 所有 sync storage 字段名
-const SYNC_FIELDS = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker', 'suggestQuestions'];
+const SYNC_FIELDS = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker', 'suggestQuestions', 'ttsAutoPlay'];
 
 // 输入框映射：字段名 → input 元素
 const fieldInputMap = {
@@ -40,6 +43,10 @@ chrome.storage.sync.get(SYNC_FIELDS, (data) => {
   // 推荐追问（checkbox，不通过 fieldInputMap 处理）
   if (data.suggestQuestions !== undefined) {
     suggestQuestionsCheckbox.checked = data.suggestQuestions;
+  }
+  // TTS 自动播放（checkbox，不通过 fieldInputMap 处理）
+  if (data.ttsAutoPlay !== undefined) {
+    ttsAutoPlayCheckbox.checked = data.ttsAutoPlay;
   }
   // 有 apiKey 时自动获取模型列表
   if (data.apiKey) {
@@ -94,6 +101,11 @@ suggestQuestionsCheckbox.addEventListener('change', () => {
   chrome.storage.sync.set({ suggestQuestions: suggestQuestionsCheckbox.checked });
 });
 
+// TTS 自动播放开关 — 实时保存
+ttsAutoPlayCheckbox.addEventListener('change', () => {
+  chrome.storage.sync.set({ ttsAutoPlay: ttsAutoPlayCheckbox.checked });
+});
+
 // 保存设置
 saveBtn.addEventListener('click', () => {
   const apiKey = apiKeyInput.value.trim();
@@ -143,6 +155,9 @@ saveBtn.addEventListener('click', () => {
 
   // 推荐追问
   data.suggestQuestions = suggestQuestionsCheckbox.checked;
+
+  // TTS 自动播放
+  data.ttsAutoPlay = ttsAutoPlayCheckbox.checked;
 
   chrome.storage.sync.set(data, () => {
     showStatus('设置已保存', 'success');
@@ -352,7 +367,7 @@ exportBtn.addEventListener('click', () => {
 
       // 导出所有有值的 sync 字段
       for (const key of SYNC_FIELDS) {
-        if (key === 'suggestQuestions') {
+        if (key === 'suggestQuestions' || key === 'ttsAutoPlay') {
           // boolean 字段，false 也是有效值
           if (syncData[key] !== undefined) exportData[key] = syncData[key];
         } else if (syncData[key]) {
@@ -398,7 +413,7 @@ importFile.addEventListener('change', (e) => {
       // 写入 sync storage，回填输入框
       const syncData = {};
       for (const key of SYNC_FIELDS) {
-        if (key === 'suggestQuestions') continue; // 单独处理
+        if (key === 'suggestQuestions' || key === 'ttsAutoPlay') continue; // 单独处理
         if (data[key]) {
           syncData[key] = data[key];
           fieldInputMap[key].value = data[key];
@@ -410,11 +425,16 @@ importFile.addEventListener('change', (e) => {
         syncData.suggestQuestions = data.suggestQuestions;
         suggestQuestionsCheckbox.checked = data.suggestQuestions;
       }
+      // TTS 自动播放单独处理（checkbox 而非 text input）
+      if (data.ttsAutoPlay !== undefined) {
+        syncData.ttsAutoPlay = data.ttsAutoPlay;
+        ttsAutoPlayCheckbox.checked = data.ttsAutoPlay;
+      }
       // 旧版导出文件缺少该字段时，不覆盖用户当前设置（storage 中的值和 checkbox 状态保持不变）
 
       // 清除未导入的字段
       SYNC_FIELDS.forEach(f => {
-        if (f === 'suggestQuestions') return; // 保留默认值，不删除
+        if (f === 'suggestQuestions' || f === 'ttsAutoPlay') return; // 保留默认值，不删除
         if (!(f in data)) chrome.storage.sync.remove(f);
       });
 

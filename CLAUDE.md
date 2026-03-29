@@ -101,7 +101,7 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 
 ### Storage
 
-- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker` — config synced across devices
+- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay` — config synced across devices
 - **`chrome.storage.local`**: `chatHistories` (up to 50 conversations), `quickCommands` (array of `{ name, prompt }`)
 - Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
 - Settings export/import bundles all sync fields + quickCommands into a versioned JSON file
@@ -128,3 +128,5 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`
 - TTS button only appears on the latest AI message; clicking while playing stops playback (toggle behavior)
 - TTS stops automatically when user sends a new AI message or starts a new chat
+- `ttsAutoPlay` — boolean in sync storage, when true automatically triggers TTS playback after AI response completes
+- Retry button appears on the latest user message; clicking it truncates conversation from that point and resends the message
