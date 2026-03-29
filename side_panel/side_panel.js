@@ -45,6 +45,9 @@ let ttsAudioEl = null;
 let ttsChunkQueue = [];
 let ttsBufferAppending = false;
 
+// 推荐追问状态
+let suggestQuestionsEnabled = true;
+
 // HTML 转义
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -92,6 +95,11 @@ chrome.storage.sync.get(['systemPrompt'], (data) => {
   }
 });
 
+// 加载推荐追问开关
+chrome.storage.sync.get(['suggestQuestions'], (data) => {
+  suggestQuestionsEnabled = data.suggestQuestions !== false;
+});
+
 // 初始化：获取当前标签页 ID
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   if (tabs[0]) activeTabId = tabs[0].id;
@@ -112,6 +120,7 @@ newChatBtn.addEventListener('click', () => {
   // 先保存当前会话
   saveCurrentChat();
   // 重置状态
+  removeSuggestQuestions();
   pageContent = '';
   pageExcerpt = '';
   pageTitle = '';
@@ -291,6 +300,7 @@ async function handleQuickAction(action) {
 
 // 核心发送逻辑（统一入口）
 async function sendToAI(text, displayText) {
+  removeSuggestQuestions();
   const quoteForContext = selectedText;
 
   // 显示用户消息
@@ -430,6 +440,8 @@ async function callAI(messages) {
       addTTSButton(msgEl);
       // 自动保存
       saveCurrentChat();
+      // 生成推荐追问
+      generateSuggestions(msgEl, conversationHistory);
     } else if (msg.type === 'error') {
       removeTypingIndicator(typingEl);
       if (thinkingEl) thinkingEl.open = false;
@@ -595,6 +607,109 @@ function addTTSButton(msgEl) {
   msgEl.appendChild(btn);
 }
 
+// === 推荐追问 ===
+
+// 移除当前显示的推荐问题区域
+function removeSuggestQuestions() {
+  const el = chatArea.querySelector('.suggest-questions, .suggest-loading');
+  if (el) el.remove();
+}
+
+// 生成推荐追问
+function generateSuggestions(msgEl, history) {
+  if (!suggestQuestionsEnabled) return;
+
+  // 显示骨架加载态
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'suggest-loading';
+  loadingEl.innerHTML = `
+    <div class="suggest-loading-bar"></div>
+    <div class="suggest-loading-bar"></div>
+    <div class="suggest-loading-bar"></div>
+  `;
+  msgEl.after(loadingEl);
+
+  // 构建发给 API 的消息（取最近 2 轮对话）
+  const recentHistory = history.slice(-4); // 2 轮 = 4 条消息 (user, assistant, user, assistant)
+  const userMessages = recentHistory.filter(m => m.role === 'user');
+  const assistantMessages = recentHistory.filter(m => m.role === 'assistant');
+
+  let userContent = '';
+  const lastUser = userMessages[userMessages.length - 1];
+  if (lastUser) userContent += '用户问题：' + lastUser.content + '\n\n';
+
+  const lastAssistant = assistantMessages[assistantMessages.length - 1];
+  if (lastAssistant) {
+    const truncated = lastAssistant.content.length > 2000
+      ? lastAssistant.content.slice(0, 2000) + '...'
+      : lastAssistant.content;
+    userContent += 'AI 回复：' + truncated;
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: '你是一个阅读助手。基于对话历史，生成 3 个有深度的后续问题，帮助用户更深入地理解文章内容。每行一个问题，不要编号，不要额外解释。'
+    },
+    { role: 'user', content: userContent }
+  ];
+
+  const port = chrome.runtime.connect({ name: 'suggest-questions' });
+
+  port.onDisconnect.addListener(() => {
+    // port 断开时清理骨架
+    if (loadingEl.parentNode) loadingEl.remove();
+  });
+
+  let fullText = '';
+
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'chunk') {
+      fullText += msg.content;
+    } else if (msg.type === 'done') {
+      port.disconnect();
+      // 解析问题列表
+      const questions = fullText
+        .split('\n')
+        .map(q => q.replace(/^[\d]+[.、)\s]*/, '').trim()) // 移除可能的编号
+        .filter(q => q.length > 0)
+        .slice(0, 3);
+
+      // 移除骨架
+      if (loadingEl.parentNode) loadingEl.remove();
+
+      if (questions.length === 0) return;
+
+      // 渲染推荐问题
+      const suggestEl = document.createElement('div');
+      suggestEl.className = 'suggest-questions';
+
+      questions.forEach(q => {
+        const item = document.createElement('button');
+        item.className = 'suggest-item';
+        item.textContent = q;
+        item.addEventListener('click', () => {
+          // 移除推荐区域
+          suggestEl.remove();
+          // 填入并发送
+          userInput.value = q;
+          sendMessage();
+        });
+        suggestEl.appendChild(item);
+      });
+
+      msgEl.after(suggestEl);
+      smartScrollToBottom();
+    } else if (msg.type === 'error') {
+      port.disconnect();
+      // 静默失败，移除骨架
+      if (loadingEl.parentNode) loadingEl.remove();
+    }
+  });
+
+  port.postMessage({ type: 'suggest', messages });
+}
+
 // === 模型状态栏 ===
 
 const modelStatusBar = document.getElementById('modelStatusBar');
@@ -616,6 +731,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     if (changes.systemPrompt) {
       customSystemPrompt = changes.systemPrompt.newValue || '';
+    }
+    if (changes.suggestQuestions) {
+      suggestQuestionsEnabled = changes.suggestQuestions.newValue !== false;
     }
   }
 });
