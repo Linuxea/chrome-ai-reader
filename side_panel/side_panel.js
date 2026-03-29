@@ -45,8 +45,8 @@ function escapeHtml(text) {
 // 内容截断限制（字符数，基于 DeepSeek 128K token 上下文窗口）
 // 128K tokens ≈ 96K~128K 中文字符，截断值需留出对话历史和回复空间
 const TRUNCATE_LIMITS = {
-  CONTEXT: 32000,
-  QUOTE: 32000,
+  CONTEXT: 64000,
+  QUOTE: 64000,
 };
 
 /**
