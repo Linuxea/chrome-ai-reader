@@ -145,7 +145,7 @@ function initTTSPlayback() {
     }
   };
 
-  updateBtnState(null, ['tts-loading']);
+  // loading 状态在按钮实际添加到 DOM 后才生效（延迟到 done 回调)
 
   // 用 MSE 实现流式播放
   ttsMediaSource = new MediaSource();
