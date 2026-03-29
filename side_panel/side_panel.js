@@ -36,11 +36,14 @@ let activeTabId = null;
 // commandPopupOpen, commandSelectedIndex, quickCommands 等在 quick-commands.js 中定义
 
 // TTS 播放状态
-let ttsAudioCtx = null;
-let ttsCurrentSource = null;
 let ttsPort = null;
 let ttsPlaying = false;
 let ttsDone = false;
+let ttsMediaSource = null;
+let ttsSourceBuffer = null;
+let ttsAudioEl = null;
+let ttsChunkQueue = [];
+let ttsBufferAppending = false;
 
 // HTML 转义
 function escapeHtml(text) {
@@ -445,14 +448,18 @@ async function callAI(messages) {
 function stopTTS() {
   ttsPlaying = false;
   ttsDone = true;
+  ttsChunkQueue = [];
+  ttsBufferAppending = false;
 
-  if (ttsCurrentSource) {
-    try { ttsCurrentSource.stop(); } catch {}
-    ttsCurrentSource = null;
+  if (ttsAudioEl) {
+    ttsAudioEl.pause();
+    ttsAudioEl.src = '';
+    ttsAudioEl = null;
   }
-  if (ttsAudioCtx) {
-    try { ttsAudioCtx.close(); } catch {}
-    ttsAudioCtx = null;
+  if (ttsMediaSource) {
+    try { if (ttsMediaSource.readyState === 'open') ttsMediaSource.endOfStream(); } catch {}
+    ttsMediaSource = null;
+    ttsSourceBuffer = null;
   }
   if (ttsPort) {
     try { ttsPort.disconnect(); } catch {}
@@ -466,6 +473,18 @@ function stopTTS() {
   }
 }
 
+function ttsAppendNext() {
+  if (!ttsSourceBuffer || ttsBufferAppending || ttsChunkQueue.length === 0) return;
+  ttsBufferAppending = true;
+  const chunk = ttsChunkQueue.shift();
+  try {
+    ttsSourceBuffer.appendBuffer(chunk);
+  } catch (e) {
+    console.error('[TTS] appendBuffer error:', e);
+    ttsBufferAppending = false;
+  }
+}
+
 function playTTS(text) {
   // 如果正在播放，先停止
   if (ttsPlaying) {
@@ -473,84 +492,85 @@ function playTTS(text) {
     return;
   }
 
-  console.log('[TTS] playTTS called, text length:', text.length);
   ttsPlaying = true;
   ttsDone = false;
+  ttsChunkQueue = [];
+  ttsBufferAppending = false;
 
   const btn = chatArea.querySelector('.tts-btn');
   if (btn) btn.classList.add('tts-loading');
 
-  // 收集所有 chunk 的 base64 数据，完成后一次性解码播放
-  let chunks = [];
+  // 用 MSE 实现流式播放
+  ttsMediaSource = new MediaSource();
+  ttsAudioEl = new Audio();
+  ttsAudioEl.src = URL.createObjectURL(ttsMediaSource);
 
-  ttsPort = chrome.runtime.connect({ name: 'tts' });
-  console.log('[TTS] port connected');
+  let started = false;
 
-  ttsPort.onDisconnect.addListener(() => {
-    console.log('[TTS] port disconnected');
-    if (ttsPlaying) stopTTS();
-  });
-
-  ttsPort.onMessage.addListener((msg) => {
-    if (msg.type === 'chunk') {
-      if (!msg.data) return;
-      chunks.push(msg.data);
-      console.log('[TTS] chunk received, total chunks:', chunks.length);
-    } else if (msg.type === 'done') {
-      console.log('[TTS] done, total chunks:', chunks.length, 'total base64 length:', chunks.join('').length);
-      ttsDone = true;
-      if (chunks.length === 0) {
-        console.log('[TTS] no chunks received, stopping');
-        stopTTS();
-        return;
+  ttsMediaSource.addEventListener('sourceopen', () => {
+    ttsSourceBuffer = ttsMediaSource.addSourceBuffer('audio/mpeg');
+    ttsSourceBuffer.addEventListener('updateend', () => {
+      ttsBufferAppending = false;
+      // 首次有数据后自动播放
+      if (!started && ttsAudioEl && ttsSourceBuffer.buffered.length > 0) {
+        started = true;
+        ttsAudioEl.play().then(() => {
+          if (btn) {
+            btn.classList.remove('tts-loading');
+            btn.classList.add('tts-playing');
+          }
+        }).catch(() => {});
       }
+      ttsAppendNext();
+    });
 
-      // 拼接所有 base64 chunk → 完整的 mp3 二进制
-      const fullBase64 = chunks.join('');
-      const binaryStr = atob(fullBase64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-      console.log('[TTS] decoded binary, size:', bytes.length, 'bytes');
+    // 建立连接，开始接收数据
+    ttsPort = chrome.runtime.connect({ name: 'tts' });
 
-      ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      ttsAudioCtx.resume().then(() => {
-        console.log('[TTS] AudioContext resumed, decoding...');
-        return ttsAudioCtx.decodeAudioData(bytes.buffer);
-      }).then((audioBuffer) => {
-        console.log('[TTS] decoded audio, duration:', audioBuffer.duration, 's');
-        if (!ttsPlaying) return; // 用户已经停止了
-        if (btn) {
-          btn.classList.remove('tts-loading');
-          btn.classList.add('tts-playing');
+    ttsPort.onDisconnect.addListener(() => {
+      if (ttsPlaying) stopTTS();
+    });
+
+    ttsPort.onMessage.addListener((msg) => {
+      if (msg.type === 'chunk') {
+        if (!msg.data) return;
+        // base64 → ArrayBuffer
+        const binaryStr = atob(msg.data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        ttsChunkQueue.push(bytes.buffer);
+        ttsAppendNext();
+
+      } else if (msg.type === 'done') {
+        ttsDone = true;
+        // 等当前 append 完成后结束流
+        const finish = () => {
+          if (ttsSourceBuffer && !ttsBufferAppending) {
+            try { ttsMediaSource.endOfStream(); } catch {}
+          }
+        };
+        if (ttsBufferAppending) {
+          // 等 updateend 触发后再结束
+          const handler = () => { finish(); ttsSourceBuffer.removeEventListener('updateend', handler); };
+          ttsSourceBuffer.addEventListener('updateend', handler);
+        } else {
+          finish();
         }
 
-        const source = ttsAudioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ttsAudioCtx.destination);
-        ttsCurrentSource = source;
-
-        source.onended = () => {
-          ttsCurrentSource = null;
-          stopTTS();
-        };
-
-        source.start();
-        console.log('[TTS] playback started');
-      }).catch((err) => {
-        console.error('[TTS] 音频解码失败:', err);
+      } else if (msg.type === 'error') {
+        console.error('[TTS] error:', msg.error);
         stopTTS();
-      });
+      }
+    });
 
-    } else if (msg.type === 'error') {
-      console.error('[TTS] error:', msg.error);
-      stopTTS();
-    }
+    ttsPort.postMessage({ type: 'tts', text });
   });
 
-  ttsPort.postMessage({ type: 'tts', text });
-  console.log('[TTS] message sent to service worker');
+  ttsAudioEl.addEventListener('ended', () => {
+    stopTTS();
+  });
 }
 
 function addTTSButton(msgEl) {
