@@ -335,15 +335,18 @@ textarea {
   background: #f5f3ff;
 }
 
-/* TTS 折叠面板 */
-.tts-details {
-  margin-top: 20px;
+/* 折叠配置面板 */
+.config-details {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.tts-summary {
+.config-details + .config-details {
+  margin-top: 16px;
+}
+
+.config-summary {
   padding: 12px 16px;
   font-size: 14px;
   font-weight: 500;
@@ -354,10 +357,10 @@ textarea {
   transition: background 0.15s;
 }
 
-.tts-summary:hover {
+.config-summary:hover {
   background: #f3f4f6;
 }
 
-.tts-fields {
+.config-fields {
   padding: 16px 16px 8px;
 }

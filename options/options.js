@@ -3,9 +3,8 @@
 const apiKeyInput = document.getElementById('apiKey');
 const apiBaseInput = document.getElementById('apiBase');
 const modelNameInput = document.getElementById('modelName');
-const modelList = document.getElementById('model-list');
-const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const systemPromptInput = document.getElementById('systemPrompt');
+const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const saveBtn = document.getElementById('saveBtn');
 const statusEl = document.getElementById('status');
 
@@ -15,24 +14,26 @@ const ttsAccessKeyInput = document.getElementById('ttsAccessKey');
 const ttsResourceIdInput = document.getElementById('ttsResourceId');
 const ttsSpeakerInput = document.getElementById('ttsSpeaker');
 
+// 所有 sync storage 字段名
+const SYNC_FIELDS = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'];
+
+// 输入框映射：字段名 → input 元素
+const fieldInputMap = {
+  apiKey: apiKeyInput,
+  apiBase: apiBaseInput,
+  modelName: modelNameInput,
+  systemPrompt: systemPromptInput,
+  ttsAppId: ttsAppIdInput,
+  ttsAccessKey: ttsAccessKeyInput,
+  ttsResourceId: ttsResourceIdInput,
+  ttsSpeaker: ttsSpeakerInput,
+};
+
 // 加载已保存的设置
-chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'], (data) => {
-  if (data.apiKey) {
-    apiKeyInput.value = data.apiKey;
+chrome.storage.sync.get(SYNC_FIELDS, (data) => {
+  for (const key of SYNC_FIELDS) {
+    if (data[key]) fieldInputMap[key].value = data[key];
   }
-  if (data.apiBase) {
-    apiBaseInput.value = data.apiBase;
-  }
-  if (data.modelName) {
-    modelNameInput.value = data.modelName;
-  }
-  if (data.systemPrompt) {
-    systemPromptInput.value = data.systemPrompt;
-  }
-  if (data.ttsAppId) ttsAppIdInput.value = data.ttsAppId;
-  if (data.ttsAccessKey) ttsAccessKeyInput.value = data.ttsAccessKey;
-  if (data.ttsResourceId) ttsResourceIdInput.value = data.ttsResourceId;
-  if (data.ttsSpeaker) ttsSpeakerInput.value = data.ttsSpeaker;
   // 有 apiKey 时自动获取模型列表
   if (data.apiKey) {
     fetchModels();
@@ -59,6 +60,7 @@ async function fetchModels() {
       apiKey
     });
 
+    const modelList = document.getElementById('model-list');
     modelList.innerHTML = '';
     if (response.success) {
       response.models.forEach(id => {
@@ -71,7 +73,6 @@ async function fetchModels() {
       showStatus(response.error || '获取模型列表失败', 'error');
     }
   } catch (e) {
-    modelList.innerHTML = '';
     showStatus('获取模型列表失败：' + e.message, 'error');
   } finally {
     refreshModelsBtn.disabled = false;
@@ -330,18 +331,14 @@ const importFile = document.getElementById('importFile');
 
 // 导出设置
 exportBtn.addEventListener('click', () => {
-  chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'], (syncData) => {
+  chrome.storage.sync.get(SYNC_FIELDS, (syncData) => {
     chrome.storage.local.get([COMMANDS_KEY], (localData) => {
       const exportData = { version: 1 };
 
-      if (syncData.apiKey) exportData.apiKey = syncData.apiKey;
-      if (syncData.apiBase) exportData.apiBase = syncData.apiBase;
-      if (syncData.modelName) exportData.modelName = syncData.modelName;
-      if (syncData.systemPrompt) exportData.systemPrompt = syncData.systemPrompt;
-      if (syncData.ttsAppId) exportData.ttsAppId = syncData.ttsAppId;
-      if (syncData.ttsAccessKey) exportData.ttsAccessKey = syncData.ttsAccessKey;
-      if (syncData.ttsResourceId) exportData.ttsResourceId = syncData.ttsResourceId;
-      if (syncData.ttsSpeaker) exportData.ttsSpeaker = syncData.ttsSpeaker;
+      // 导出所有有值的 sync 字段
+      for (const key of SYNC_FIELDS) {
+        if (syncData[key]) exportData[key] = syncData[key];
+      }
 
       const commands = localData[COMMANDS_KEY];
       if (commands && commands.length > 0) exportData.quickCommands = commands;
@@ -378,20 +375,17 @@ importFile.addEventListener('change', (e) => {
         return;
       }
 
-      // 写入 sync storage
+      // 写入 sync storage，回填输入框
       const syncData = {};
-      if (data.apiKey) { syncData.apiKey = data.apiKey; apiKeyInput.value = data.apiKey; }
-      if (data.apiBase) { syncData.apiBase = data.apiBase; apiBaseInput.value = data.apiBase; }
-      if (data.modelName) { syncData.modelName = data.modelName; modelNameInput.value = data.modelName; }
-      if (data.systemPrompt) { syncData.systemPrompt = data.systemPrompt; systemPromptInput.value = data.systemPrompt; }
-      if (data.ttsAppId) { syncData.ttsAppId = data.ttsAppId; ttsAppIdInput.value = data.ttsAppId; }
-      if (data.ttsAccessKey) { syncData.ttsAccessKey = data.ttsAccessKey; ttsAccessKeyInput.value = data.ttsAccessKey; }
-      if (data.ttsResourceId) { syncData.ttsResourceId = data.ttsResourceId; ttsResourceIdInput.value = data.ttsResourceId; }
-      if (data.ttsSpeaker) { syncData.ttsSpeaker = data.ttsSpeaker; ttsSpeakerInput.value = data.ttsSpeaker; }
+      for (const key of SYNC_FIELDS) {
+        if (data[key]) {
+          syncData[key] = data[key];
+          fieldInputMap[key].value = data[key];
+        }
+      }
 
       // 清除未导入的字段
-      const fieldsToClean = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'];
-      fieldsToClean.forEach(f => {
+      SYNC_FIELDS.forEach(f => {
         if (!(f in data)) chrome.storage.sync.remove(f);
       });
 

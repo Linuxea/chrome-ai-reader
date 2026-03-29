@@ -10,42 +10,44 @@
   <div class="container">
     <h1>小🍐子阅读助手设置</h1>
 
-    <!-- API 配置 -->
+    <!-- 配置区 -->
     <section class="settings-section">
-      <h2 class="section-title">API 配置</h2>
 
-      <div class="form-group">
-        <label for="apiKey">API Key</label>
-        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
-        <p class="hint">你的 API Key 仅保存在本地浏览器中，不会发送到任何第三方服务器。</p>
-      </div>
-
-      <div class="form-group">
-        <label for="apiBase">API 地址（可选）</label>
-        <input type="text" id="apiBase" placeholder="https://api.deepseek.com">
-        <p class="hint">留空使用默认地址（DeepSeek）。如需使用其他兼容接口，可在此填写。</p>
-      </div>
-
-      <div class="form-group">
-        <label for="modelName">模型名称</label>
-        <div class="model-input-row">
-          <input type="text" id="modelName" list="model-list" placeholder="点击刷新按钮获取可用模型，或手动输入模型名称">
-          <button id="refreshModelsBtn" class="refresh-btn" type="button">刷新模型列表</button>
+      <!-- 大模型配置 -->
+      <details class="config-details">
+        <summary class="config-summary">大模型配置</summary>
+        <div class="config-fields">
+          <div class="form-group">
+            <label for="apiKey">API Key</label>
+            <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+            <p class="hint">你的 API Key 仅保存在本地浏览器中，不会发送到任何第三方服务器。</p>
+          </div>
+          <div class="form-group">
+            <label for="apiBase">API 地址（可选）</label>
+            <input type="text" id="apiBase" placeholder="https://api.deepseek.com">
+            <p class="hint">留空使用默认地址（DeepSeek）。如需使用其他兼容接口，可在此填写。</p>
+          </div>
+          <div class="form-group">
+            <label for="modelName">模型名称</label>
+            <div class="model-input-row">
+              <input type="text" id="modelName" list="model-list" placeholder="点击刷新按钮获取可用模型，或手动输入模型名称">
+              <button id="refreshModelsBtn" class="refresh-btn" type="button">刷新模型列表</button>
+            </div>
+            <datalist id="model-list"></datalist>
+            <p class="hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。</p>
+          </div>
+          <div class="form-group">
+            <label for="systemPrompt">自定义 System Prompt（可选）</label>
+            <textarea id="systemPrompt" rows="4" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
+            <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
+          </div>
         </div>
-        <datalist id="model-list"></datalist>
-        <p class="hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。</p>
-      </div>
-
-      <div class="form-group">
-        <label for="systemPrompt">自定义 System Prompt（可选）</label>
-        <textarea id="systemPrompt" rows="4" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
-        <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
-      </div>
+      </details>
 
       <!-- TTS 语音合成配置 -->
-      <details class="tts-details">
-        <summary class="tts-summary">TTS 语音合成配置</summary>
-        <div class="tts-fields">
+      <details class="config-details">
+        <summary class="config-summary">TTS 语音合成配置</summary>
+        <div class="config-fields">
           <div class="form-group">
             <label for="ttsAppId">App ID</label>
             <input type="text" id="ttsAppId" placeholder="火山引擎控制台获取的 App ID" autocomplete="off">
@@ -67,7 +69,7 @@
         </div>
       </details>
 
-      <button id="saveBtn" class="primary-btn">保存 API 设置</button>
+      <button id="saveBtn" class="primary-btn">保存设置</button>
     </section>
 
     <!-- 快捷指令 -->
@@ -81,7 +83,7 @@
     <!-- 数据管理 -->
     <section class="settings-section">
       <h2 class="section-title">数据管理</h2>
-      <p class="hint">将所有设置（API 配置、系统提示词、快捷指令）导出为 JSON 文件备份，或从备份文件导入恢复。</p>
+      <p class="hint">导出所有设置（大模型配置、TTS 配置、快捷指令）为 JSON 文件备份，或从备份文件导入恢复。</p>
       <div class="import-export-actions">
         <button id="exportBtn" class="ie-btn export-btn" type="button">导出设置</button>
         <button id="importBtn" class="ie-btn import-btn" type="button">导入设置</button>
