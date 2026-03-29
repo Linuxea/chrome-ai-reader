@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI 阅读助手 (AI Reading Assistant) — a Chrome Extension (Manifest V3) that helps users summarize, translate, extract key information from, and ask questions about the current webpage. The UI is in Chinese. There is no build system — all files are plain HTML/CSS/JS loaded directly by Chrome.
+小🍐子阅读助手 — a Chrome Extension (Manifest V3) that helps users summarize, translate, extract key information from, and ask questions about the current webpage. The UI is in Chinese. There is no build system — all files are plain HTML/CSS/JS loaded directly by Chrome.
 
 ## Loading & Testing
 
@@ -13,6 +13,29 @@ AI 阅读助手 (AI Reading Assistant) — a Chrome Extension (Manifest V3) that
 - **Configure**: Click the extension icon → settings gear → enter an API Key (and optional API base URL). Defaults to DeepSeek (`https://api.deepseek.com`) with model `deepseek-chat`
 
 ## Architecture
+
+### Module loading and global scope
+
+No ES modules — scripts share a single global scope, loaded in dependency order via `<script>` tags. The side panel loads:
+
+```
+marked.min.js → chat-history.js → quick-commands.js → ui-helpers.js → side_panel.js
+```
+
+`side_panel.js` defines shared globals (DOM refs, state variables, `escapeHtml`, `TRUNCATE_LIMITS`). The three helper scripts consume those globals at call time. Load order in HTML is the only thing ensuring symbols exist when referenced.
+
+### Key files
+
+| File | Role |
+|------|------|
+| `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
+| `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
+| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads config from `chrome.storage.sync` |
+| `side_panel/side_panel.js` | Main orchestrator. Defines shared state variables, manages page content extraction, conversation flow, quick-action prompts (adapts based on selection), streaming display. Calls into helper modules |
+| `side_panel/chat-history.js` | Chat persistence and export: save/load/delete chats, render history list, export as Markdown |
+| `side_panel/quick-commands.js` | Slash-command popup: filter, keyboard navigation, execute. Listens to `chrome.storage.onChanged` for hot-reload |
+| `side_panel/ui-helpers.js` | DOM helpers: append/remove/update messages, scroll management, Markdown rendering, button state toggling |
+| `options/options.js` | Settings page with three sections: API 配置 (saved via button), 快捷指令 (real-time save), 数据管理 (export/import JSON) |
 
 ### Message flow (the core data paths)
 
@@ -32,7 +55,7 @@ content.js listens to document.selectionchange (300ms debounce)
   → chrome.runtime.sendMessage({ action: 'selectionChanged' })
   → service_worker.js relays (with forwarded flag to prevent loop)
   → side_panel.js receives → shows quote preview bar above input
-  → On send: quote injected as virtual user/assistant pair into AI messages
+  → On send: quote injected into user message with adapted prompt
 ```
 
 **Model list fetch (settings page gets available models):**
@@ -42,28 +65,27 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
   → returns { success, models: string[] } → options.js populates <datalist>
 ```
 
-### Key files and their roles
-
-| File | Role |
-|------|------|
-| `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
-| `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
-| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads `apiKey`/`apiBase`/`modelName` from `chrome.storage.sync`. Model defaults to `deepseek-chat` |
-| `side_panel/side_panel.js` | Main UI logic. Manages page content state, conversation history, quick-action prompts, streaming display, and chat export as Markdown. Uses `marked.parse()` for AI response rendering. Shows current model name in status bar |
-| `side_panel/side_panel.html` | Side panel UI with quick-action buttons (summarize, translate, key info) and chat interface |
-| `options/options.js` | Settings page. Saves/loads `apiKey`, `apiBase`, `modelName`, and `systemPrompt` from `chrome.storage.sync`. Also manages quick commands CRUD in `chrome.storage.local` with real-time save (separate from the "保存设置" button). Fetches model list from API via service worker relay and populates `<datalist>` |
-| `libs/Readability.js` | Mozilla's Readability library for extracting article content from web pages |
-| `libs/marked.min.js` | Markdown-to-HTML renderer for AI responses |
-
 ### Communication patterns
 
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
 - **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'thinking', content }` (reasoning model), `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
 - **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
 - **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
-- **Settings**: `chrome.storage.sync` for `apiKey`, `apiBase`, `modelName`, and `systemPrompt`
-- **Chat history**: `chrome.storage.local` for `chatHistories` (up to 50 conversations, each with id, title, messages, conversationHistory, timestamps). Export uses `conversationHistory` for raw AI Markdown, with `stripHtml` fallback for old records missing raw text
-- **Quick commands**: `chrome.storage.local` for `quickCommands` (array of `{ name, prompt }`). Managed in settings page with real-time save. Side panel loads on init and listens to `chrome.storage.onChanged`. Triggered by typing `/` in chat input
+- **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, and quick commands update in real-time without page reload
+
+### Quick-action prompt behavior
+
+The three built-in quick actions (总结, 翻译, 提取关键信息) adapt their prompts based on whether the user has selected text:
+
+- **No selection**: prompt targets "这篇网页内容" (the full page)
+- **With selection**: prompt targets "用户引用的这段内容" (the selected text), and the selected text is prepended to the user message as a quote
+
+### Storage
+
+- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt` — small config synced across devices
+- **`chrome.storage.local`**: `chatHistories` (up to 50 conversations), `quickCommands` (array of `{ name, prompt }`)
+- Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
+- Settings export/import bundles all sync fields + quickCommands into a versioned JSON file
 
 ### State management in side_panel.js
 
@@ -84,5 +106,3 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - No framework — vanilla JS with direct DOM manipulation
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
 - API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`
-- Optional storage fields (`apiBase`, `modelName`, `systemPrompt`) are removed via `chrome.storage.sync.remove()` when empty, not stored as empty strings. Same pattern for `quickCommands` in `chrome.storage.local`
-- Two storage areas: `chrome.storage.sync` for small config (apiKey, apiBase, modelName, systemPrompt) synced across devices; `chrome.storage.local` for larger/session data (chatHistories, quickCommands)
