@@ -35,6 +35,13 @@ let activeTabId = null;
 // 快捷指令状态（由 quick-commands.js 管理）
 // commandPopupOpen, commandSelectedIndex, quickCommands 等在 quick-commands.js 中定义
 
+// TTS 播放状态
+let ttsAudioCtx = null;
+let ttsCurrentSource = null;
+let ttsPort = null;
+let ttsPlaying = false;
+let ttsDone = false;
+
 // HTML 转义
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -97,6 +104,8 @@ settingsBtn.addEventListener('click', () => {
 // 新建聊天
 newChatBtn.addEventListener('click', () => {
   if (isGenerating) return;
+  // 停止 TTS
+  if (ttsPlaying) stopTTS();
   // 先保存当前会话
   saveCurrentChat();
   // 重置状态
@@ -347,6 +356,9 @@ async function sendMessage() {
 
 // 调用 AI（统一入口）
 async function callAI(messages) {
+  // 停止正在播放的 TTS
+  if (ttsPlaying) stopTTS();
+
   isGenerating = true;
   setButtonsDisabled(true);
 
@@ -411,6 +423,8 @@ async function callAI(messages) {
       isGenerating = false;
       setButtonsDisabled(false);
       port.disconnect();
+      // 添加 TTS 按钮
+      addTTSButton(msgEl);
       // 自动保存
       saveCurrentChat();
     } else if (msg.type === 'error') {
@@ -425,6 +439,141 @@ async function callAI(messages) {
 }
 
 // === UI 辅助函数 ===（已拆分至 ui-helpers.js）
+
+// === TTS 语音合成 ===
+
+function stopTTS() {
+  ttsPlaying = false;
+  ttsDone = true;
+
+  if (ttsCurrentSource) {
+    try { ttsCurrentSource.stop(); } catch {}
+    ttsCurrentSource = null;
+  }
+  if (ttsAudioCtx) {
+    try { ttsAudioCtx.close(); } catch {}
+    ttsAudioCtx = null;
+  }
+  if (ttsPort) {
+    try { ttsPort.disconnect(); } catch {}
+    ttsPort = null;
+  }
+
+  // 恢复按钮状态
+  const btn = chatArea.querySelector('.tts-btn');
+  if (btn) {
+    btn.classList.remove('tts-playing', 'tts-loading');
+  }
+}
+
+function playTTS(text) {
+  // 如果正在播放，先停止
+  if (ttsPlaying) {
+    stopTTS();
+    return;
+  }
+
+  console.log('[TTS] playTTS called, text length:', text.length);
+  ttsPlaying = true;
+  ttsDone = false;
+
+  const btn = chatArea.querySelector('.tts-btn');
+  if (btn) btn.classList.add('tts-loading');
+
+  // 收集所有 chunk 的 base64 数据，完成后一次性解码播放
+  let chunks = [];
+
+  ttsPort = chrome.runtime.connect({ name: 'tts' });
+  console.log('[TTS] port connected');
+
+  ttsPort.onDisconnect.addListener(() => {
+    console.log('[TTS] port disconnected');
+    if (ttsPlaying) stopTTS();
+  });
+
+  ttsPort.onMessage.addListener((msg) => {
+    if (msg.type === 'chunk') {
+      if (!msg.data) return;
+      chunks.push(msg.data);
+      console.log('[TTS] chunk received, total chunks:', chunks.length);
+    } else if (msg.type === 'done') {
+      console.log('[TTS] done, total chunks:', chunks.length, 'total base64 length:', chunks.join('').length);
+      ttsDone = true;
+      if (chunks.length === 0) {
+        console.log('[TTS] no chunks received, stopping');
+        stopTTS();
+        return;
+      }
+
+      // 拼接所有 base64 chunk → 完整的 mp3 二进制
+      const fullBase64 = chunks.join('');
+      const binaryStr = atob(fullBase64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      console.log('[TTS] decoded binary, size:', bytes.length, 'bytes');
+
+      ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      ttsAudioCtx.resume().then(() => {
+        console.log('[TTS] AudioContext resumed, decoding...');
+        return ttsAudioCtx.decodeAudioData(bytes.buffer);
+      }).then((audioBuffer) => {
+        console.log('[TTS] decoded audio, duration:', audioBuffer.duration, 's');
+        if (!ttsPlaying) return; // 用户已经停止了
+        if (btn) {
+          btn.classList.remove('tts-loading');
+          btn.classList.add('tts-playing');
+        }
+
+        const source = ttsAudioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ttsAudioCtx.destination);
+        ttsCurrentSource = source;
+
+        source.onended = () => {
+          ttsCurrentSource = null;
+          stopTTS();
+        };
+
+        source.start();
+        console.log('[TTS] playback started');
+      }).catch((err) => {
+        console.error('[TTS] 音频解码失败:', err);
+        stopTTS();
+      });
+
+    } else if (msg.type === 'error') {
+      console.error('[TTS] error:', msg.error);
+      stopTTS();
+    }
+  });
+
+  ttsPort.postMessage({ type: 'tts', text });
+  console.log('[TTS] message sent to service worker');
+}
+
+function addTTSButton(msgEl) {
+  // 移除之前的 TTS 按钮
+  const prev = chatArea.querySelector('.tts-btn');
+  if (prev) prev.remove();
+
+  const btn = document.createElement('button');
+  btn.className = 'tts-btn';
+  btn.title = '朗读';
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+
+  btn.addEventListener('click', () => {
+    // 从 msgEl 提取文本内容（优先取 thinking-response-content 或整体文本）
+    const contentEl = msgEl.querySelector('.thinking-response-content');
+    const text = contentEl ? contentEl.textContent : msgEl.textContent;
+    if (text && text.trim()) {
+      playTTS(text.trim());
+    }
+  });
+
+  msgEl.appendChild(btn);
+}
 
 // === 模型状态栏 ===
 

@@ -334,3 +334,30 @@ textarea {
 .import-btn:hover {
   background: #f5f3ff;
 }
+
+/* TTS 折叠面板 */
+.tts-details {
+  margin-top: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tts-summary {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  user-select: none;
+  background: #f9fafb;
+  transition: background 0.15s;
+}
+
+.tts-summary:hover {
+  background: #f3f4f6;
+}
+
+.tts-fields {
+  padding: 16px 16px 8px;
+}

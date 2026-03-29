@@ -9,8 +9,14 @@ const systemPromptInput = document.getElementById('systemPrompt');
 const saveBtn = document.getElementById('saveBtn');
 const statusEl = document.getElementById('status');
 
+// TTS 配置
+const ttsAppIdInput = document.getElementById('ttsAppId');
+const ttsAccessKeyInput = document.getElementById('ttsAccessKey');
+const ttsResourceIdInput = document.getElementById('ttsResourceId');
+const ttsSpeakerInput = document.getElementById('ttsSpeaker');
+
 // 加载已保存的设置
-chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt'], (data) => {
+chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'], (data) => {
   if (data.apiKey) {
     apiKeyInput.value = data.apiKey;
   }
@@ -23,6 +29,10 @@ chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt'], (dat
   if (data.systemPrompt) {
     systemPromptInput.value = data.systemPrompt;
   }
+  if (data.ttsAppId) ttsAppIdInput.value = data.ttsAppId;
+  if (data.ttsAccessKey) ttsAccessKeyInput.value = data.ttsAccessKey;
+  if (data.ttsResourceId) ttsResourceIdInput.value = data.ttsResourceId;
+  if (data.ttsSpeaker) ttsSpeakerInput.value = data.ttsSpeaker;
   // 有 apiKey 时自动获取模型列表
   if (data.apiKey) {
     fetchModels();
@@ -106,6 +116,17 @@ saveBtn.addEventListener('click', () => {
   } else {
     chrome.storage.sync.remove('systemPrompt');
   }
+
+  // TTS 配置
+  const ttsAppId = ttsAppIdInput.value.trim();
+  const ttsAccessKey = ttsAccessKeyInput.value.trim();
+  const ttsResourceId = ttsResourceIdInput.value.trim();
+  const ttsSpeaker = ttsSpeakerInput.value.trim();
+
+  if (ttsAppId) { data.ttsAppId = ttsAppId; } else { chrome.storage.sync.remove('ttsAppId'); }
+  if (ttsAccessKey) { data.ttsAccessKey = ttsAccessKey; } else { chrome.storage.sync.remove('ttsAccessKey'); }
+  if (ttsResourceId) { data.ttsResourceId = ttsResourceId; } else { chrome.storage.sync.remove('ttsResourceId'); }
+  if (ttsSpeaker) { data.ttsSpeaker = ttsSpeaker; } else { chrome.storage.sync.remove('ttsSpeaker'); }
 
   chrome.storage.sync.set(data, () => {
     showStatus('设置已保存', 'success');
@@ -309,7 +330,7 @@ const importFile = document.getElementById('importFile');
 
 // 导出设置
 exportBtn.addEventListener('click', () => {
-  chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt'], (syncData) => {
+  chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'], (syncData) => {
     chrome.storage.local.get([COMMANDS_KEY], (localData) => {
       const exportData = { version: 1 };
 
@@ -317,6 +338,10 @@ exportBtn.addEventListener('click', () => {
       if (syncData.apiBase) exportData.apiBase = syncData.apiBase;
       if (syncData.modelName) exportData.modelName = syncData.modelName;
       if (syncData.systemPrompt) exportData.systemPrompt = syncData.systemPrompt;
+      if (syncData.ttsAppId) exportData.ttsAppId = syncData.ttsAppId;
+      if (syncData.ttsAccessKey) exportData.ttsAccessKey = syncData.ttsAccessKey;
+      if (syncData.ttsResourceId) exportData.ttsResourceId = syncData.ttsResourceId;
+      if (syncData.ttsSpeaker) exportData.ttsSpeaker = syncData.ttsSpeaker;
 
       const commands = localData[COMMANDS_KEY];
       if (commands && commands.length > 0) exportData.quickCommands = commands;
@@ -359,9 +384,13 @@ importFile.addEventListener('change', (e) => {
       if (data.apiBase) { syncData.apiBase = data.apiBase; apiBaseInput.value = data.apiBase; }
       if (data.modelName) { syncData.modelName = data.modelName; modelNameInput.value = data.modelName; }
       if (data.systemPrompt) { syncData.systemPrompt = data.systemPrompt; systemPromptInput.value = data.systemPrompt; }
+      if (data.ttsAppId) { syncData.ttsAppId = data.ttsAppId; ttsAppIdInput.value = data.ttsAppId; }
+      if (data.ttsAccessKey) { syncData.ttsAccessKey = data.ttsAccessKey; ttsAccessKeyInput.value = data.ttsAccessKey; }
+      if (data.ttsResourceId) { syncData.ttsResourceId = data.ttsResourceId; ttsResourceIdInput.value = data.ttsResourceId; }
+      if (data.ttsSpeaker) { syncData.ttsSpeaker = data.ttsSpeaker; ttsSpeakerInput.value = data.ttsSpeaker; }
 
       // 清除未导入的字段
-      const fieldsToClean = ['apiKey', 'apiBase', 'modelName', 'systemPrompt'];
+      const fieldsToClean = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'];
       fieldsToClean.forEach(f => {
         if (!(f in data)) chrome.storage.sync.remove(f);
       });

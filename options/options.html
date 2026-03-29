@@ -42,6 +42,31 @@
         <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
       </div>
 
+      <!-- TTS 语音合成配置 -->
+      <details class="tts-details">
+        <summary class="tts-summary">TTS 语音合成配置</summary>
+        <div class="tts-fields">
+          <div class="form-group">
+            <label for="ttsAppId">App ID</label>
+            <input type="text" id="ttsAppId" placeholder="火山引擎控制台获取的 App ID" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="ttsAccessKey">Access Token</label>
+            <input type="password" id="ttsAccessKey" placeholder="火山引擎控制台获取的 Access Token" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="ttsResourceId">Resource ID</label>
+            <input type="text" id="ttsResourceId" placeholder="seed-tts-2.0">
+            <p class="hint">默认 seed-tts-2.0（豆包语音合成模型2.0）。</p>
+          </div>
+          <div class="form-group">
+            <label for="ttsSpeaker">音色</label>
+            <input type="text" id="ttsSpeaker" placeholder="zh_female_vv_uranus_bigtts">
+            <p class="hint">默认 zh_female_vv_uranus_bigtts。更多音色见<a href="https://www.volcengine.com/docs/6561/1257544" target="_blank">音色列表</a>。</p>
+          </div>
+        </div>
+      </details>
+
       <button id="saveBtn" class="primary-btn">保存 API 设置</button>
     </section>
 
