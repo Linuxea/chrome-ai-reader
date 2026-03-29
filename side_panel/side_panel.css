@@ -478,3 +478,54 @@ body {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
 }
+
+/* 推荐追问 */
+.suggest-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  align-self: flex-start;
+  max-width: 90%;
+}
+
+.suggest-item {
+  padding: 6px 12px;
+  border: 1px solid var(--primary);
+  border-radius: 16px;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+.suggest-item:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.suggest-loading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 90%;
+}
+
+.suggest-loading-bar {
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border);
+  animation: suggest-pulse 1.5s ease-in-out infinite;
+}
+
+.suggest-loading-bar:nth-child(1) { width: 120px; }
+.suggest-loading-bar:nth-child(2) { width: 90px; animation-delay: 0.2s; }
+.suggest-loading-bar:nth-child(3) { width: 140px; animation-delay: 0.4s; }
+
+@keyframes suggest-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
