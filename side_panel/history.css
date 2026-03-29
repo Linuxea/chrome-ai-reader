@@ -119,5 +119,5 @@
 }
 
 .history-item-delete:hover {
-  color: #dc2626;
+  color: var(--error-text);
 }

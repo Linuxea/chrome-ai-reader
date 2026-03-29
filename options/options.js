@@ -1,5 +1,38 @@
 // options.js — 设置页逻辑
 
+// === 夜间模式 ===
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const moonIcon = themeToggleBtn.querySelector('.theme-icon-moon');
+  const sunIcon = themeToggleBtn.querySelector('.theme-icon-sun');
+  if (dark) {
+    moonIcon.style.display = 'none';
+    sunIcon.style.display = '';
+  } else {
+    moonIcon.style.display = '';
+    sunIcon.style.display = 'none';
+  }
+}
+
+chrome.storage.sync.get(['darkMode'], (data) => {
+  applyTheme(!!data.darkMode);
+});
+
+themeToggleBtn.addEventListener('click', () => {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const newDark = !isDark;
+  applyTheme(newDark);
+  chrome.storage.sync.set({ darkMode: newDark });
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && changes.darkMode) {
+    applyTheme(!!changes.darkMode.newValue);
+  }
+});
+
 const apiKeyInput = document.getElementById('apiKey');
 const apiBaseInput = document.getElementById('apiBase');
 const modelNameInput = document.getElementById('modelName');

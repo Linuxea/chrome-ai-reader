@@ -19,6 +19,35 @@
   --ai-bg: #ffffff;
   --ai-text: #1a1a2e;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --error-bg: #fef2f2;
+  --error-text: #dc2626;
+  --error-border: #fecaca;
+  --thinking-bg: #f8f9fb;
+  --thinking-border: #e2e6ed;
+  --primary-hover: #4338ca;
+  --hover-overlay: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] {
+  --bg: #111827;
+  --card-bg: #1f2937;
+  --text: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --primary: #818cf8;
+  --primary-light: #1e1b4b;
+  --border: #374151;
+  --user-bg: #818cf8;
+  --user-text: #ffffff;
+  --ai-bg: #1f2937;
+  --ai-text: #e5e7eb;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --error-bg: #1c1111;
+  --error-text: #f87171;
+  --error-border: #7f1d1d;
+  --thinking-bg: #1a2233;
+  --thinking-border: #2d3748;
+  --primary-hover: #6366f1;
+  --hover-overlay: rgba(255, 255, 255, 0.06);
 }
 
 body {
@@ -297,7 +326,7 @@ body {
 }
 
 .send-btn:hover {
-  background: #4338ca;
+  background: var(--primary-hover);
 }
 
 .send-btn:disabled {
@@ -308,9 +337,9 @@ body {
 /* 错误消息 */
 .message-error {
   align-self: center;
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
   font-size: 13px;
   text-align: center;
 }
@@ -356,7 +385,7 @@ body {
 
 .quote-close:hover {
   color: var(--text);
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--hover-overlay);
 }
 
 /* 用户消息中的引用预览 */
@@ -379,8 +408,8 @@ body {
 
 /* 思考过程区块 */
 .thinking-block {
-  background: #f8f9fb;
-  border: 1px solid #e2e6ed;
+  background: var(--thinking-bg);
+  border: 1px solid var(--thinking-border);
   border-radius: 6px;
   margin-bottom: 8px;
   font-size: 12px;
@@ -549,7 +578,7 @@ body {
 
 .suggest-item:hover {
   background: var(--primary);
-  color: #fff;
+  color: var(--user-text);
 }
 
 .suggest-loading {

@@ -82,7 +82,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - **TTS streaming**: `chrome.runtime.connect` long-lived port named `tts` — `side_panel.js` sends `{ type: 'tts', text }`, receives `{ type: 'chunk', data }` (base64 mp3), `{ type: 'done' }`, or `{ type: 'error', error }`. Audio plays via MediaSource Extensions (MSE) for true streaming playback
 - **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
 - **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
-- **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, and quick commands update in real-time without page reload
+- **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, quick commands, and dark mode update in real-time without page reload
 
 ### Volcengine TTS API specifics
 
@@ -101,7 +101,7 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 
 ### Storage
 
-- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay` — config synced across devices
+- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `darkMode` — config synced across devices
 - **`chrome.storage.local`**: `chatHistories` (up to 50 conversations), `quickCommands` (array of `{ name, prompt }`)
 - Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
 - Settings export/import bundles all sync fields + quickCommands into a versioned JSON file
@@ -119,10 +119,19 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - TTS state: `ttsPort`, `ttsPlaying`, `ttsDone`, `ttsMediaSource`, `ttsSourceBuffer`, `ttsAudioEl`, `ttsChunkQueue`, `ttsBufferAppending`
 - Content is truncated to ~64000 chars for context and quotes (via `safeTruncate`)
 
+### Dark mode (夜间模式)
+
+- Toggle button in side panel header (moon/sun icon) and options page header
+- Pure manual toggle — no system preference detection
+- `darkMode` boolean stored in `chrome.storage.sync`, persisted across sessions
+- Implementation: `[data-theme="dark"]` attribute on `<html>` element overrides all CSS custom properties
+- Both `side_panel.css` and `options.css` define matching `:root` + `[data-theme="dark"]` variable blocks
+- `chrome.storage.onChanged` listener syncs theme between side panel and options page in real-time
+
 ## Conventions
 
 - All user-facing strings are in Chinese
-- CSS uses CSS custom properties defined in `side_panel.css` (`:root` block) for theming
+- CSS uses CSS custom properties defined in `side_panel.css` and `options.css` (`:root` block) for theming; dark mode overrides via `[data-theme="dark"]` selector on `<html>` element
 - No framework — vanilla JS with direct DOM manipulation
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
 - API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`

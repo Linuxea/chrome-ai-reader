@@ -11,6 +11,7 @@ const historyPanel = document.getElementById('historyPanel');
 const historyBackBtn = document.getElementById('historyBackBtn');
 const historyList = document.getElementById('historyList');
 const actionBtns = document.querySelectorAll('.action-btn');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
 const quotePreview = document.getElementById('quotePreview');
 const quoteText = document.getElementById('quoteText');
 const quoteClose = document.getElementById('quoteClose');
@@ -94,6 +95,41 @@ chrome.storage.sync.get(['suggestQuestions'], (data) => {
 // 初始化：获取当前标签页 ID
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   if (tabs[0]) activeTabId = tabs[0].id;
+});
+
+// === 夜间模式 ===
+
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const moonIcon = themeToggleBtn.querySelector('.theme-icon-moon');
+  const sunIcon = themeToggleBtn.querySelector('.theme-icon-sun');
+  if (dark) {
+    moonIcon.style.display = 'none';
+    sunIcon.style.display = '';
+  } else {
+    moonIcon.style.display = '';
+    sunIcon.style.display = 'none';
+  }
+}
+
+// 加载主题偏好
+chrome.storage.sync.get(['darkMode'], (data) => {
+  applyTheme(!!data.darkMode);
+});
+
+// 切换按钮
+themeToggleBtn.addEventListener('click', () => {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const newDark = !isDark;
+  applyTheme(newDark);
+  chrome.storage.sync.set({ darkMode: newDark });
+});
+
+// 监听其他页面的主题变化
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && changes.darkMode) {
+    applyTheme(!!changes.darkMode.newValue);
+  }
 });
 
 // === 事件绑定 ===
@@ -482,7 +518,7 @@ async function callAI(messages) {
     } else if (msg.type === 'error') {
       removeTypingIndicator(typingEl);
       if (thinkingEl) thinkingEl.open = false;
-      msgEl.innerHTML = `<span style="color:#dc2626">${msg.error}</span>`;
+      msgEl.innerHTML = `<span style="color:var(--error-text)">${msg.error}</span>`;
       isGenerating = false;
       setButtonsDisabled(false);
       port.disconnect();
