@@ -41,8 +41,7 @@ let commandSelectedIndex = 0;
 // 内容截断限制（字符数，基于 DeepSeek 128K token 上下文窗口）
 // 128K tokens ≈ 96K~128K 中文字符，截断值需留出对话历史和回复空间
 const TRUNCATE_LIMITS = {
-  QUICK_ACTION: 32000,
-  QA_CONTEXT: 32000,
+  CONTEXT: 32000,
   QUOTE: 32000,
 };
 
@@ -282,77 +281,7 @@ async function executeQuickCommand(cmd) {
 
   hideCommandPopup();
   userInput.value = '';
-
-  // 保存引用文本（清除前快照）
-  const quoteForContext = selectedText;
-  if (selectedText) {
-    const truncated = selectedText.length > 50
-      ? selectedText.slice(0, 50) + '...'
-      : selectedText;
-    appendMessageWithQuote(truncated, `/${cmd.name}（正在读取页面...）`);
-    updateQuotePreview('');
-  } else {
-    appendMessage('user', `/${cmd.name}（正在读取页面...）`);
-  }
-
-  try {
-    const data = await extractPageContent();
-    if (!data.textContent.trim()) {
-      removeLastMessage();
-      appendMessage('error', '当前页面没有可读取的内容');
-      return;
-    }
-
-    // 构建消息列表（与 sendMessage 相同的结构）
-    const messages = [];
-    if (data.textContent) {
-      const context = safeTruncate(data.textContent, TRUNCATE_LIMITS.QA_CONTEXT);
-
-      messages.push({
-        role: 'system',
-        content: `你是一个 AI 阅读助手。用户正在阅读一篇网页文章，以下是文章内容，请基于这些内容回答用户的问题。
-
-文章标题：${pageTitle}
-
-文章内容：
-${context}`
-      });
-
-      if (customSystemPrompt) {
-        messages.push({ role: 'system', content: customSystemPrompt });
-      }
-    }
-
-    // 加入历史对话
-    messages.push(...conversationHistory);
-
-    // 构建当前用户消息（引用内容合并到用户消息中）
-    let userContent = cmd.prompt;
-    if (quoteForContext) {
-      const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
-      userContent = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${cmd.prompt}`;
-    }
-    conversationHistory.push({ role: 'user', content: userContent });
-    messages.push({ role: 'user', content: userContent });
-
-    if (quoteForContext) {
-      const truncated = quoteForContext.length > 50
-        ? quoteForContext.slice(0, 50) + '...'
-        : quoteForContext;
-      const last = chatArea.querySelectorAll('.message');
-      const msg = last[last.length - 1];
-      if (msg) {
-        msg.className = 'message message-user';
-        msg.innerHTML = `<blockquote class="quote-in-bubble">${escapeHtml(truncated)}</blockquote><span>${escapeHtml(`/${cmd.name}`)}</span>`;
-      }
-    } else {
-      updateLastMessage('user', `/${cmd.name}`);
-    }
-    await callAI(messages);
-  } catch (e) {
-    removeLastMessage();
-    appendMessage('error', e.message);
-  }
+  await sendToAI(cmd.prompt, `/${cmd.name}`);
 }
 
 // 监听选区变化消息（经由 service_worker 中转）
@@ -684,100 +613,34 @@ async function extractPageContent() {
 async function handleQuickAction(action) {
   if (isGenerating) return;
 
-  const templates = {
+  const actionPrompts = {
+    summarize: '请用中文总结这篇网页内容。要求：\n1. 用 3-5 个要点概括核心内容\n2. 保持客观，不添加原文没有的信息\n3. 语言简洁明了',
+    translate: '请将这篇网页内容翻译为中文。要求：\n1. 准确传达原文含义\n2. 语言通顺自然\n3. 专业术语保留英文并附上中文解释',
+    keyInfo: '请提取这篇网页内容的关键信息。要求：\n1. 列出所有重要的事实、数据、观点\n2. 按重要性排序\n3. 每条信息简洁明了'
+  };
+
+  const actionNames = {
     summarize: '总结页面',
     translate: '翻译',
     keyInfo: '提取关键信息'
   };
 
-  try {
-    // 提取页面内容
-    appendMessage('user', `${templates[action]}（正在读取页面...）`);
-
-    const data = await extractPageContent();
-    if (!data.textContent.trim()) {
-      removeLastMessage();
-      appendMessage('error', '当前页面没有可读取的内容');
-      return;
-    }
-
-    // 构建消息
-    const prompt = getPromptTemplate(action, data.textContent);
-    conversationHistory = [];
-    if (customSystemPrompt) {
-      conversationHistory.push({ role: 'system', content: customSystemPrompt });
-    }
-    conversationHistory.push({ role: 'user', content: prompt });
-
-    // 替换用户消息为实际操作名
-    updateLastMessage('user', templates[action]);
-
-    // 调用 AI
-    await callAI(conversationHistory);
-  } catch (e) {
-    removeLastMessage();
-    appendMessage('error', e.message);
-  }
+  await sendToAI(actionPrompts[action], actionNames[action]);
 }
 
-// 获取 Prompt 模板
-function getPromptTemplate(action, content) {
-  const truncated = safeTruncate(content, TRUNCATE_LIMITS.QUICK_ACTION);
-
-  const templates = {
-    summarize: `请用中文总结以下网页内容。要求：
-1. 用 3-5 个要点概括核心内容
-2. 保持客观，不添加原文没有的信息
-3. 语言简洁明了
-
-网页标题：${pageTitle}
-
-网页内容如下：
-${truncated}`,
-
-    translate: `请将以下网页内容翻译为中文。要求：
-1. 准确传达原文含义
-2. 语言通顺自然
-3. 专业术语保留英文并附上中文解释
-
-网页标题：${pageTitle}
-
-网页内容如下：
-${truncated}`,
-
-    keyInfo: `请提取以下网页内容的关键信息。要求：
-1. 列出所有重要的事实、数据、观点
-2. 按重要性排序
-3. 每条信息简洁明了
-
-网页标题：${pageTitle}
-
-网页内容如下：
-${truncated}`
-  };
-
-  return templates[action] || truncated;
-}
-
-// 自由问答发送
-async function sendMessage() {
-  const text = userInput.value.trim();
-  if (!text || isGenerating) return;
-
-  userInput.value = '';
-  userInput.style.height = 'auto';
-  // 保存引用文本（清除前快照）
+// 核心发送逻辑（统一入口）
+async function sendToAI(text, displayText) {
   const quoteForContext = selectedText;
-  // 如果有引用，在用户消息中显示引用预览
-  if (selectedText) {
-    const truncated = selectedText.length > 50
-      ? selectedText.slice(0, 50) + '...'
-      : selectedText;
-    appendMessageWithQuote(truncated, text);
-    // 发送后清除引用
+
+  // 显示用户消息
+  if (quoteForContext) {
+    const truncated = quoteForContext.length > 50
+      ? quoteForContext.slice(0, 50) + '...'
+      : quoteForContext;
+    appendMessageWithQuote(truncated, displayText);
     updateQuotePreview('');
   } else {
-    appendMessage('user', text);
+    appendMessage('user', displayText);
   }
 
   try {
@@ -787,7 +650,7 @@ async function sendMessage() {
     // 构建消息列表（带页面上下文）
     const messages = [];
     if (pageContent) {
-      const context = safeTruncate(pageContent, TRUNCATE_LIMITS.QA_CONTEXT);
+      const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
 
       messages.push({
         role: 'system',
@@ -807,20 +670,30 @@ ${context}`
     // 加入历史对话
     messages.push(...conversationHistory);
 
-    // 构建当前用户消息（引用内容合并到用户消息中，加入 conversationHistory 持久化）
+    // 构建当前用户消息（引用内容合并到用户消息中）
     let userContent = text;
     if (quoteForContext) {
       const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
       userContent = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${text}`;
     }
-    messages.push({ role: 'user', content: userContent });
     conversationHistory.push({ role: 'user', content: userContent });
+    messages.push({ role: 'user', content: userContent });
 
     await callAI(messages);
   } catch (e) {
     removeLastMessage();
     appendMessage('error', e.message);
   }
+}
+
+// 自由问答发送
+async function sendMessage() {
+  const text = userInput.value.trim();
+  if (!text || isGenerating) return;
+
+  userInput.value = '';
+  userInput.style.height = 'auto';
+  await sendToAI(text, text);
 }
 
 // 调用 AI（统一入口）
