@@ -233,7 +233,7 @@ async function exportChatAsMarkdown(chatData) {
     String(now.getHours()).padStart(2, '0') + ':' +
     String(now.getMinutes()).padStart(2, '0');
 
-  let md = '# AI 阅读助手 — 聊天记录\n\n';
+  let md = '# 小🍐子阅读助手 — 聊天记录\n\n';
   if (pTitle) md += `> 页面：${pTitle}\n`;
   md += `> 导出时间：${exportTime}\n`;
   md += `> 模型：${modelName}\n\n---\n\n`;
@@ -264,7 +264,7 @@ async function exportChatAsMarkdown(chatData) {
     String(now.getMonth() + 1).padStart(2, '0') + '-' +
     String(now.getDate()).padStart(2, '0');
   a.href = url;
-  a.download = `AI阅读助手_${dateStr}_${title}.md`;
+  a.download = `小🍐子阅读助手_${dateStr}_${title}.md`;
   a.click();
   URL.revokeObjectURL(url);
 }
