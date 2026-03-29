@@ -136,8 +136,16 @@ function initTTSPlayback() {
   ttsChunkQueue = [];
   ttsBufferAppending = false;
 
-  const btn = chatArea.querySelector('.tts-btn');
-  if (btn) btn.classList.add('tts-loading');
+  // 用动态查询避免闭包持有过期的按钮引用
+  const updateBtnState = (removeCls, addCls) => {
+    const btn = chatArea.querySelector('.tts-btn');
+    if (btn) {
+      if (removeCls) btn.classList.remove(...removeCls);
+      if (addCls) btn.classList.add(...addCls);
+    }
+  };
+
+  updateBtnState(null, ['tts-loading']);
 
   // 用 MSE 实现流式播放
   ttsMediaSource = new MediaSource();
@@ -154,10 +162,7 @@ function initTTSPlayback() {
       if (!started && ttsAudioEl && ttsSourceBuffer.buffered.length > 0) {
         started = true;
         ttsAudioEl.play().then(() => {
-          if (btn) {
-            btn.classList.remove('tts-loading');
-            btn.classList.add('tts-playing');
-          }
+          updateBtnState(['tts-loading'], ['tts-playing']);
         }).catch(() => {});
       }
       ttsAppendNext();
