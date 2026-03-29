@@ -14,8 +14,11 @@ const ttsAccessKeyInput = document.getElementById('ttsAccessKey');
 const ttsResourceIdInput = document.getElementById('ttsResourceId');
 const ttsSpeakerInput = document.getElementById('ttsSpeaker');
 
+// 推荐追问
+const suggestQuestionsCheckbox = document.getElementById('suggestQuestions');
+
 // 所有 sync storage 字段名
-const SYNC_FIELDS = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker'];
+const SYNC_FIELDS = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker', 'suggestQuestions'];
 
 // 输入框映射：字段名 → input 元素
 const fieldInputMap = {
@@ -33,6 +36,10 @@ const fieldInputMap = {
 chrome.storage.sync.get(SYNC_FIELDS, (data) => {
   for (const key of SYNC_FIELDS) {
     if (data[key]) fieldInputMap[key].value = data[key];
+  }
+  // 推荐追问（checkbox，不通过 fieldInputMap 处理）
+  if (data.suggestQuestions !== undefined) {
+    suggestQuestionsCheckbox.checked = data.suggestQuestions;
   }
   // 有 apiKey 时自动获取模型列表
   if (data.apiKey) {
@@ -81,6 +88,11 @@ async function fetchModels() {
 }
 
 refreshModelsBtn.addEventListener('click', fetchModels);
+
+// 推荐追问开关 — 实时保存
+suggestQuestionsCheckbox.addEventListener('change', () => {
+  chrome.storage.sync.set({ suggestQuestions: suggestQuestionsCheckbox.checked });
+});
 
 // 保存设置
 saveBtn.addEventListener('click', () => {
@@ -378,14 +390,25 @@ importFile.addEventListener('change', (e) => {
       // 写入 sync storage，回填输入框
       const syncData = {};
       for (const key of SYNC_FIELDS) {
+        if (key === 'suggestQuestions') continue; // 单独处理
         if (data[key]) {
           syncData[key] = data[key];
           fieldInputMap[key].value = data[key];
         }
       }
 
+      // 推荐追问单独处理（checkbox 而非 text input）
+      if (data.suggestQuestions !== undefined) {
+        syncData.suggestQuestions = data.suggestQuestions;
+        suggestQuestionsCheckbox.checked = data.suggestQuestions;
+      } else {
+        syncData.suggestQuestions = true; // 旧版导出文件默认开启
+        suggestQuestionsCheckbox.checked = true;
+      }
+
       // 清除未导入的字段
       SYNC_FIELDS.forEach(f => {
+        if (f === 'suggestQuestions') return; // 保留默认值，不删除
         if (!(f in data)) chrome.storage.sync.remove(f);
       });
 
