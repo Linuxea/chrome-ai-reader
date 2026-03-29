@@ -367,13 +367,9 @@ function addTTSButton(msgEl) {
  */
 function initTTSAutoPlay(msgEl) {
   if (!ttsAutoPlayEnabled) return;
+  if (!ttsPlaying) return;
 
-  const contentEl = msgEl.querySelector('.thinking-response-content');
-  const text = contentEl ? contentEl.textContent : msgEl.textContent;
-  if (!text || !text.trim()) return;
-
-  initTTSPlayback();
   // 此时 ttsAppendChunk 已经积累了文本（来自 callAI 的 chunk 回调）
-  // 这里 flush 剩余即可
+  // initTTSPlayback 已在 callAI 开头调用，这里只 flush 剩余
   ttsFlushRemaining();
 }
