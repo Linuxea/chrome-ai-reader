@@ -38,7 +38,7 @@ System prompt:
 你是一个阅读助手。基于对话历史，生成 3 个有深度的后续问题，帮助用户更深入地理解文章内容。每行一个问题，不要编号，不要额外解释。
 ```
 
-User prompt: 包含最近 2 轮对话（用户问题 + AI 回复摘要），避免发送完整历史以节省 token。AI 回复内容截断到 2000 字符。
+User prompt: 包含最近 2 轮对话（用户问题 + AI 回复摘要），避免发送完整历史以节省 token。AI 回复内容截断到 2000 字符。当 `conversationHistory` 不足 2 轮时，只使用可用的轮次。
 
 ### 返回格式
 
@@ -71,30 +71,51 @@ AI 返回纯文本，每行一个问题。side_panel 按换行分割，过滤空
 ### 交互细节
 
 - 点击问题标签后，整个 `.suggest-questions` 区域移除
-- 用户发送新消息时，上一轮的推荐问题区域也移除
-- API 调用失败时静默隐藏，不打扰用户
+- 用户发送新消息时，在 `sendToAI()` 顶部清除上一轮的 `.suggest-questions` 元素（与 `callAI` 中停止 TTS 的模式一致）
+- API 调用失败或 port 断开连接时，移除骨架加载 UI，静默隐藏，不打扰用户
+- `generateSuggestions` 需注册 `port.onDisconnect` 监听器来清理骨架 UI
 - 推荐问题不记入 `conversationHistory`，仅作为 UI 引导
-- 加载历史对话时不重新生成推荐问题
+- 加载历史对话时不生成推荐问题（历史消息无 `.suggest-questions` 区域）
 - 导出 Markdown 时推荐问题不包含在内
+- `.suggest-questions` 使用 `align-self: flex-start` 与 AI 气泡左对齐
 
 ## 设置页变更
 
 ### options.html
 
-在"大模型配置"面板中添加开关：
+在"大模型配置"面板和"TTS 语音合成配置"面板之间，新增一个独立的 `<details>` 面板：
 
+```html
+<details class="config-details">
+  <summary class="config-summary">推荐追问</summary>
+  <div class="config-fields">
+    <label class="toggle-row">
+      <span>AI 回复后自动生成推荐问题</span>
+      <input type="checkbox" id="suggestQuestions" checked>
+    </label>
+  </div>
+</details>
 ```
-推荐追问  [toggle switch]  （标签文字："AI 回复后自动生成推荐问题"）
-```
+
+放在独立面板中而非混入"大模型配置"面板，原因：
+- 大模型配置面板的字段通过"保存设置"按钮统一保存
+- 推荐追问开关切换后立即保存（与快捷指令的实时保存模式一致）
+- 避免同一面板出现两种保存行为造成用户困惑
+
+需要新增 toggle switch 的 CSS 样式（将 `<input type="checkbox">` 美化为滑动开关）。
 
 ### options.js
 
+- `suggestQuestions` 加入 `SYNC_FIELDS` 数组
+- 不加入 `fieldInputMap`（因为它是 checkbox 而非 text input）
 - 开关切换后立即保存到 `chrome.storage.sync`
-- 不需要点"保存"按钮（与 TTS 配置不同，与快捷指令的实时保存模式一致）
+- 导入逻辑：对 `suggestQuestions` 单独处理（读取 `data.suggestQuestions`，设置 checkbox 的 `checked` 属性，写入 `chrome.storage.sync`），不通过 `fieldInputMap` 赋值
+- 兼容旧版导出文件：缺少该字段时 checkbox 保持默认 `checked`，不报错
 
 ### side_panel.js
 
-监听 `chrome.storage.onChanged`，实时响应开关变化，无需刷新页面。
+- 在初始化时通过 `chrome.storage.sync.get(['suggestQuestions'])` 读取初始状态（默认 `true`）
+- 扩展现有的 `chrome.storage.onChanged` 监听器，增加对 `suggestQuestions` 的处理，实时响应开关变化
 
 ## 设置导出导入集成
 
