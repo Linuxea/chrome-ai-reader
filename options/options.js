@@ -20,11 +20,8 @@ const suggestQuestionsCheckbox = document.getElementById('suggestQuestions');
 // TTS 自动播放
 const ttsAutoPlayCheckbox = document.getElementById('ttsAutoPlay');
 
-// 所有 sync storage 字段名
-const SYNC_FIELDS = ['apiKey', 'apiBase', 'modelName', 'systemPrompt', 'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker', 'suggestQuestions', 'ttsAutoPlay'];
-
-// 输入框映射：字段名 → input 元素
-const fieldInputMap = {
+// 文本输入框字段：字段名 → input 元素
+const textFields = {
   apiKey: apiKeyInput,
   apiBase: apiBaseInput,
   modelName: modelNameInput,
@@ -35,18 +32,24 @@ const fieldInputMap = {
   ttsSpeaker: ttsSpeakerInput,
 };
 
+// checkbox 字段：字段名 → checkbox 元素
+const checkboxFields = {
+  suggestQuestions: suggestQuestionsCheckbox,
+  ttsAutoPlay: ttsAutoPlayCheckbox,
+};
+
+// 所有 sync storage 字段名（用于 storage.get / export / import）
+const SYNC_FIELDS = [...Object.keys(textFields), ...Object.keys(checkboxFields)];
+
 // 加载已保存的设置
 chrome.storage.sync.get(SYNC_FIELDS, (data) => {
-  for (const key of SYNC_FIELDS) {
-    if (data[key]) fieldInputMap[key].value = data[key];
+  // 文本输入框
+  for (const [key, input] of Object.entries(textFields)) {
+    if (data[key]) input.value = data[key];
   }
-  // 推荐追问（checkbox，不通过 fieldInputMap 处理）
-  if (data.suggestQuestions !== undefined) {
-    suggestQuestionsCheckbox.checked = data.suggestQuestions;
-  }
-  // TTS 自动播放（checkbox，不通过 fieldInputMap 处理）
-  if (data.ttsAutoPlay !== undefined) {
-    ttsAutoPlayCheckbox.checked = data.ttsAutoPlay;
+  // checkbox
+  for (const [key, checkbox] of Object.entries(checkboxFields)) {
+    if (data[key] !== undefined) checkbox.checked = data[key];
   }
   // 有 apiKey 时自动获取模型列表
   if (data.apiKey) {
@@ -367,7 +370,7 @@ exportBtn.addEventListener('click', () => {
 
       // 导出所有有值的 sync 字段
       for (const key of SYNC_FIELDS) {
-        if (key === 'suggestQuestions' || key === 'ttsAutoPlay') {
+        if (key in checkboxFields) {
           // boolean 字段，false 也是有效值
           if (syncData[key] !== undefined) exportData[key] = syncData[key];
         } else if (syncData[key]) {
@@ -412,29 +415,23 @@ importFile.addEventListener('change', (e) => {
 
       // 写入 sync storage，回填输入框
       const syncData = {};
-      for (const key of SYNC_FIELDS) {
-        if (key === 'suggestQuestions' || key === 'ttsAutoPlay') continue; // 单独处理
+      // 文本输入框
+      for (const [key, input] of Object.entries(textFields)) {
         if (data[key]) {
           syncData[key] = data[key];
-          fieldInputMap[key].value = data[key];
+          input.value = data[key];
+        }
+      }
+      // checkbox
+      for (const [key, checkbox] of Object.entries(checkboxFields)) {
+        if (data[key] !== undefined) {
+          syncData[key] = data[key];
+          checkbox.checked = data[key];
         }
       }
 
-      // 推荐追问单独处理（checkbox 而非 text input）
-      if (data.suggestQuestions !== undefined) {
-        syncData.suggestQuestions = data.suggestQuestions;
-        suggestQuestionsCheckbox.checked = data.suggestQuestions;
-      }
-      // TTS 自动播放单独处理（checkbox 而非 text input）
-      if (data.ttsAutoPlay !== undefined) {
-        syncData.ttsAutoPlay = data.ttsAutoPlay;
-        ttsAutoPlayCheckbox.checked = data.ttsAutoPlay;
-      }
-      // 旧版导出文件缺少该字段时，不覆盖用户当前设置（storage 中的值和 checkbox 状态保持不变）
-
-      // 清除未导入的字段
-      SYNC_FIELDS.forEach(f => {
-        if (f === 'suggestQuestions' || f === 'ttsAutoPlay') return; // 保留默认值，不删除
+      // 清除未导入的文本字段（checkbox 保留当前值）
+      Object.keys(textFields).forEach(f => {
         if (!(f in data)) chrome.storage.sync.remove(f);
       });
 
