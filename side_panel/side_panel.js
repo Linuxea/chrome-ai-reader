@@ -122,7 +122,8 @@ chrome.storage.sync.get(['darkMode', 'themeName'], (data) => {
 themeToggleBtn.addEventListener('click', () => {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const newDark = !isDark;
-  applyTheme(newDark);
+  const currentTheme = document.documentElement.getAttribute('data-theme-name') || 'sujian';
+  applyTheme(newDark, currentTheme);
   chrome.storage.sync.set({ darkMode: newDark });
 });
 
