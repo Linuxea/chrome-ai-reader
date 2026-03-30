@@ -332,7 +332,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      fetch('https://open.bigmodel.cn/api/paas/v4/layout-parsing', {
+      fetch('https://open.bigmodel.cn/api/paas/v4/layout_parsing', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

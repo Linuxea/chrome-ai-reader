@@ -381,6 +381,8 @@ async function runOCR(index, fileName, dataUri) {
 // 从 OCR API 响应中提取纯文本
 function extractOcrText(data) {
   if (!data) return '';
+  // 智谱 GLM-OCR 返回 md_results（Markdown 格式）
+  if (data.md_results) return data.md_results;
   if (data.content_list && Array.isArray(data.content_list)) {
     return data.content_list
       .map(item => item.text || '')
@@ -389,7 +391,7 @@ function extractOcrText(data) {
   }
   if (data.markdown) return data.markdown;
   if (data.text) return data.text;
-  return JSON.stringify(data);
+  return '';
 }
 
 // 清理图片预览和 OCR 状态
