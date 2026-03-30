@@ -223,15 +223,29 @@ saveBtn.addEventListener('click', () => {
 
   chrome.storage.sync.set(data, () => {
     showStatus('设置已保存', 'success');
+    saveBtn.classList.add('saved');
+    saveBtn.textContent = '已保存 ✓';
+    setTimeout(() => {
+      saveBtn.classList.remove('saved');
+      saveBtn.textContent = '保存设置';
+    }, 2000);
   });
 });
 
 function showStatus(message, type) {
   statusEl.textContent = message;
   statusEl.className = `status ${type}`;
-  setTimeout(() => {
-    statusEl.textContent = '';
-    statusEl.className = 'status';
+  // Trigger slide-in on next frame so transition fires
+  requestAnimationFrame(() => {
+    statusEl.classList.add('show');
+  });
+  clearTimeout(showStatus._timer);
+  showStatus._timer = setTimeout(() => {
+    statusEl.classList.remove('show');
+    setTimeout(() => {
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+    }, 300);
   }, 3000);
 }
 
