@@ -394,6 +394,18 @@ function extractOcrText(data) {
   return '';
 }
 
+// 从预览栏收集所有非 error 状态图片的 data URI
+function collectImageDataUris() {
+  const items = imagePreviewBar.querySelectorAll('.image-preview-item:not(.error)');
+  const uris = [];
+  items.forEach(item => {
+    const img = item.querySelector('.image-thumb');
+    if (img && img.src) uris.push({ index: parseInt(item.dataset.index), uri: img.src });
+  });
+  uris.sort((a, b) => a.index - b.index);
+  return uris.map(u => u.uri);
+}
+
 // 清理图片预览和 OCR 状态
 function clearImagePreviews() {
   ocrResults = [];
@@ -471,14 +483,15 @@ async function handleQuickAction(action) {
 
   const ocrContext = buildOcrContext();
   const ocrCount = ocrResults.length;
+  const imageUris = collectImageDataUris();
   clearImagePreviews();
 
-  await sendToAI(actionPrompts[action], actionNames[action], undefined, ocrContext, ocrCount);
+  await sendToAI(actionPrompts[action], actionNames[action], undefined, ocrContext, ocrCount, imageUris);
 }
 
 // 核心发送逻辑（统一入口）
 // retryQuote: 重试时传入的引用文本，绕过 selectedText
-async function sendToAI(text, displayText, retryQuote, ocrContext, ocrCount) {
+async function sendToAI(text, displayText, retryQuote, ocrContext, ocrCount, imageUris) {
   removeSuggestQuestions();
   const quoteForContext = retryQuote || selectedText;
 
@@ -487,13 +500,13 @@ async function sendToAI(text, displayText, retryQuote, ocrContext, ocrCount) {
     const truncated = quoteForContext.length > 50
       ? quoteForContext.slice(0, 50) + '...'
       : quoteForContext;
-    const userMsgEl = appendMessageWithQuote(truncated, displayText);
+    const userMsgEl = appendMessageWithQuote(truncated, displayText, imageUris);
     userMsgEl.dataset.rawText = text;
     userMsgEl.dataset.rawQuote = quoteForContext;
     userMsgEl.dataset.rawDisplay = displayText;
     updateQuotePreview('');
   } else {
-    const userMsgEl = appendMessage('user', displayText);
+    const userMsgEl = appendMessage('user', displayText, imageUris);
     userMsgEl.dataset.rawText = text;
     userMsgEl.dataset.rawDisplay = displayText;
   }
@@ -575,9 +588,10 @@ async function sendMessage() {
 
   const ocrContext = buildOcrContext();
   const ocrCount = ocrResults.length;
+  const imageUris = collectImageDataUris();
   clearImagePreviews();
 
-  await sendToAI(text, text, undefined, ocrContext, ocrCount);
+  await sendToAI(text, text, undefined, ocrContext, ocrCount, imageUris);
 }
 
 // 重试某条用户消息

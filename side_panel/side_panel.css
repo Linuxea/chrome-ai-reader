@@ -724,6 +724,26 @@ body {
   font-size: 13px;
 }
 
+/* Images inside user bubble */
+.bubble-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.bubble-images:only-child {
+  margin-bottom: 0;
+}
+
+.bubble-img-thumb {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 /* ===== Model Status Bar ===== */
 
 .model-status-bar {

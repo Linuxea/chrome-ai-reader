@@ -2,8 +2,7 @@
 
 // === UI 辅助函数 ===
 
-function appendMessage(role, content) {
-  // 移除欢迎消息
+function appendMessage(role, content, imageUris) {
   const welcome = chatArea.querySelector('.welcome-msg');
   if (welcome) welcome.remove();
 
@@ -14,6 +13,10 @@ function appendMessage(role, content) {
     div.innerHTML = marked.parse(content);
   } else if (content) {
     div.textContent = content;
+  }
+
+  if (imageUris && imageUris.length > 0 && role === 'user') {
+    prependBubbleImages(div, imageUris);
   }
 
   if (role === 'user') {
@@ -28,13 +31,19 @@ function appendMessage(role, content) {
   return div;
 }
 
-function appendMessageWithQuote(quoteStr, userText) {
+function appendMessageWithQuote(quoteStr, userText, imageUris) {
   const welcome = chatArea.querySelector('.welcome-msg');
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
   div.className = 'message message-user';
-  div.innerHTML = `<blockquote class="quote-in-bubble">${escapeHtml(quoteStr)}</blockquote><span>${escapeHtml(userText)}</span>`;
+
+  let html = '';
+  if (imageUris && imageUris.length > 0) {
+    html += buildBubbleImagesHtml(imageUris);
+  }
+  html += `<blockquote class="quote-in-bubble">${escapeHtml(quoteStr)}</blockquote><span>${escapeHtml(userText)}</span>`;
+  div.innerHTML = html;
 
   const wrapper = wrapUserMessage(div);
   addUserActions(wrapper, div);
@@ -42,6 +51,18 @@ function appendMessageWithQuote(quoteStr, userText) {
   chatArea.appendChild(wrapper);
   scrollToBottom();
   return div;
+}
+
+function buildBubbleImagesHtml(imageUris) {
+  return '<div class="bubble-images">' +
+    imageUris.map(uri => `<img src="${uri}" class="bubble-img-thumb">`).join('') +
+    '</div>';
+}
+
+function prependBubbleImages(div, imageUris) {
+  const container = document.createElement('div');
+  container.innerHTML = buildBubbleImagesHtml(imageUris);
+  div.insertBefore(container.firstElementChild, div.firstChild);
 }
 
 function wrapUserMessage(msgEl) {
