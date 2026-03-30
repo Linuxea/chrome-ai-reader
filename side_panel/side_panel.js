@@ -438,6 +438,17 @@ async function extractPageContent() {
 async function handleQuickAction(action) {
   if (isGenerating) return;
 
+  if (ocrRunning > 0) {
+    appendMessage('error', 'OCR 识别中，请稍候...');
+    return;
+  }
+
+  const errorItems = imagePreviewBar.querySelectorAll('.image-preview-item.error');
+  if (errorItems.length > 0) {
+    appendMessage('error', '部分图片 OCR 失败，请移除后重试');
+    return;
+  }
+
   const hasSelection = selectedText && selectedText.trim().length > 0;
 
   const actionPrompts = {
@@ -458,12 +469,16 @@ async function handleQuickAction(action) {
     keyInfo: '提取关键信息'
   };
 
-  await sendToAI(actionPrompts[action], actionNames[action]);
+  const ocrContext = buildOcrContext();
+  const ocrCount = ocrResults.length;
+  clearImagePreviews();
+
+  await sendToAI(actionPrompts[action], actionNames[action], undefined, ocrContext, ocrCount);
 }
 
 // 核心发送逻辑（统一入口）
 // retryQuote: 重试时传入的引用文本，绕过 selectedText
-async function sendToAI(text, displayText, retryQuote) {
+async function sendToAI(text, displayText, retryQuote, ocrContext, ocrCount) {
   removeSuggestQuestions();
   const quoteForContext = retryQuote || selectedText;
 
@@ -511,13 +526,24 @@ ${context}`
     messages.push(...conversationHistory);
 
     // 构建当前用户消息（引用内容合并到用户消息中）
-    let userContent = text;
+    let historyContent = text;
+    let apiContent = text;
+
     if (quoteForContext) {
       const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, '\n\n[引用内容过长，已截断]');
-      userContent = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${text}`;
+      const withQuote = `以下是用户从页面中引用的内容：\n\n${quote}\n\n${text}`;
+      historyContent = withQuote;
+      apiContent = withQuote;
     }
-    conversationHistory.push({ role: 'user', content: userContent });
-    messages.push({ role: 'user', content: userContent });
+
+    // 历史记录只存用户文本，不含 OCR 图片内容
+    conversationHistory.push({ role: 'user', content: historyContent });
+
+    // 发送给 API 的消息追加 OCR 上下文
+    if (ocrContext) {
+      apiContent = apiContent + '\n\n' + ocrContext;
+    }
+    messages.push({ role: 'user', content: apiContent });
 
     await callAI(messages);
   } catch (e) {
@@ -547,16 +573,11 @@ async function sendMessage() {
   userInput.value = '';
   userInput.style.height = 'auto';
 
-  // 构建 OCR 上下文（本迭代仅打印到控制台，不追加到消息）
   const ocrContext = buildOcrContext();
-  if (ocrContext) {
-    console.log('[OCR Context]', ocrContext);
-  }
-
-  // 清理图片预览
+  const ocrCount = ocrResults.length;
   clearImagePreviews();
 
-  await sendToAI(text, text);
+  await sendToAI(text, text, undefined, ocrContext, ocrCount);
 }
 
 // 重试某条用户消息
