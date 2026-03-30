@@ -1,4 +1,4 @@
-/* AI 阅读助手 — 侧边栏样式 */
+/* 小🍐子阅读助手 — 侧边栏样式 · 素笺主题 */
 
 * {
   margin: 0;
@@ -7,55 +7,56 @@
 }
 
 :root {
-  --bg: #f7f8fa;
-  --card-bg: #ffffff;
-  --text: #1a1a2e;
-  --text-secondary: #6b7280;
-  --primary: #4f46e5;
-  --primary-light: #eef2ff;
-  --border: #e5e7eb;
-  --user-bg: #4f46e5;
-  --user-text: #ffffff;
-  --ai-bg: #ffffff;
-  --ai-text: #1a1a2e;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --error-bg: #fef2f2;
-  --error-text: #dc2626;
-  --error-border: #fecaca;
-  --thinking-bg: #f8f9fb;
-  --thinking-border: #e2e6ed;
-  --primary-hover: #4338ca;
-  --hover-overlay: rgba(0, 0, 0, 0.06);
+  --bg: #f5f0e8;
+  --card-bg: #fffdf8;
+  --text: #2d2a26;
+  --text-secondary: #9a9084;
+  --primary: #c07842;
+  --primary-light: #f7efe5;
+  --border: #e3dbd0;
+  --user-bg: #c07842;
+  --user-text: #fffdf8;
+  --ai-bg: #fffdf8;
+  --ai-text: #2d2a26;
+  --shadow: 0 2px 8px rgba(120, 100, 80, 0.08);
+  --error-bg: #fdf0ee;
+  --error-text: #c44536;
+  --error-border: #f0d4d0;
+  --thinking-bg: #f9f5ef;
+  --thinking-border: #e3dbd0;
+  --primary-hover: #a86535;
+  --hover-overlay: rgba(120, 100, 80, 0.06);
 }
 
 [data-theme="dark"] {
-  --bg: #111827;
-  --card-bg: #1f2937;
-  --text: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --primary: #818cf8;
-  --primary-light: #1e1b4b;
-  --border: #374151;
-  --user-bg: #818cf8;
-  --user-text: #ffffff;
-  --ai-bg: #1f2937;
-  --ai-text: #e5e7eb;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --error-bg: #1c1111;
-  --error-text: #f87171;
-  --error-border: #7f1d1d;
-  --thinking-bg: #1a2233;
-  --thinking-border: #2d3748;
-  --primary-hover: #6366f1;
-  --hover-overlay: rgba(255, 255, 255, 0.06);
+  --bg: #171412;
+  --card-bg: #221e1a;
+  --text: #e3dbd0;
+  --text-secondary: #9e9285;
+  --primary: #dba06a;
+  --primary-light: #2d2519;
+  --border: #3a332b;
+  --user-bg: #dba06a;
+  --user-text: #171412;
+  --ai-bg: #221e1a;
+  --ai-text: #e3dbd0;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --error-bg: #2a1614;
+  --error-text: #e87060;
+  --error-border: #4a2822;
+  --thinking-bg: #1e1a16;
+  --thinking-border: #3a332b;
+  --primary-hover: #c88f5e;
+  --hover-overlay: rgba(219, 160, 106, 0.08);
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
 }
 
 .container {
@@ -64,7 +65,8 @@ body {
   height: 100vh;
 }
 
-/* 顶部标题栏 */
+/* ===== Header ===== */
+
 .header {
   display: flex;
   align-items: center;
@@ -72,11 +74,26 @@ body {
   padding: 12px 16px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: 0.25;
 }
 
 .header-title {
-  font-size: 16px;
+  font-family: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', serif;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text);
 }
 
 .header-actions {
@@ -90,11 +107,12 @@ body {
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
+  padding: 7px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
 }
 
 .icon-btn:hover {
@@ -102,11 +120,12 @@ body {
   color: var(--primary);
 }
 
-/* 快捷操作区 */
+/* ===== Quick Actions ===== */
+
 .quick-actions {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 10px 16px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
 }
@@ -114,22 +133,25 @@ body {
 .action-btn {
   flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 8px;
-  background: var(--bg);
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 10px;
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 20px;
   cursor: pointer;
   font-size: 12px;
+  font-family: inherit;
   color: var(--text);
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .action-btn:hover {
   border-color: var(--primary);
   background: var(--primary-light);
+  color: var(--primary);
 }
 
 .action-btn:active {
@@ -137,15 +159,16 @@ body {
 }
 
 .action-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .action-icon {
-  font-size: 18px;
+  font-size: 14px;
 }
 
-/* 对话区域 */
+/* ===== Chat Area ===== */
+
 .chat-area {
   flex: 1;
   overflow-y: auto;
@@ -155,30 +178,71 @@ body {
   gap: 12px;
 }
 
+.chat-area::-webkit-scrollbar {
+  width: 5px;
+}
+
+.chat-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-area::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.chat-area::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
 .welcome-msg {
   text-align: center;
   color: var(--text-secondary);
-  margin-top: 40%;
+  margin-top: 38%;
   font-size: 13px;
-  line-height: 1.8;
+  line-height: 2;
+  letter-spacing: 0.3px;
 }
 
-/* 消息气泡 */
+.welcome-msg::before {
+  content: '· · ·';
+  display: block;
+  font-size: 18px;
+  letter-spacing: 12px;
+  color: var(--primary);
+  opacity: 0.35;
+  margin-bottom: 14px;
+}
+
+/* ===== Message Bubbles ===== */
+
 .message {
-  max-width: 90%;
+  max-width: 88%;
   padding: 10px 14px;
   border-radius: 12px;
-  line-height: 1.7;
+  line-height: 1.75;
   word-wrap: break-word;
+  animation: msg-in 0.25s ease;
 }
 
-/* 用户消息组（气泡 + 操作栏） */
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .user-msg-group {
   align-self: flex-end;
-  max-width: 90%;
+  max-width: 88%;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  animation: msg-in 0.25s ease;
 }
 
 .user-msg-group > .message {
@@ -200,12 +264,14 @@ body {
   box-shadow: var(--shadow);
 }
 
-/* AI 回复中的 Markdown 样式 */
+/* AI Markdown Styles */
 .message-ai h1, .message-ai h2, .message-ai h3 {
-  margin: 8px 0 4px;
+  margin: 10px 0 6px;
   font-size: 14px;
   font-weight: 600;
 }
+
+.message-ai h1 { font-size: 16px; }
 
 .message-ai ul, .message-ai ol {
   padding-left: 20px;
@@ -222,28 +288,31 @@ body {
 
 .message-ai code {
   background: var(--bg);
-  padding: 1px 5px;
+  padding: 2px 5px;
   border-radius: 4px;
   font-size: 13px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  color: var(--primary);
 }
 
 .message-ai pre {
   background: var(--bg);
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
   overflow-x: auto;
   margin: 6px 0;
+  border: 1px solid var(--border);
 }
 
 .message-ai pre code {
   background: none;
   padding: 0;
+  color: var(--text);
 }
 
 .message-ai blockquote {
   border-left: 3px solid var(--primary);
-  padding-left: 10px;
+  padding-left: 12px;
   margin: 6px 0;
   color: var(--text-secondary);
 }
@@ -252,7 +321,17 @@ body {
   font-weight: 600;
 }
 
-/* 加载动画 */
+.message-ai a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.message-ai a:hover {
+  text-decoration: underline;
+}
+
+/* ===== Typing Indicator ===== */
+
 .typing-indicator {
   display: flex;
   gap: 4px;
@@ -264,20 +343,21 @@ body {
   height: 6px;
   background: var(--primary);
   border-radius: 50%;
-  animation: typing 1.2s infinite;
+  animation: typing 1.4s infinite ease-in-out;
 }
 
 .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
 .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes typing {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-4px); }
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-5px); }
 }
 
-/* 底部输入区 */
+/* ===== Input Area ===== */
+
 .input-area {
-  padding: 12px 16px;
+  padding: 10px 16px 8px;
   background: var(--card-bg);
   border-top: 1px solid var(--border);
 }
@@ -289,8 +369,18 @@ body {
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 8px 8px 8px 14px;
+  border-radius: 14px;
+  padding: 8px 10px 8px 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(192, 120, 66, 0.1);
+}
+
+[data-theme="dark"] .input-wrapper:focus-within {
+  box-shadow: 0 0 0 3px rgba(219, 160, 106, 0.08);
 }
 
 #userInput {
@@ -312,29 +402,34 @@ body {
 
 .send-btn {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: var(--primary);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: all 0.2s ease;
 }
 
 .send-btn:hover {
   background: var(--primary-hover);
 }
 
+.send-btn:active {
+  transform: scale(0.93);
+}
+
 .send-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* 错误消息 */
+/* ===== Error Message ===== */
+
 .message-error {
   align-self: center;
   background: var(--error-bg);
@@ -344,9 +439,8 @@ body {
   text-align: center;
 }
 
-/* 历史对话面板样式已拆分至 history.css */
+/* ===== Quote Preview ===== */
 
-/* 引用预览条 */
 .quote-preview {
   display: flex;
   align-items: flex-start;
@@ -381,6 +475,7 @@ body {
   border-radius: 4px;
   display: flex;
   align-items: center;
+  transition: color 0.15s, background 0.15s;
 }
 
 .quote-close:hover {
@@ -388,29 +483,33 @@ body {
   background: var(--hover-overlay);
 }
 
-/* 用户消息中的引用预览 */
+/* Quote inside user bubble */
 .quote-in-bubble {
-  border-left: 3px solid rgba(255, 255, 255, 0.5);
+  border-left: 3px solid rgba(255, 253, 248, 0.4);
   padding-left: 8px;
   margin-bottom: 6px;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 253, 248, 0.75);
   font-size: 13px;
 }
 
-/* 模型状态栏 */
+/* ===== Model Status Bar ===== */
+
 .model-status-bar {
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   padding: 6px 0 2px;
   user-select: none;
+  letter-spacing: 0.2px;
+  opacity: 0.7;
 }
 
-/* 思考过程区块 */
+/* ===== Thinking Block ===== */
+
 .thinking-block {
   background: var(--thinking-bg);
   border: 1px solid var(--thinking-border);
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 8px;
   font-size: 12px;
   line-height: 1.6;
@@ -419,14 +518,14 @@ body {
 
 .thinking-summary {
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 7px 10px;
   font-size: 12px;
   color: var(--text-secondary);
   user-select: none;
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .thinking-summary::-webkit-details-marker {
@@ -434,9 +533,10 @@ body {
 }
 
 .thinking-summary::before {
-  content: '▶';
+  content: '\25B8';
   font-size: 10px;
-  transition: transform 0.2s;
+  transition: transform 0.2s ease;
+  color: var(--primary);
 }
 
 .thinking-block[open] > .thinking-summary::before {
@@ -458,13 +558,8 @@ body {
   font-size: 11px;
 }
 
-.thinking-response-content {
-  /* 正式回答区域，无特殊样式 */
-}
+/* ===== TTS & AI Action Buttons ===== */
 
-/* 快捷指令弹出列表样式已拆分至 quick-commands.css */
-
-/* TTS 喇叭按钮 & AI 消息操作按钮 */
 .tts-btn,
 .ai-action-btn {
   display: inline-flex;
@@ -479,8 +574,8 @@ body {
   border-radius: 4px;
   font-size: 11px;
   line-height: 1;
-  opacity: 0.7;
-  transition: opacity 0.15s, color 0.15s;
+  opacity: 0.6;
+  transition: all 0.2s ease;
 }
 
 .tts-btn:hover,
@@ -501,7 +596,7 @@ body {
 }
 
 .tts-btn.tts-loading svg {
-  animation: tts-pulse 1s ease-in-out infinite;
+  animation: tts-pulse 1.2s ease-in-out infinite;
 }
 
 .tts-btn.tts-playing {
@@ -523,7 +618,8 @@ body {
   50% { transform: scale(1.15); }
 }
 
-/* 用户消息操作栏（气泡下方） */
+/* ===== User Message Actions ===== */
+
 .msg-actions {
   display: flex;
   gap: 2px;
@@ -540,8 +636,8 @@ body {
   padding: 2px 4px;
   border-radius: 4px;
   line-height: 1;
-  opacity: 0.7;
-  transition: opacity 0.15s, color 0.15s;
+  opacity: 0.6;
+  transition: all 0.15s ease;
 }
 
 .msg-action-btn:hover {
@@ -554,14 +650,15 @@ body {
   height: 14px;
 }
 
-/* 推荐追问 */
+/* ===== Suggested Questions ===== */
+
 .suggest-questions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
   align-self: flex-start;
-  max-width: 90%;
+  max-width: 88%;
 }
 
 .suggest-item {
@@ -571,8 +668,9 @@ body {
   background: var(--primary-light);
   color: var(--primary);
   font-size: 13px;
+  font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: all 0.2s ease;
   line-height: 1.4;
 }
 
@@ -586,7 +684,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   align-self: flex-start;
-  max-width: 90%;
+  max-width: 88%;
 }
 
 .suggest-loading-bar {
@@ -601,6 +699,6 @@ body {
 .suggest-loading-bar:nth-child(3) { width: 140px; animation-delay: 0.4s; }
 
 @keyframes suggest-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
 }

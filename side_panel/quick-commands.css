@@ -1,6 +1,5 @@
 /* quick-commands.css — 快捷指令弹出列表样式 */
 
-/* 快捷指令弹出列表 */
 .command-popup {
   position: absolute;
   bottom: 100%;
@@ -8,25 +7,50 @@
   right: 0;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(120, 100, 80, 0.12);
   max-height: 240px;
   overflow-y: auto;
   z-index: 20;
   margin-bottom: 4px;
 }
 
+[data-theme="dark"] .command-popup {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
 .command-popup.hidden {
   display: none;
+}
+
+.command-popup::-webkit-scrollbar {
+  width: 4px;
+}
+
+.command-popup::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.command-popup::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
 }
 
 .command-popup-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 9px 12px;
   cursor: pointer;
   gap: 8px;
-  transition: background 0.1s;
+  transition: background 0.15s ease;
+}
+
+.command-popup-item:first-child {
+  border-radius: 10px 10px 0 0;
+}
+
+.command-popup-item:last-child {
+  border-radius: 0 0 10px 10px;
 }
 
 .command-popup-item:hover,
@@ -51,7 +75,7 @@
 }
 
 .command-popup-empty {
-  padding: 12px;
+  padding: 14px;
   text-align: center;
   font-size: 13px;
   color: var(--text-secondary);
