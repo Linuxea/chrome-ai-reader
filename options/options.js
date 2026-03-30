@@ -3,8 +3,9 @@
 // === 夜间模式 ===
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 
-function applyTheme(dark) {
+function applyTheme(dark, themeName) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme-name', themeName || 'sujian');
   const moonIcon = themeToggleBtn.querySelector('.theme-icon-moon');
   const sunIcon = themeToggleBtn.querySelector('.theme-icon-sun');
   if (dark) {
@@ -16,8 +17,10 @@ function applyTheme(dark) {
   }
 }
 
-chrome.storage.sync.get(['darkMode'], (data) => {
-  applyTheme(!!data.darkMode);
+chrome.storage.sync.get(['darkMode', 'themeName'], (data) => {
+  const themeName = data.themeName || 'sujian';
+  applyTheme(!!data.darkMode, themeName);
+  updateThemePicker(themeName);
 });
 
 themeToggleBtn.addEventListener('click', () => {
@@ -28,9 +31,31 @@ themeToggleBtn.addEventListener('click', () => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.darkMode) {
-    applyTheme(!!changes.darkMode.newValue);
+  if (area === 'sync') {
+    if (changes.darkMode || changes.themeName) {
+      const isDark = changes.darkMode ? !!changes.darkMode.newValue : document.documentElement.getAttribute('data-theme') === 'dark';
+      const currentTheme = changes.themeName ? changes.themeName.newValue : document.documentElement.getAttribute('data-theme-name') || 'sujian';
+      applyTheme(isDark, currentTheme);
+      if (changes.themeName) updateThemePicker(changes.themeName.newValue);
+    }
   }
+});
+
+// === 外观主题 ===
+const themePicker = document.getElementById('themePicker');
+
+function updateThemePicker(themeName) {
+  themePicker.querySelectorAll('.theme-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.theme === (themeName || 'sujian'));
+  });
+}
+
+themePicker.addEventListener('click', (e) => {
+  const card = e.target.closest('.theme-card');
+  if (!card) return;
+  const themeName = card.dataset.theme;
+  chrome.storage.sync.set({ themeName });
+  // applyTheme will be called by storage.onChanged listener
 });
 
 const apiKeyInput = document.getElementById('apiKey');
@@ -72,7 +97,7 @@ const checkboxFields = {
 };
 
 // 所有 sync storage 字段名（用于 storage.get / export / import）
-const SYNC_FIELDS = [...Object.keys(textFields), ...Object.keys(checkboxFields)];
+const SYNC_FIELDS = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName'];
 
 // 加载已保存的设置
 chrome.storage.sync.get(SYNC_FIELDS, (data) => {
