@@ -6,7 +6,8 @@
   box-sizing: border-box;
 }
 
-:root {
+:root,
+[data-theme-name="sujian"] {
   --bg: #f5f0e8;
   --card-bg: #fffdf8;
   --text: #2d2a26;
@@ -26,9 +27,10 @@
   --success: #5a8a50;
   --error: #c44536;
   --import-hover-bg: #f7efe5;
+  --focus-ring: rgba(192, 120, 66, 0.1);
 }
 
-[data-theme="dark"] {
+[data-theme-name="sujian"][data-theme="dark"] {
   --bg: #171412;
   --card-bg: #221e1a;
   --text: #e3dbd0;
@@ -48,6 +50,7 @@
   --success: #7db87a;
   --error: #e87060;
   --import-hover-bg: #2d2519;
+  --focus-ring: rgba(219, 160, 106, 0.08);
 }
 
 body {
@@ -162,12 +165,7 @@ input {
 input:focus,
 textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(192, 120, 66, 0.1);
-}
-
-[data-theme="dark"] input:focus,
-[data-theme="dark"] textarea:focus {
-  box-shadow: 0 0 0 3px rgba(219, 160, 106, 0.08);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 textarea {
@@ -536,4 +534,149 @@ textarea {
 
 .toggle-row input[type="checkbox"]:checked::after {
   transform: translateX(18px);
+}
+
+/* 海洋 — Ocean */
+[data-theme-name="ocean"] {
+  --bg: #e8f0f8;
+  --card-bg: #f4f8fc;
+  --text: #1a2a3a;
+  --text-secondary: #7a8a9a;
+  --text-label: #2a3a4a;
+  --primary: #3a7bd5;
+  --primary-hover: #2e6bc0;
+  --primary-light: #eaf1fa;
+  --border: #c8d8e8;
+  --input-bg: #f4f8fc;
+  --summary-bg: #eaf1fa;
+  --summary-hover-bg: #dce8f4;
+  --refresh-bg: #e8f0f8;
+  --refresh-hover-bg: #dae6f2;
+  --toggle-off: #b0c0d0;
+  --shadow: 0 2px 12px rgba(58, 123, 213, 0.08);
+  --success: #5a8a50;
+  --error: #c44536;
+  --import-hover-bg: #eaf1fa;
+  --focus-ring: rgba(58, 123, 213, 0.1);
+}
+
+[data-theme-name="ocean"][data-theme="dark"] {
+  --bg: #121a26;
+  --card-bg: #1a2332;
+  --text: #d0dae8;
+  --text-secondary: #8a9aaa;
+  --text-label: #b0c0d0;
+  --primary: #5a9cf0;
+  --primary-hover: #4a8ce0;
+  --primary-light: #1a2a3e;
+  --border: #2a3a4e;
+  --input-bg: #1a2332;
+  --summary-bg: #152030;
+  --summary-hover-bg: #1e2a3a;
+  --refresh-bg: #1a2a3e;
+  --refresh-hover-bg: #2a3a4e;
+  --toggle-off: #3a4a5a;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --success: #7db87a;
+  --error: #e87060;
+  --import-hover-bg: #1a2a3e;
+  --focus-ring: rgba(90, 156, 240, 0.08);
+}
+
+/* 森林 — Forest */
+[data-theme-name="forest"] {
+  --bg: #f0f4ec;
+  --card-bg: #f8faf6;
+  --text: #1a2418;
+  --text-secondary: #7a8a72;
+  --text-label: #2a3a20;
+  --primary: #5a8a50;
+  --primary-hover: #4a7a40;
+  --primary-light: #eaf2e8;
+  --border: #c8d8c0;
+  --input-bg: #f8faf6;
+  --summary-bg: #eaf2e8;
+  --summary-hover-bg: #dce8d8;
+  --refresh-bg: #f0f4ec;
+  --refresh-hover-bg: #e2e8dc;
+  --toggle-off: #a0b098;
+  --shadow: 0 2px 12px rgba(90, 138, 80, 0.08);
+  --success: #5a8a50;
+  --error: #c44536;
+  --import-hover-bg: #eaf2e8;
+  --focus-ring: rgba(90, 138, 80, 0.1);
+}
+
+[data-theme-name="forest"][data-theme="dark"] {
+  --bg: #141812;
+  --card-bg: #1e221a;
+  --text: #d0dac8;
+  --text-secondary: #8a9a82;
+  --text-label: #b0c0a8;
+  --primary: #7db87a;
+  --primary-hover: #6da86a;
+  --primary-light: #1e2a1a;
+  --border: #2e3e28;
+  --input-bg: #1e221a;
+  --summary-bg: #1a2018;
+  --summary-hover-bg: #242a20;
+  --refresh-bg: #1e2a1a;
+  --refresh-hover-bg: #2e3e28;
+  --toggle-off: #3a4a38;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --success: #7db87a;
+  --error: #e87060;
+  --import-hover-bg: #1e2a1a;
+  --focus-ring: rgba(125, 184, 122, 0.08);
+}
+
+/* Theme Picker Cards */
+.theme-picker {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.theme-card {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--input-bg);
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.theme-card:hover {
+  border-color: var(--primary);
+}
+
+.theme-card.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.theme-card-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.theme-card-check {
+  margin-left: auto;
+  color: var(--primary);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.theme-card.active .theme-card-check {
+  opacity: 1;
 }
