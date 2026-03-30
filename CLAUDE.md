@@ -75,6 +75,16 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
   → returns { success, models: string[] } → options.js populates <datalist>
 ```
 
+**OCR text extraction (image/PDF to Markdown):**
+```
+side_panel.js sends chrome.runtime.sendMessage({ action: 'ocrParse', file: '<url or data:uri>' })
+  → service_worker.js reads ocrApiKey from chrome.storage.sync
+  → POST https://open.bigmodel.cn/api/paas/v4/layout-parsing
+    headers: Authorization: Bearer <ocrApiKey>
+    body: { model: 'glm-ocr', file: '<url or data:uri>' }
+  → returns { success, data } or { success: false, error }
+```
+
 ### Communication patterns
 
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
@@ -82,6 +92,7 @@ options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, ap
 - **TTS streaming**: `chrome.runtime.connect` long-lived port named `tts` — `side_panel.js` sends `{ type: 'tts', text }`, receives `{ type: 'chunk', data }` (base64 mp3), `{ type: 'done' }`, or `{ type: 'error', error }`. Audio plays via MediaSource Extensions (MSE) for true streaming playback
 - **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
 - **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
+- **OCR text extraction**: `chrome.runtime.sendMessage` one-shot — `side_panel.js` sends `{ action: 'ocrParse', file: '<url or data:uri>' }`, `service_worker.js` reads `ocrApiKey` from sync storage, proxies `POST https://open.bigmodel.cn/api/paas/v4/layout-parsing` with `{ model: 'glm-ocr', file }`, returns `{ success, data }` or `{ success: false, error }`. Uses `sendResponse` with `return true` for async response
 - **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, quick commands, and dark mode update in real-time without page reload
 
 ### Volcengine TTS API specifics
@@ -101,7 +112,7 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 
 ### Storage
 
-- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `darkMode`, `themeName` — config synced across devices
+- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `ocrApiKey`, `darkMode`, `themeName` — config synced across devices
 - **`chrome.storage.local`**: `chatHistories` (up to 50 conversations), `quickCommands` (array of `{ name, prompt }`)
 - Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
 - Settings export/import bundles all sync fields + quickCommands into a versioned JSON file

@@ -73,6 +73,9 @@ const ttsAccessKeyInput = document.getElementById('ttsAccessKey');
 const ttsResourceIdInput = document.getElementById('ttsResourceId');
 const ttsSpeakerInput = document.getElementById('ttsSpeaker');
 
+// OCR 配置
+const ocrApiKeyInput = document.getElementById('ocrApiKey');
+
 // 推荐追问
 const suggestQuestionsCheckbox = document.getElementById('suggestQuestions');
 
@@ -89,6 +92,7 @@ const textFields = {
   ttsAccessKey: ttsAccessKeyInput,
   ttsResourceId: ttsResourceIdInput,
   ttsSpeaker: ttsSpeakerInput,
+  ocrApiKey: ocrApiKeyInput,
 };
 
 // checkbox 字段：字段名 → checkbox 元素
@@ -214,6 +218,10 @@ saveBtn.addEventListener('click', () => {
   if (ttsAccessKey) { data.ttsAccessKey = ttsAccessKey; } else { chrome.storage.sync.remove('ttsAccessKey'); }
   if (ttsResourceId) { data.ttsResourceId = ttsResourceId; } else { chrome.storage.sync.remove('ttsResourceId'); }
   if (ttsSpeaker) { data.ttsSpeaker = ttsSpeaker; } else { chrome.storage.sync.remove('ttsSpeaker'); }
+
+  // OCR 配置
+  const ocrApiKey = ocrApiKeyInput.value.trim();
+  if (ocrApiKey) { data.ocrApiKey = ocrApiKey; } else { chrome.storage.sync.remove('ocrApiKey'); }
 
   // 推荐追问
   data.suggestQuestions = suggestQuestionsCheckbox.checked;

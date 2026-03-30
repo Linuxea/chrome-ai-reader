@@ -323,4 +323,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // 返回 true 表示异步发送 sendResponse
     return true;
   }
+
+  // OCR 文字识别（智谱 GLM-OCR）
+  if (msg.action === 'ocrParse') {
+    chrome.storage.sync.get('ocrApiKey', (config) => {
+      if (!config.ocrApiKey) {
+        sendResponse({ success: false, error: '请先在设置页面配置 OCR API Key' });
+        return;
+      }
+
+      fetch('https://open.bigmodel.cn/api/paas/v4/layout-parsing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.ocrApiKey}`
+        },
+        body: JSON.stringify({
+          model: 'glm-ocr',
+          file: msg.file
+        })
+      })
+      .then(res => {
+        if (!res.ok) return res.json().then(d => { throw new Error(d.error?.message || `OCR 请求失败 (${res.status})`); });
+        return res.json();
+      })
+      .then(data => {
+        sendResponse({ success: true, data });
+      })
+      .catch(e => {
+        sendResponse({ success: false, error: e.message });
+      });
+    });
+
+    return true;
+  }
 });
