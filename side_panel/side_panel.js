@@ -16,6 +16,11 @@ const quotePreview = document.getElementById('quotePreview');
 const quoteText = document.getElementById('quoteText');
 const quoteClose = document.getElementById('quoteClose');
 
+// 图片上传 + OCR
+const imageUploadBtn = document.getElementById('imageUploadBtn');
+const imageFileInput = document.getElementById('imageFileInput');
+const imagePreviewBar = document.getElementById('imagePreviewBar');
+
 // 当前页面的内容上下文
 let pageContent = '';
 let pageExcerpt = '';
@@ -30,6 +35,11 @@ let customSystemPrompt = '';
 let currentChatId = null;
 // 选中的引用文本
 let selectedText = '';
+
+// OCR 结果（仅内存，不持久化）
+let ocrResults = [];     // [{ index, fileName, text }]
+let ocrRunning = 0;      // 正在进行中的 OCR 请求数
+let imageIndex = 0;      // 自增索引，用于编号
 // 当前关联的标签页 ID
 let activeTabId = null;
 
@@ -162,6 +172,7 @@ newChatBtn.addEventListener('click', () => {
   conversationHistory = [];
   currentChatId = null;
   updateQuotePreview('');
+  clearImagePreviews();
   chatArea.innerHTML = '<div class="welcome-msg"><p>打开任意网页，点击上方按钮或输入问题开始使用。</p></div>';
 });
 
@@ -284,6 +295,121 @@ quoteClose.addEventListener('click', () => {
   updateQuotePreview('');
 });
 
+// === 图片上传 + OCR ===
+
+// 点击上传按钮 → 触发文件选择
+imageUploadBtn.addEventListener('click', () => {
+  imageFileInput.click();
+});
+
+// 文件选择后处理
+imageFileInput.addEventListener('change', () => {
+  const files = Array.from(imageFileInput.files);
+  if (files.length === 0) return;
+  imageFileInput.value = ''; // 重置，允许重复选择同一文件
+
+  imagePreviewBar.classList.remove('hidden');
+
+  files.forEach(file => {
+    imageIndex++;
+    const idx = imageIndex;
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const dataUri = e.target.result;
+      addImagePreview(idx, file.name, dataUri);
+      runOCR(idx, file.name, dataUri);
+    };
+
+    reader.readAsDataURL(file);
+  });
+});
+
+// 添加缩略图到预览栏
+function addImagePreview(index, fileName, dataUri) {
+  const item = document.createElement('div');
+  item.className = 'image-preview-item';
+  item.dataset.index = index;
+
+  item.innerHTML = `
+    <img src="${dataUri}" class="image-thumb" alt="${escapeHtml(fileName)}">
+    <span class="image-status loading"></span>
+    <button class="image-remove" title="移除">×</button>
+  `;
+
+  // 删除按钮
+  item.querySelector('.image-remove').addEventListener('click', () => {
+    item.remove();
+    ocrResults = ocrResults.filter(r => r.index !== index);
+    if (imagePreviewBar.children.length === 0) {
+      imagePreviewBar.classList.add('hidden');
+    }
+  });
+
+  imagePreviewBar.appendChild(item);
+}
+
+// 调用 OCR 识别
+async function runOCR(index, fileName, dataUri) {
+  ocrRunning++;
+  const item = imagePreviewBar.querySelector(`[data-index="${index}"]`);
+  const statusEl = item?.querySelector('.image-status');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'ocrParse',
+      file: dataUri
+    });
+
+    if (response && response.success) {
+      const text = extractOcrText(response.data);
+      ocrResults.push({ index, fileName, text });
+      if (statusEl) statusEl.className = 'image-status done';
+      if (item) item.classList.add('done');
+    } else {
+      if (statusEl) statusEl.className = 'image-status error';
+      if (item) item.classList.add('error');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.className = 'image-status error';
+    if (item) item.classList.add('error');
+  } finally {
+    ocrRunning--;
+  }
+}
+
+// 从 OCR API 响应中提取纯文本
+function extractOcrText(data) {
+  if (!data) return '';
+  if (data.content_list && Array.isArray(data.content_list)) {
+    return data.content_list
+      .map(item => item.text || '')
+      .filter(t => t.trim())
+      .join('\n');
+  }
+  if (data.markdown) return data.markdown;
+  if (data.text) return data.text;
+  return JSON.stringify(data);
+}
+
+// 清理图片预览和 OCR 状态
+function clearImagePreviews() {
+  ocrResults = [];
+  ocrRunning = 0;
+  imageIndex = 0;
+  imagePreviewBar.innerHTML = '';
+  imagePreviewBar.classList.add('hidden');
+}
+
+// 构建 OCR 上下文字符串
+function buildOcrContext() {
+  if (ocrResults.length === 0) return '';
+  const sorted = [...ocrResults].sort((a, b) => a.index - b.index);
+  return sorted.map((r, i) => {
+    return `第${i + 1}张图片的内容是：\n${r.text}`;
+  }).join('\n\n');
+}
+
 // === 历史对话管理 ===（已拆分至 chat-history.js）
 
 // === 核心功能 ===
@@ -403,8 +529,31 @@ async function sendMessage() {
   const text = userInput.value.trim();
   if (!text || isGenerating) return;
 
+  // OCR 识别中，阻止发送
+  if (ocrRunning > 0) {
+    appendMessage('error', 'OCR 识别中，请稍候...');
+    return;
+  }
+
+  // 有失败的 OCR 图片，阻止发送
+  const errorItems = imagePreviewBar.querySelectorAll('.image-preview-item.error');
+  if (errorItems.length > 0) {
+    appendMessage('error', '部分图片 OCR 失败，请移除后重试');
+    return;
+  }
+
   userInput.value = '';
   userInput.style.height = 'auto';
+
+  // 构建 OCR 上下文（本迭代仅打印到控制台，不追加到消息）
+  const ocrContext = buildOcrContext();
+  if (ocrContext) {
+    console.log('[OCR Context]', ocrContext);
+  }
+
+  // 清理图片预览
+  clearImagePreviews();
+
   await sendToAI(text, text);
 }
 

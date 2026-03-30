@@ -128,6 +128,9 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - `activeTabId` — tab ID the side panel is associated with, used to filter selection messages
 - `quickCommands` — cached array of user-defined quick commands from storage
 - TTS state: `ttsPort`, `ttsPlaying`, `ttsDone`, `ttsMediaSource`, `ttsSourceBuffer`, `ttsAudioEl`, `ttsChunkQueue`, `ttsBufferAppending`
+- `ocrResults` — array of `{ index, fileName, text }` for OCR-recognized image content (in-memory, cleared on send/new chat)
+- `ocrRunning` — counter for in-progress OCR API calls
+- `imageIndex` — auto-incrementing index for image numbering
 - Content is truncated to ~64000 chars for context and quotes (via `safeTruncate`)
 
 ### Dark mode (夜间模式)
