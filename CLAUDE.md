@@ -101,7 +101,7 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 
 ### Storage
 
-- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `darkMode` — config synced across devices
+- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `darkMode`, `themeName` — config synced across devices
 - **`chrome.storage.local`**: `chatHistories` (up to 50 conversations), `quickCommands` (array of `{ name, prompt }`)
 - Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
 - Settings export/import bundles all sync fields + quickCommands into a versioned JSON file
@@ -124,14 +124,25 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - Toggle button in side panel header (moon/sun icon) and options page header
 - Pure manual toggle — no system preference detection
 - `darkMode` boolean stored in `chrome.storage.sync`, persisted across sessions
-- Implementation: `[data-theme="dark"]` attribute on `<html>` element overrides all CSS custom properties
-- Both `side_panel.css` and `options.css` define matching `:root` + `[data-theme="dark"]` variable blocks
-- `chrome.storage.onChanged` listener syncs theme between side panel and options page in real-time
+- Works within each theme — toggling dark mode preserves the current theme palette
+- Implementation: `data-theme="light|dark"` + `data-theme-name="sujian|ocean|forest"` attributes on `<html>` element
+- CSS uses compound selectors like `[data-theme-name="ocean"][data-theme="dark"]` to define theme-specific dark variants
+- Both `side_panel.css` and `options.css` define variable blocks for all themes (`:root` serves as 素笺 default)
+- `chrome.storage.onChanged` listener syncs both `darkMode` and `themeName` between side panel and options page
+
+### Multi-theme system (多主题)
+
+- Three built-in themes: 素笺 (`sujian`, default warm brown), 海洋 (`ocean`, cool blue), 森林 (`forest`, natural green)
+- Each theme defines a complete set of CSS custom properties for both light and dark variants
+- Theme picker lives in settings page (options.html) as a collapsible "外观主题" section with color swatch cards
+- `themeName` string stored in `chrome.storage.sync`, defaults to `"sujian"` if absent
+- Theme choice is included in export/import JSON via `SYNC_FIELDS`
+- Side panel reads `themeName` from storage and applies it but has no theme picker UI — only the settings page allows selection
 
 ## Conventions
 
 - All user-facing strings are in Chinese
-- CSS uses CSS custom properties defined in `side_panel.css` and `options.css` (`:root` block) for theming; dark mode overrides via `[data-theme="dark"]` selector on `<html>` element
+- CSS uses CSS custom properties defined in `side_panel.css` and `options.css` for theming; theme selection via `[data-theme-name="..."]` selectors, dark mode via compound `[data-theme-name="..."][data-theme="dark"]` selectors
 - No framework — vanilla JS with direct DOM manipulation
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
 - API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`
