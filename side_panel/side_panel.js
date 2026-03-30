@@ -99,8 +99,9 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 
 // === 夜间模式 ===
 
-function applyTheme(dark) {
+function applyTheme(dark, themeName) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme-name', themeName || 'sujian');
   const moonIcon = themeToggleBtn.querySelector('.theme-icon-moon');
   const sunIcon = themeToggleBtn.querySelector('.theme-icon-sun');
   if (dark) {
@@ -113,8 +114,8 @@ function applyTheme(dark) {
 }
 
 // 加载主题偏好
-chrome.storage.sync.get(['darkMode'], (data) => {
-  applyTheme(!!data.darkMode);
+chrome.storage.sync.get(['darkMode', 'themeName'], (data) => {
+  applyTheme(!!data.darkMode, data.themeName || 'sujian');
 });
 
 // 切换按钮
@@ -127,8 +128,14 @@ themeToggleBtn.addEventListener('click', () => {
 
 // 监听其他页面的主题变化
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.darkMode) {
-    applyTheme(!!changes.darkMode.newValue);
+  if (area === 'sync') {
+    const darkMode = changes.darkMode;
+    const themeName = changes.themeName;
+    if (darkMode || themeName) {
+      const isDark = darkMode ? !!darkMode.newValue : document.documentElement.getAttribute('data-theme') === 'dark';
+      const currentTheme = themeName ? themeName.newValue : document.documentElement.getAttribute('data-theme-name') || 'sujian';
+      applyTheme(isDark, currentTheme);
+    }
   }
 });
 
