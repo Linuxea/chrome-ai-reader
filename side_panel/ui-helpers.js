@@ -79,7 +79,7 @@ function addUserActions(wrapper, msgEl) {
   // 重试按钮
   const retryBtn = document.createElement('button');
   retryBtn.className = 'msg-action-btn';
-  retryBtn.title = '重新发送';
+  retryBtn.title = t('action.retry');
   retryBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>`;
   retryBtn.addEventListener('click', () => {
     const rawText = msgEl.dataset.rawText;

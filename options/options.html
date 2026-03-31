@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>小🍐子阅读助手 - 设置</title>
+  <title data-i18n="app.settingsTitle">小🍐子阅读助手 - 设置</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <div class="container">
-    <h1>小🍐子阅读助手设置
-      <button id="themeToggleBtn" class="theme-toggle-btn" title="切换夜间模式">
+    <h1><span data-i18n="settings.heading">小🍐子阅读助手设置</span>
+      <button id="themeToggleBtn" class="theme-toggle-btn" data-i18n-title="settings.toggleDark" title="切换夜间模式">
         <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
         </svg>
@@ -32,83 +32,90 @@
 
       <!-- 外观主题 -->
       <details class="config-details">
-        <summary class="config-summary">外观主题</summary>
+        <summary class="config-summary" data-i18n="settings.theme">外观主题</summary>
         <div class="config-fields">
           <div class="theme-picker" id="themePicker">
             <button class="theme-card active" data-theme="sujian" type="button">
               <span class="theme-card-dot" style="background:#c07842"></span>
-              <span>素笺</span>
+              <span data-i18n="settings.theme.sujian">素笺</span>
               <span class="theme-card-check">✓</span>
             </button>
             <button class="theme-card" data-theme="ocean" type="button">
               <span class="theme-card-dot" style="background:#3a7bd5"></span>
-              <span>海洋</span>
+              <span data-i18n="settings.theme.ocean">海洋</span>
               <span class="theme-card-check">✓</span>
             </button>
             <button class="theme-card" data-theme="forest" type="button">
               <span class="theme-card-dot" style="background:#5a8a50"></span>
-              <span>森林</span>
+              <span data-i18n="settings.theme.forest">森林</span>
               <span class="theme-card-check">✓</span>
             </button>
+          </div>
+          <div class="form-group language-group">
+            <label for="languageSelect" data-i18n="settings.language">语言</label>
+            <select id="languageSelect">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
           </div>
         </div>
       </details>
 
       <!-- 大模型配置 -->
       <details class="config-details">
-        <summary class="config-summary">大模型配置</summary>
+        <summary class="config-summary" data-i18n="settings.llm">大模型配置</summary>
         <div class="config-fields">
           <div class="form-group">
-            <label for="apiKey">API Key</label>
-            <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
-            <p class="hint">你的 API Key 仅保存在本地浏览器中，不会发送到任何第三方服务器。</p>
+            <label for="apiKey" data-i18n="settings.llm.apiKey">API Key</label>
+            <input type="password" id="apiKey" data-i18n-placeholder="settings.llm.apiKey.ph" placeholder="sk-..." autocomplete="off">
+            <p class="hint" data-i18n="settings.llm.apiKey.hint">你的 API Key 仅保存在本地浏览器中，不会发送到任何第三方服务器。</p>
           </div>
           <div class="form-group">
-            <label for="apiBase">API 地址（可选）</label>
-            <input type="text" id="apiBase" placeholder="https://api.deepseek.com">
-            <p class="hint">留空使用默认地址（DeepSeek）。如需使用其他兼容接口，可在此填写。</p>
+            <label for="apiBase" data-i18n="settings.llm.apiBase">API 地址（可选）</label>
+            <input type="text" id="apiBase" data-i18n-placeholder="settings.llm.apiBase.ph" placeholder="https://api.deepseek.com">
+            <p class="hint" data-i18n="settings.llm.apiBase.hint">留空使用默认地址（DeepSeek）。如需使用其他兼容接口，可在此填写。</p>
           </div>
           <div class="form-group">
-            <label for="modelName">模型名称</label>
+            <label for="modelName" data-i18n="settings.llm.model">模型名称</label>
             <div class="model-input-row">
-              <input type="text" id="modelName" list="model-list" placeholder="点击刷新按钮获取可用模型，或手动输入模型名称">
-              <button id="refreshModelsBtn" class="refresh-btn" type="button">刷新模型列表</button>
+              <input type="text" id="modelName" list="model-list" data-i18n-placeholder="settings.llm.model.ph" placeholder="点击刷新按钮获取可用模型，或手动输入模型名称">
+              <button id="refreshModelsBtn" class="refresh-btn" type="button" data-i18n="settings.llm.refreshModels">刷新模型列表</button>
             </div>
             <datalist id="model-list"></datalist>
-            <p class="hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。</p>
+            <p class="hint" data-i18n="settings.llm.model.hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。</p>
           </div>
           <div class="form-group">
-            <label for="systemPrompt">自定义 System Prompt（可选）</label>
-            <textarea id="systemPrompt" rows="4" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
-            <p class="hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
+            <label for="systemPrompt" data-i18n="settings.llm.systemPrompt">自定义 System Prompt（可选）</label>
+            <textarea id="systemPrompt" rows="4" data-i18n-placeholder="settings.llm.systemPrompt.ph" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
+            <p class="hint" data-i18n="settings.llm.systemPrompt.hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
           </div>
         </div>
       </details>
 
       <!-- TTS 语音合成配置 -->
       <details class="config-details">
-        <summary class="config-summary">TTS 语音合成配置</summary>
+        <summary class="config-summary" data-i18n="settings.tts">TTS 语音合成配置</summary>
         <div class="config-fields">
           <div class="form-group">
-            <label for="ttsAppId">App ID</label>
-            <input type="text" id="ttsAppId" placeholder="火山引擎控制台获取的 App ID" autocomplete="off">
+            <label for="ttsAppId" data-i18n="settings.tts.appId">App ID</label>
+            <input type="text" id="ttsAppId" data-i18n-placeholder="settings.tts.appId.ph" placeholder="火山引擎控制台获取的 App ID" autocomplete="off">
           </div>
           <div class="form-group">
-            <label for="ttsAccessKey">Access Token</label>
-            <input type="password" id="ttsAccessKey" placeholder="火山引擎控制台获取的 Access Token" autocomplete="off">
+            <label for="ttsAccessKey" data-i18n="settings.tts.accessKey">Access Token</label>
+            <input type="password" id="ttsAccessKey" data-i18n-placeholder="settings.tts.accessKey.ph" placeholder="火山引擎控制台获取的 Access Token" autocomplete="off">
           </div>
           <div class="form-group">
-            <label for="ttsResourceId">Resource ID</label>
-            <input type="text" id="ttsResourceId" placeholder="seed-tts-2.0">
-            <p class="hint">默认 seed-tts-2.0（豆包语音合成模型2.0）。</p>
+            <label for="ttsResourceId" data-i18n="settings.tts.resourceId">Resource ID</label>
+            <input type="text" id="ttsResourceId" data-i18n-placeholder="settings.tts.resourceId.ph" placeholder="seed-tts-2.0">
+            <p class="hint" data-i18n="settings.tts.resourceId.hint">默认 seed-tts-2.0（豆包语音合成模型2.0）。</p>
           </div>
           <div class="form-group">
-            <label for="ttsSpeaker">音色</label>
-            <input type="text" id="ttsSpeaker" placeholder="zh_female_vv_uranus_bigtts">
-            <p class="hint">默认 zh_female_vv_uranus_bigtts。更多音色见<a href="https://www.volcengine.com/docs/6561/1257544" target="_blank">音色列表</a>。</p>
+            <label for="ttsSpeaker" data-i18n="settings.tts.speaker">音色</label>
+            <input type="text" id="ttsSpeaker" data-i18n-placeholder="settings.tts.speaker.ph" placeholder="zh_female_vv_uranus_bigtts">
+            <p class="hint" data-i18n-html="settings.tts.speaker.hint">默认 zh_female_vv_uranus_bigtts。更多音色见<a href="https://www.volcengine.com/docs/6561/1257544" target="_blank">音色列表</a>。</p>
           </div>
           <label class="toggle-row">
-            <span>AI 回复后自动朗读</span>
+            <span data-i18n="settings.tts.autoPlay">AI 回复后自动朗读</span>
             <input type="checkbox" id="ttsAutoPlay">
           </label>
         </div>
@@ -116,45 +123,45 @@
 
       <!-- OCR 文字识别配置 -->
       <details class="config-details">
-        <summary class="config-summary">OCR 文字识别配置</summary>
+        <summary class="config-summary" data-i18n="settings.ocr">OCR 文字识别配置</summary>
         <div class="config-fields">
           <div class="form-group">
-            <label for="ocrApiKey">API Key</label>
-            <input type="password" id="ocrApiKey" placeholder="智谱 AI 开放平台获取的 API Key" autocomplete="off">
-            <p class="hint">用于 GLM-OCR 文字识别服务。前往 <a href="https://open.bigmodel.cn" target="_blank">open.bigmodel.cn</a> 获取 API Key。</p>
+            <label for="ocrApiKey" data-i18n="settings.ocr.apiKey">API Key</label>
+            <input type="password" id="ocrApiKey" data-i18n-placeholder="settings.ocr.apiKey.ph" placeholder="智谱 AI 开放平台获取的 API Key" autocomplete="off">
+            <p class="hint" data-i18n="settings.ocr.apiKey.hint">用于 GLM-OCR 文字识别服务。前往 <a href="https://open.bigmodel.cn" target="_blank">open.bigmodel.cn</a> 获取 API Key。</p>
           </div>
         </div>
       </details>
 
       <!-- 推荐追问 -->
       <details class="config-details">
-        <summary class="config-summary">推荐追问</summary>
+        <summary class="config-summary" data-i18n="settings.suggest">推荐追问</summary>
         <div class="config-fields">
           <label class="toggle-row">
-            <span>AI 回复后自动生成推荐问题</span>
+            <span data-i18n="settings.suggest.toggle">AI 回复后自动生成推荐问题</span>
             <input type="checkbox" id="suggestQuestions" checked>
           </label>
         </div>
       </details>
 
-      <button id="saveBtn" class="primary-btn">保存设置</button>
+      <button id="saveBtn" class="primary-btn" data-i18n="settings.save">保存设置</button>
     </section>
 
     <!-- 快捷指令 -->
     <section class="settings-section">
-      <h2 class="section-title">快捷指令</h2>
-      <p class="hint">配置快捷指令后，在聊天框输入 <code>/</code> 即可快速调用。修改即时生效。</p>
+      <h2 class="section-title" data-i18n="settings.commands">快捷指令</h2>
+      <p class="hint" data-i18n-html="settings.commands.hint">配置快捷指令后，在聊天框输入 <code>/</code> 即可快速调用。修改即时生效。</p>
       <div id="quickCommandsList" class="quick-commands-list"></div>
-      <button id="addCommandBtn" class="add-command-btn" type="button">+ 添加指令</button>
+      <button id="addCommandBtn" class="add-command-btn" type="button" data-i18n="settings.commands.add">+ 添加指令</button>
     </section>
 
     <!-- 数据管理 -->
     <section class="settings-section">
-      <h2 class="section-title">数据管理</h2>
-      <p class="hint">导出所有设置（大模型配置、TTS 配置、快捷指令）为 JSON 文件备份，或从备份文件导入恢复。</p>
+      <h2 class="section-title" data-i18n="settings.data">数据管理</h2>
+      <p class="hint" data-i18n="settings.data.hint">导出所有设置（大模型配置、TTS 配置、快捷指令）为 JSON 文件备份，或从备份文件导入恢复。</p>
       <div class="import-export-actions">
-        <button id="exportBtn" class="ie-btn export-btn" type="button">导出设置</button>
-        <button id="importBtn" class="ie-btn import-btn" type="button">导入设置</button>
+        <button id="exportBtn" class="ie-btn export-btn" type="button" data-i18n="settings.data.export">导出设置</button>
+        <button id="importBtn" class="ie-btn import-btn" type="button" data-i18n="settings.data.import">导入设置</button>
         <input type="file" id="importFile" accept=".json" style="display:none">
       </div>
     </section>
@@ -162,6 +169,7 @@
     <div id="status" class="status"></div>
   </div>
 
+  <script src="../i18n.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

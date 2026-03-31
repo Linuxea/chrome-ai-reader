@@ -48,7 +48,7 @@ function renderCommandPopup(filtered) {
   commandPopup.classList.remove('hidden');
 
   if (filtered.length === 0) {
-    commandPopup.innerHTML = '<div class="command-popup-empty">无匹配的快捷指令</div>';
+    commandPopup.innerHTML = `<div class="command-popup-empty">${t('cmd.noMatch')}</div>`;
     return;
   }
 

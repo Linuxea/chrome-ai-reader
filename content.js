@@ -37,7 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } catch (e) {
       sendResponse({
         success: false,
-        error: '页面内容提取失败: ' + e.message
+        error: 'Failed to extract page content: ' + e.message
       });
     }
     return true; // 异步 sendResponse

@@ -1,16 +1,14 @@
 // service_worker.js — 后台服务：调用 OpenAI API
 
-// 点击扩展图标时打开侧边栏
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
 });
 
-// 流式调用 OpenAI API
 async function callOpenAI(messages, port) {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']);
 
   if (!apiKey) {
-    port.postMessage({ type: 'error', error: '请先在设置页面配置 API Key' });
+    port.postMessage({ type: 'error', errorKey: 'error.noApiKey' });
     return;
   }
 
@@ -33,7 +31,7 @@ async function callOpenAI(messages, port) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `API 请求失败 (${response.status})`);
+      throw new Error(errorData.error?.message || `API request failed (${response.status})`);
     }
 
     const reader = response.body.getReader();
@@ -68,7 +66,7 @@ async function callOpenAI(messages, port) {
             port.postMessage({ type: 'chunk', content: delta.content });
           }
         } catch {
-          // 跳过无法解析的行
+          // skip
         }
       }
     }
@@ -79,15 +77,11 @@ async function callOpenAI(messages, port) {
   }
 }
 
-// 流式调用火山引擎 TTS API（SSE 格式）
 async function callTTS(text, port) {
-  console.log('[TTS SW] callTTS called, text length:', text.length);
   const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker']);
-  console.log('[TTS SW] config loaded, has appId:', !!config.ttsAppId, 'has accessKey:', !!config.ttsAccessKey);
 
   if (!config.ttsAppId || !config.ttsAccessKey) {
-    console.error('[TTS SW] missing config');
-    port.postMessage({ type: 'error', error: '请先在设置页面配置 TTS 语音合成' });
+    port.postMessage({ type: 'error', errorKey: 'error.noTtsConfig' });
     return;
   }
 
@@ -114,18 +108,15 @@ async function callTTS(text, port) {
       })
     });
 
-    console.log('[TTS SW] API response status:', response.status);
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      console.error('[TTS SW] API error response:', errorText.slice(0, 500));
-      throw new Error(`TTS 请求失败 (${response.status})${errorText ? ': ' + errorText.slice(0, 200) : ''}`);
+      throw new Error(`TTS request failed (${response.status})${errorText ? ': ' + errorText.slice(0, 200) : ''}`);
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let receivedAudio = false;
-    let chunkCount = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -133,7 +124,6 @@ async function callTTS(text, port) {
 
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE 事件以 \n\n 分隔
       const events = buffer.split('\n\n');
       buffer = events.pop() || '';
 
@@ -156,48 +146,40 @@ async function callTTS(text, port) {
           const parsed = JSON.parse(eventData);
 
           if (parsed.code && parsed.code !== 0 && parsed.code !== 20000000) {
-            port.postMessage({ type: 'error', error: parsed.message || `TTS 错误 (code: ${parsed.code})` });
+            port.postMessage({ type: 'error', errorKey: 'error.ttsError', error: parsed.message || `TTS error (code: ${parsed.code})` });
             return;
           }
 
           if (eventType === '352' && parsed.data) {
             receivedAudio = true;
-            console.log('[TTS SW] sending chunk, data length:', parsed.data.length);
             port.postMessage({ type: 'chunk', data: parsed.data });
           } else if (eventType === '153') {
-            console.error('[TTS SW] SessionFailed:', parsed.message);
-            port.postMessage({ type: 'error', error: parsed.message || 'TTS 合成失败' });
+            port.postMessage({ type: 'error', errorKey: 'error.ttsSynthFailed', error: parsed.message || 'TTS synthesis failed' });
             return;
           } else if (eventType === '152' && receivedAudio) {
-            console.log('[TTS SW] SessionFinish (done), total chunks sent');
             port.postMessage({ type: 'done' });
             return;
           } else {
-            console.log('[TTS SW] unhandled event:', eventType, 'data:', eventData.slice(0, 100));
-            // 只在已收到音频数据后才将 152 视为完成信号
-            // （火山引擎可能先发 152 表示流开始，再发 352 音频数据，最后再发 152 表示结束）
             port.postMessage({ type: 'done' });
             return;
           }
         } catch {
-          // 跳过无法解析的事件
+          // skip
         }
       }
     }
 
-    // 流正常结束但未收到 152 事件
     port.postMessage({ type: 'done' });
   } catch (e) {
     try { port.postMessage({ type: 'error', error: e.message }); } catch {}
   }
 }
 
-// 生成推荐追问（流式）
 async function callSuggestQuestions(messages, port) {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']);
 
   if (!apiKey) {
-    port.postMessage({ type: 'error', error: '未配置 API Key，无法生成推荐问题' });
+    port.postMessage({ type: 'error', errorKey: 'error.noApiKeySuggest' });
     return;
   }
 
@@ -220,7 +202,7 @@ async function callSuggestQuestions(messages, port) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `API 请求失败 (${response.status})`);
+      throw new Error(errorData.error?.message || `API request failed (${response.status})`);
     }
 
     const reader = response.body.getReader();
@@ -252,7 +234,7 @@ async function callSuggestQuestions(messages, port) {
             port.postMessage({ type: 'chunk', content: delta.content });
           }
         } catch {
-          // 跳过无法解析的行
+          // skip
         }
       }
     }
@@ -263,7 +245,6 @@ async function callSuggestQuestions(messages, port) {
   }
 }
 
-// 监听来自 side_panel 的长连接
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'ai-chat') {
     port.onMessage.addListener(async (msg) => {
@@ -286,7 +267,6 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 });
 
-// 消息处理：选区变化中转 + 模型列表请求
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'selectionChanged' && !msg.forwarded) {
     chrome.runtime.sendMessage({
@@ -294,9 +274,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       text: msg.text,
       tabId: sender.tab?.id,
       forwarded: true
-    }).catch(() => {
-      // side panel 未打开时 sendMessage 会报错，静默忽略
-    });
+    }).catch(() => {});
   }
 
   if (msg.action === 'fetchModels') {
@@ -309,7 +287,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     })
     .then(res => {
-      if (!res.ok) throw new Error(`获取模型列表失败 (${res.status})`);
+      if (!res.ok) throw new Error(`Failed to fetch models (${res.status})`);
       return res.json();
     })
     .then(data => {
@@ -320,15 +298,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: false, error: e.message });
     });
 
-    // 返回 true 表示异步发送 sendResponse
     return true;
   }
 
-  // OCR 文字识别（智谱 GLM-OCR）
   if (msg.action === 'ocrParse') {
     chrome.storage.sync.get('ocrApiKey', (config) => {
       if (!config.ocrApiKey) {
-        sendResponse({ success: false, error: '请先在设置页面配置 OCR API Key' });
+        sendResponse({ success: false, errorKey: 'error.noOcrApiKey' });
         return;
       }
 
@@ -344,7 +320,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         })
       })
       .then(res => {
-        if (!res.ok) return res.json().then(d => { throw new Error(d.error?.message || `OCR 请求失败 (${res.status})`); });
+        if (!res.ok) return res.json().then(d => { throw new Error(d.error?.message || `OCR request failed (${res.status})`); });
         return res.json();
       })
       .then(data => {

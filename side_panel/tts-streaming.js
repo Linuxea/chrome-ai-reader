@@ -345,7 +345,7 @@ function addTTSButton(msgEl) {
   // 复制按钮
   const copyBtn = document.createElement('button');
   copyBtn.className = 'ai-action-btn';
-  copyBtn.title = '复制';
+  copyBtn.title = t('action.copy');
   copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
 
   copyBtn.addEventListener('click', () => {
@@ -353,8 +353,8 @@ function addTTSButton(msgEl) {
     const text = contentEl ? contentEl.textContent : msgEl.textContent;
     if (text && text.trim()) {
       navigator.clipboard.writeText(text.trim()).then(() => {
-        copyBtn.title = '已复制';
-        setTimeout(() => { copyBtn.title = '复制'; }, 1500);
+        copyBtn.title = t('action.copied');
+        setTimeout(() => { copyBtn.title = t('action.copy'); }, 1500);
       });
     }
   });
@@ -364,7 +364,7 @@ function addTTSButton(msgEl) {
   // TTS 按钮
   const btn = document.createElement('button');
   btn.className = 'tts-btn';
-  btn.title = '朗读';
+  btn.title = t('action.tts');
   btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
 
   btn.addEventListener('click', () => handleTTSButtonClick(msgEl));
