@@ -27,7 +27,15 @@ function getDisplayMessages() {
     if (el.classList.contains('message-user')) {
       messages.push({ role: 'user', content: el.textContent });
     } else if (el.classList.contains('message-ai')) {
-      messages.push({ role: 'assistant', content: el.innerHTML });
+      if (el.dataset.type === 'outline') {
+        messages.push({
+          role: 'assistant',
+          content: el.dataset.json || el.innerHTML,
+          type: 'outline'
+        });
+      } else {
+        messages.push({ role: 'assistant', content: el.innerHTML });
+      }
     }
   });
   return messages;
@@ -106,7 +114,18 @@ async function loadChat(id) {
       div.textContent = msg.content;
     } else if (msg.role === 'assistant') {
       div.className = 'message message-ai';
-      div.innerHTML = msg.content;
+      if (msg.type === 'outline') {
+        const outlineEl = renderOutlineFromJSON(msg.content);
+        if (outlineEl) {
+          div.appendChild(outlineEl);
+          div.dataset.type = 'outline';
+          div.dataset.json = msg.content;
+        } else {
+          div.innerHTML = marked.parse(msg.content);
+        }
+      } else {
+        div.innerHTML = msg.content;
+      }
     }
     chatArea.appendChild(div);
   });
@@ -219,6 +238,16 @@ async function exportChatAsMarkdown(chatData) {
     if (msg.role === 'user') {
       md += '## ' + t('chat.user') + '\n\n' + msg.content + '\n\n';
     } else if (msg.role === 'assistant') {
+      if (msg.type === 'outline') {
+        try {
+          const data = JSON.parse(msg.content);
+          if (data && data.title && data.sections) {
+            md += '## ' + t('chat.ai') + '\n\n' + outlineToMarkdown(data) + '\n\n---\n\n';
+            assistantIdx++;
+            continue;
+          }
+        } catch(e) {}
+      }
       const raw = assistantIdx < assistantEntries.length
         ? assistantEntries[assistantIdx].content
         : stripHtml(msg.content);
