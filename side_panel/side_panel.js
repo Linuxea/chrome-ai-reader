@@ -11,7 +11,7 @@ const historyPanel = document.getElementById('historyPanel');
 const historyBackBtn = document.getElementById('historyBackBtn');
 const historyList = document.getElementById('historyList');
 const actionBtns = document.querySelectorAll('.action-btn');
-const themeToggleBtn = document.getElementById('themeToggleBtn');
+// themeToggleBtn declared in theme.js
 const quotePreview = document.getElementById('quotePreview');
 const quoteText = document.getElementById('quoteText');
 const quoteClose = document.getElementById('quoteClose');
@@ -62,43 +62,10 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   if (tabs[0]) activeTabId = tabs[0].id;
 });
 
-// === 夜间模式 ===
-
-function applyTheme(dark, themeName) {
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  document.documentElement.setAttribute('data-theme-name', themeName || 'sujian');
-  const moonIcon = themeToggleBtn.querySelector('.theme-icon-moon');
-  const sunIcon = themeToggleBtn.querySelector('.theme-icon-sun');
-  if (dark) {
-    moonIcon.style.display = 'none';
-    sunIcon.style.display = '';
-  } else {
-    moonIcon.style.display = '';
-    sunIcon.style.display = 'none';
-  }
-}
-
-chrome.storage.sync.get(['darkMode', 'themeName'], (data) => {
-  applyTheme(!!data.darkMode, data.themeName || 'sujian');
-});
-
-themeToggleBtn.addEventListener('click', () => {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const newDark = !isDark;
-  const currentTheme = document.documentElement.getAttribute('data-theme-name') || 'sujian';
-  applyTheme(newDark, currentTheme);
-  chrome.storage.sync.set({ darkMode: newDark });
-});
+// === 夜间模式 ===（已拆分至 theme.js）
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'sync') {
-    const darkMode = changes.darkMode;
-    const themeName = changes.themeName;
-    if (darkMode || themeName) {
-      const isDark = darkMode ? !!darkMode.newValue : document.documentElement.getAttribute('data-theme') === 'dark';
-      const currentTheme = themeName ? themeName.newValue : document.documentElement.getAttribute('data-theme-name') || 'sujian';
-      applyTheme(isDark, currentTheme);
-    }
     if (changes.systemPrompt) {
       customSystemPrompt = changes.systemPrompt.newValue || '';
     }
