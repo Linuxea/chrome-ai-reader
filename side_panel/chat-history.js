@@ -244,7 +244,7 @@ async function exportChatAsMarkdown(chatData) {
           if (data && data.title && data.sections) {
             md += '## ' + t('chat.ai') + '\n\n' + outlineToMarkdown(data) + '\n\n---\n\n';
             assistantIdx++;
-            continue;
+            return;
           }
         } catch(e) {}
       }
