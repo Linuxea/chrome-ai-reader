@@ -405,6 +405,11 @@ async function extractPageContent() {
 async function handleQuickAction(action) {
   if (isGenerating) return;
 
+  if (action === 'outline') {
+    generateOutline();
+    return;
+  }
+
   if (ocrRunning > 0) {
     appendMessage('error', t('error.ocrRunning'));
     return;
@@ -429,11 +434,6 @@ async function handleQuickAction(action) {
     translate: t('action.translate'),
     keyInfo: t('action.keyInfo')
   };
-
-  if (action === 'outline') {
-    generateOutline();
-    return;
-  }
 
   const ocrContext = buildOcrContext();
   const ocrCount = ocrResults.length;
