@@ -90,6 +90,17 @@ const TRANSLATIONS = {
     'action.copied': '已复制',
     'action.tts': '朗读',
     'action.export': '导出',
+    'action.outline': '大纲',
+    'outline.title': '文章大纲',
+    'outline.copySuccess': '大纲已复制',
+    'outline.export': '导出 Markdown',
+    'outline.noContent': '请先打开一个网页再生成大纲',
+    'outline.parseError': '大纲解析失败，请重试',
+    'outline.tooShort': '内容太短，无法生成有意义的大纲',
+    'outline.copy': '复制大纲',
+    'outline.label.summary': '核心论点',
+    'outline.label.data': '关键数据',
+    'outline.label.quote': '原文引用',
 
     'error.noApiKey': '请先在设置页面配置 API Key',
     'error.noApiKeySave': '请输入 API Key',
@@ -149,6 +160,7 @@ const TRANSLATIONS = {
     'prompt.suggest': '你是一个阅读助手。基于对话历史，生成 3 个有深度的后续问题，帮助用户更深入地理解文章内容。每行一个问题，不要编号，不要额外解释。',
     'prompt.suggestUser': '用户问题：',
     'prompt.suggestAI': 'AI 回复：',
+    'prompt.outline': '你是一个内容分析专家。请将文章内容分析为结构化大纲。\n\n要求：\n1. 生成 2-5 个一级标题，每个一级标题下可有 0-4 个二级标题\n2. 为每个标题节点提供：\n   - "summary": 核心论点（1-2 句话）\n   - "data": 关键数据点列表（数字、指标、对比；若无则为空数组）\n   - "quote": 最相关的原文引用（一段原文）\n3. 标题应反映文章的逻辑结构，而非简单复述原文标题\n\n请严格按以下 JSON 格式返回，不要包含任何其他文字：\n{\n  "title": "文章主旨（一句话）",\n  "sections": [\n    {\n      "heading": "标题",\n      "summary": "...",\n      "data": ["...", "..."],\n      "quote": "...",\n      "children": [\n        {\n          "heading": "子标题",\n          "summary": "...",\n          "data": [],\n          "quote": "...",\n          "children": []\n        }\n      ]\n    }\n  ]\n}',
   },
 
   en: {
@@ -242,6 +254,17 @@ const TRANSLATIONS = {
     'action.copied': 'Copied',
     'action.tts': 'Read Aloud',
     'action.export': 'Export',
+    'action.outline': 'Outline',
+    'outline.title': 'Article Outline',
+    'outline.copySuccess': 'Outline copied',
+    'outline.export': 'Export Markdown',
+    'outline.noContent': 'Please open a webpage first',
+    'outline.parseError': 'Failed to parse outline, please retry',
+    'outline.tooShort': 'Content is too short for a meaningful outline',
+    'outline.copy': 'Copy Outline',
+    'outline.label.summary': 'Core Argument',
+    'outline.label.data': 'Key Data',
+    'outline.label.quote': 'Original Quote',
 
     'error.noApiKey': 'Please configure API Key in Settings',
     'error.noApiKeySave': 'Please enter an API Key',
@@ -301,6 +324,7 @@ const TRANSLATIONS = {
     'prompt.suggest': 'You are a reading assistant. Based on the conversation history, generate 3 in-depth follow-up questions to help the user better understand the article. One question per line, no numbering, no extra explanation.',
     'prompt.suggestUser': 'User question: ',
     'prompt.suggestAI': 'AI response: ',
+    'prompt.outline': 'You are a content analysis expert. Analyze the article content into a structured outline.\n\nRequirements:\n1. Generate 2-5 top-level sections, each with 0-4 subsections\n2. For each section node, provide:\n   - "summary": core argument (1-2 sentences)\n   - "data": key data points list (numbers, metrics, comparisons; empty array if none)\n   - "quote": most relevant original text passage (one paragraph)\n3. Section headings should reflect the article\'s logical structure, not simply restate original headings\n\nReturn strictly in the following JSON format, with no other text:\n{\n  "title": "Article main thesis (one sentence)",\n  "sections": [\n    {\n      "heading": "Section title",\n      "summary": "...",\n      "data": ["...", "..."],\n      "quote": "...",\n      "children": [\n        {\n          "heading": "Subsection title",\n          "summary": "...",\n          "data": [],\n          "quote": "...",\n          "children": []\n        }\n      ]\n    }\n  ]\n}',
   }
 };
 

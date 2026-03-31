@@ -4,7 +4,7 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
 });
 
-async function callOpenAI(messages, port) {
+async function callOpenAI(messages, port, options) {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']);
 
   if (!apiKey) {
@@ -21,12 +21,18 @@ async function callOpenAI(messages, port) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model: modelName || 'deepseek-chat',
-        messages: messages,
-        stream: true,
-        temperature: 0.7
-      })
+      body: JSON.stringify((() => {
+        const requestBody = {
+          model: modelName || 'deepseek-chat',
+          messages: messages,
+          stream: true,
+          temperature: 0.7
+        };
+        if (options?.response_format) {
+          requestBody.response_format = options.response_format;
+        }
+        return requestBody;
+      })())
     });
 
     if (!response.ok) {
@@ -249,7 +255,7 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'ai-chat') {
     port.onMessage.addListener(async (msg) => {
       if (msg.type === 'chat') {
-        await callOpenAI(msg.messages, port);
+        await callOpenAI(msg.messages, port, { response_format: msg.response_format });
       }
     });
   } else if (port.name === 'tts') {
