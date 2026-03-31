@@ -214,6 +214,8 @@
         setTimeout(function() {
           copyBtn.textContent = t('outline.copy');
         }, 1500);
+      }).catch(function() {
+        // clipboard write failed — silently ignore
       });
     });
 
@@ -264,8 +266,12 @@
 
     if (!pageContent) {
       extractPageContent().then(function() {
-        if (!pageContent || pageContent.trim().length < 200) {
+        if (!pageContent) {
           appendMessage('error', t('outline.noContent'));
+          return;
+        }
+        if (pageContent.trim().length < 200) {
+          appendMessage('error', t('outline.tooShort'));
           return;
         }
         doGenerateOutline();
@@ -276,7 +282,7 @@
     }
 
     if (pageContent.trim().length < 200) {
-      appendMessage('error', t('outline.noContent'));
+      appendMessage('error', t('outline.tooShort'));
       return;
     }
 
@@ -302,21 +308,16 @@
     msgEl.appendChild(renderOutlineSkeleton());
     scrollToBottom();
 
-    // Build messages
+    // Build messages — standalone request, no conversation history
     var messages = [];
     var context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
-    var systemContent = t('prompt.outline');
-    messages.push({ role: 'system', content: systemContent });
+    messages.push({ role: 'system', content: t('prompt.outline') });
 
     if (customSystemPrompt) {
       messages.push({ role: 'system', content: customSystemPrompt });
     }
 
-    messages.push(...conversationHistory);
-
-    var userContent = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
-    conversationHistory.push({ role: 'user', content: userContent });
-    messages.push({ role: 'user', content: userContent });
+    messages.push({ role: 'user', content: context });
 
     // Connect to ai-chat port with response_format for JSON output
     var port = chrome.runtime.connect({ name: 'ai-chat' });
@@ -325,6 +326,14 @@
       type: 'chat',
       messages: messages,
       response_format: { type: 'json_object' }
+    });
+
+    // Safety net: reset lock if port disconnects unexpectedly
+    port.onDisconnect.addListener(function() {
+      if (isGenerating) {
+        isGenerating = false;
+        setButtonsDisabled(false);
+      }
     });
 
     var fullText = '';
@@ -346,6 +355,7 @@
           msgEl.appendChild(outlineEl);
           msgEl.dataset.type = 'outline';
           msgEl.dataset.json = fullText;
+          conversationHistory.push({ role: 'user', content: '[大纲请求] ' + context.slice(0, 100) });
           conversationHistory.push({ role: 'assistant', content: fullText, type: 'outline' });
         } else {
           // Fallback to Markdown rendering
