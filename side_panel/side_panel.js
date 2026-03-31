@@ -430,6 +430,11 @@ async function handleQuickAction(action) {
     keyInfo: t('action.keyInfo')
   };
 
+  if (action === 'outline') {
+    generateOutline();
+    return;
+  }
+
   const ocrContext = buildOcrContext();
   const ocrCount = ocrResults.length;
   const imageUris = collectImageDataUris();
