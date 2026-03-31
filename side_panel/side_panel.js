@@ -65,13 +65,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 // === 夜间模式 ===（已拆分至 theme.js）
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync') {
-    if (changes.systemPrompt) {
-      customSystemPrompt = changes.systemPrompt.newValue || '';
-    }
-    if (changes.modelName) {
-      updateModelStatusBar(changes.modelName.newValue);
-    }
+  if (area === 'sync' && changes.systemPrompt) {
+    customSystemPrompt = changes.systemPrompt.newValue || '';
   }
 });
 
@@ -473,17 +468,7 @@ async function callAI(messages) {
 
 // === 推荐追问 ===（已拆分至 suggest-questions.js）
 
-// === 模型状态栏 ===
-
-const modelStatusBar = document.getElementById('modelStatusBar');
-
-function updateModelStatusBar(name) {
-  modelStatusBar.textContent = t('sidebar.modelStatus') + (name || 'deepseek-chat');
-}
-
-chrome.storage.sync.get(['modelName'], (data) => {
-  updateModelStatusBar(data.modelName);
-});
+// === 模型状态栏 ===（已拆分至 model-status.js）
 
 // === 初始化语言 ===
 loadLanguage();
