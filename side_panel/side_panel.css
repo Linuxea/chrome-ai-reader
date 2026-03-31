@@ -30,6 +30,7 @@
   --focus-ring: rgba(192, 120, 66, 0.1);
   --quote-bubble-border: rgba(255, 253, 248, 0.4);
   --quote-bubble-text: rgba(255, 253, 248, 0.75);
+  --primary-rgb: 192, 120, 66;
 }
 
 [data-theme-name="sujian"][data-theme="dark"] {
@@ -55,6 +56,7 @@
   --focus-ring: rgba(219, 160, 106, 0.08);
   --quote-bubble-border: rgba(23, 20, 18, 0.4);
   --quote-bubble-text: rgba(23, 20, 18, 0.75);
+  --primary-rgb: 219, 160, 106;
 }
 
 /* 海洋 — Ocean */
@@ -81,6 +83,7 @@
   --focus-ring: rgba(58, 123, 213, 0.1);
   --quote-bubble-border: rgba(244, 248, 252, 0.4);
   --quote-bubble-text: rgba(244, 248, 252, 0.75);
+  --primary-rgb: 58, 123, 213;
 }
 
 [data-theme-name="ocean"][data-theme="dark"] {
@@ -106,6 +109,7 @@
   --focus-ring: rgba(90, 156, 240, 0.08);
   --quote-bubble-border: rgba(18, 26, 38, 0.4);
   --quote-bubble-text: rgba(18, 26, 38, 0.75);
+  --primary-rgb: 90, 156, 240;
 }
 
 /* 森林 — Forest */
@@ -132,6 +136,7 @@
   --focus-ring: rgba(90, 138, 80, 0.1);
   --quote-bubble-border: rgba(248, 250, 246, 0.4);
   --quote-bubble-text: rgba(248, 250, 246, 0.75);
+  --primary-rgb: 90, 138, 80;
 }
 
 [data-theme-name="forest"][data-theme="dark"] {
@@ -157,6 +162,7 @@
   --focus-ring: rgba(125, 184, 122, 0.08);
   --quote-bubble-border: rgba(20, 24, 18, 0.4);
   --quote-bubble-text: rgba(20, 24, 18, 0.75);
+  --primary-rgb: 125, 184, 122;
 }
 
 body {
@@ -959,4 +965,32 @@ body {
 @keyframes suggest-pulse {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 0.7; }
+}
+
+/* ===== Drag & Drop Overlay ===== */
+
+body.drag-over::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 2px dashed var(--primary);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+body.drag-over::after {
+  content: attr(data-drop-hint);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 12px 24px;
+  background: var(--primary);
+  color: white;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 1001;
+  pointer-events: none;
 }
