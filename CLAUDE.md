@@ -19,10 +19,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 No ES modules — scripts share a single global scope, loaded in dependency order via `<script>` tags. The side panel loads:
 
 ```
-i18n.js → marked.min.js → chat-history.js → quick-commands.js → ui-helpers.js → tts-streaming.js → side_panel.js
+i18n.js → marked.min.js → chat-history.js → quick-commands.js → ui-helpers.js → theme.js → tts-streaming.js → outline.js → ocr.js → suggest-questions.js → model-status.js → side_panel.js → ai-chat.js → image-input.js
 ```
 
-`i18n.js` must load first (defines `t()`, `loadLanguage()`, `setLanguage()`). `side_panel.js` defines shared globals (DOM refs, state variables, `escapeHtml`, `TRUNCATE_LIMITS`). Helper scripts consume those globals at call time. Load order in HTML is the only thing ensuring symbols exist when referenced.
+`i18n.js` must load first (defines `t()`, `loadLanguage()`, `setLanguage()`). `side_panel.js` defines shared globals (DOM refs, state variables, `safeTruncate`, `TRUNCATE_LIMITS`). `ui-helpers.js` defines `escapeHtml` and DOM helper functions. `ai-chat.js` contains the core AI conversation logic and must load after `side_panel.js` (which declares the state variables it reads/writes). Helper scripts consume those globals at call time. Load order in HTML is the only thing ensuring symbols exist when referenced.
 
 ### Key files
 
@@ -32,11 +32,17 @@ i18n.js → marked.min.js → chat-history.js → quick-commands.js → ui-helpe
 | `i18n.js` | Internationalization: `TRANSLATIONS` object (zh/en), `t(key, params)` function, `loadLanguage()` from storage, auto-applies via `data-i18n`/`data-i18n-html`/`data-i18n-placeholder`/`data-i18n-title` attributes |
 | `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
 | `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`, `tts`, `suggest`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads config from `chrome.storage.sync` |
-| `side_panel/side_panel.js` | Main orchestrator. Defines shared state variables, manages page content extraction, conversation flow, quick-action prompts (adapts based on selection), streaming display, OCR image handling |
-| `side_panel/tts-streaming.js` | TTS logic extracted from side_panel.js: sentence queueing, Markdown stripping, MediaSource streaming, auto-play toggle. State vars prefixed with `tts` (e.g., `ttsPort`, `ttsPlaying`, `ttsSentenceQueue`) |
+| `side_panel/side_panel.js` | Global state declarations, DOM refs, event bindings, small utilities (`safeTruncate`, `updateQuotePreview`). The "spine" that other modules plug into |
+| `side_panel/ai-chat.js` | Core AI conversation logic: `extractPageContent`, `handleQuickAction`, `sendToAI`, `sendMessage`, `retryMessage`, `callAI` (streaming SSE with thinking/reasoning support) |
+| `side_panel/tts-streaming.js` | TTS logic: sentence queueing, Markdown stripping, MediaSource streaming, auto-play toggle. State vars prefixed with `tts` (e.g., `ttsPort`, `ttsPlaying`, `ttsSentenceQueue`) |
 | `side_panel/chat-history.js` | Chat persistence and export: save/load/delete chats, render history list, export as Markdown |
 | `side_panel/quick-commands.js` | Slash-command popup: filter, keyboard navigation, execute. Listens to `chrome.storage.onChanged` for hot-reload |
-| `side_panel/ui-helpers.js` | DOM helpers: append/remove/update messages, scroll management, Markdown rendering, button state toggles |
+| `side_panel/ui-helpers.js` | DOM helpers: `escapeHtml`, append/remove/update messages, scroll management, Markdown rendering, button state toggles |
+| `side_panel/theme.js` | Dark mode toggle and multi-theme management: applies `data-theme`/`data-theme-name` attributes, storage sync |
+| `side_panel/ocr.js` | Image upload, OCR processing, preview management, context building for AI |
+| `side_panel/suggest-questions.js` | Auto-generate follow-up questions after AI response: streaming via `suggest-questions` port |
+| `side_panel/model-status.js` | Model status bar display: reads `modelName` from storage, shows current model |
+| `side_panel/image-input.js` | Image paste and drag-drop handling (IIFE) |
 | `options/options.js` | Settings page with collapsible panels: 大模型配置 + TTS 语音合成配置 (saved via button), 快捷指令 (real-time save), 数据管理 (export/import JSON) |
 
 ### Message flow (the core data paths)
