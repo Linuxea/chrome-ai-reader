@@ -1,5 +1,13 @@
 // ui-helpers.js — 聊天区域 UI 辅助函数
 
+// === 通用工具函数 ===
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 // === UI 辅助函数 ===
 
 function appendMessage(role, content, imageUris) {
