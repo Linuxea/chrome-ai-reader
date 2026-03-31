@@ -80,6 +80,7 @@ const TRANSLATIONS = {
     'sidebar.welcome': '打开任意网页，点击上方按钮或输入问题开始使用。',
     'sidebar.modelStatus': '当前模型：',
     'sidebar.historyEmpty': '暂无历史对话',
+    'sidebar.dropHint': '松开以上传图片',
 
     'action.summarize': '总结',
     'action.translate': '翻译',
@@ -231,6 +232,7 @@ const TRANSLATIONS = {
     'sidebar.welcome': 'Open any webpage, then click a button above or type a question to get started.',
     'sidebar.modelStatus': 'Current model: ',
     'sidebar.historyEmpty': 'No chat history',
+    'sidebar.dropHint': 'Drop to upload image',
 
     'action.summarize': 'Summarize',
     'action.translate': 'Translate',
