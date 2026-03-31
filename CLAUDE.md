@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-小🍐子阅读助手 — a Chrome Extension (Manifest V3) that helps users summarize, translate, extract key information from, and ask questions about the current webpage. The UI is in Chinese. There is no build system — all files are plain HTML/CSS/JS loaded directly by Chrome.
+小🍐子阅读助手 — a Chrome Extension (Manifest V3) that helps users summarize, translate, extract key information from, and ask questions about the current webpage. Supports bilingual UI (Chinese/English). There is no build system — all files are plain HTML/CSS/JS loaded directly by Chrome.
 
 ## Loading & Testing
 
@@ -19,19 +19,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 No ES modules — scripts share a single global scope, loaded in dependency order via `<script>` tags. The side panel loads:
 
 ```
-marked.min.js → chat-history.js → quick-commands.js → ui-helpers.js → side_panel.js
+i18n.js → marked.min.js → chat-history.js → quick-commands.js → ui-helpers.js → tts-streaming.js → side_panel.js
 ```
 
-`side_panel.js` defines shared globals (DOM refs, state variables, `escapeHtml`, `TRUNCATE_LIMITS`). The three helper scripts consume those globals at call time. Load order in HTML is the only thing ensuring symbols exist when referenced.
+`i18n.js` must load first (defines `t()`, `loadLanguage()`, `setLanguage()`). `side_panel.js` defines shared globals (DOM refs, state variables, `escapeHtml`, `TRUNCATE_LIMITS`). Helper scripts consume those globals at call time. Load order in HTML is the only thing ensuring symbols exist when referenced.
 
 ### Key files
 
 | File | Role |
 |------|------|
 | `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
+| `i18n.js` | Internationalization: `TRANSLATIONS` object (zh/en), `t(key, params)` function, `loadLanguage()` from storage, auto-applies via `data-i18n`/`data-i18n-html`/`data-i18n-placeholder`/`data-i18n-title` attributes |
 | `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
-| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`, `tts`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads config from `chrome.storage.sync` |
-| `side_panel/side_panel.js` | Main orchestrator. Defines shared state variables, manages page content extraction, conversation flow, quick-action prompts (adapts based on selection), streaming display, TTS playback via MediaSource Extensions |
+| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`, `tts`, `suggest`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads config from `chrome.storage.sync` |
+| `side_panel/side_panel.js` | Main orchestrator. Defines shared state variables, manages page content extraction, conversation flow, quick-action prompts (adapts based on selection), streaming display, OCR image handling |
+| `side_panel/tts-streaming.js` | TTS logic extracted from side_panel.js: sentence queueing, Markdown stripping, MediaSource streaming, auto-play toggle. State vars prefixed with `tts` (e.g., `ttsPort`, `ttsPlaying`, `ttsSentenceQueue`) |
 | `side_panel/chat-history.js` | Chat persistence and export: save/load/delete chats, render history list, export as Markdown |
 | `side_panel/quick-commands.js` | Slash-command popup: filter, keyboard navigation, execute. Listens to `chrome.storage.onChanged` for hot-reload |
 | `side_panel/ui-helpers.js` | DOM helpers: append/remove/update messages, scroll management, Markdown rendering, button state toggles |
@@ -85,15 +87,25 @@ side_panel.js sends chrome.runtime.sendMessage({ action: 'ocrParse', file: '<url
   → returns { success, data } or { success: false, error }
 ```
 
+**Suggest questions (auto-generate follow-ups):**
+```
+AI response completes in side_panel.js
+  → if suggestQuestionsEnabled, chrome.runtime.connect({ name: 'suggest' }) → service_worker.js
+  → POST to same OpenAI-compatible API with special prompt (generates 3 follow-up questions)
+  → port.postMessage({ type: 'chunk', content }) back to side_panel.js
+  → rendered as clickable suggestion buttons below AI message
+```
+
 ### Communication patterns
 
 - **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
 - **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'thinking', content }` (reasoning model), `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
-- **TTS streaming**: `chrome.runtime.connect` long-lived port named `tts` — `side_panel.js` sends `{ type: 'tts', text }`, receives `{ type: 'chunk', data }` (base64 mp3), `{ type: 'done' }`, or `{ type: 'error', error }`. Audio plays via MediaSource Extensions (MSE) for true streaming playback
+- **TTS streaming**: `chrome.runtime.connect` long-lived port named `tts` — `tts-streaming.js` sends `{ type: 'tts', text }`, receives `{ type: 'chunk', data }` (base64 mp3), `{ type: 'done' }`, or `{ type: 'error', error }`. Audio plays via MediaSource Extensions (MSE) for true streaming playback
+- **Suggest questions**: `chrome.runtime.connect` long-lived port named `suggest` — `side_panel.js` sends `{ type: 'suggest', messages }`, receives `{ type: 'chunk', content }` (one question per line), `{ type: 'done' }`, or `{ type: 'error', error }`
 - **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
 - **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
 - **OCR text extraction**: `chrome.runtime.sendMessage` one-shot — `side_panel.js` sends `{ action: 'ocrParse', file: '<url or data:uri>' }`, `service_worker.js` reads `ocrApiKey` from sync storage, proxies `POST https://open.bigmodel.cn/api/paas/v4/layout-parsing` with `{ model: 'glm-ocr', file }`, returns `{ success, data }` or `{ success: false, error }`. Uses `sendResponse` with `return true` for async response
-- **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, quick commands, and dark mode update in real-time without page reload
+- **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, quick commands, dark mode, theme, and language update in real-time without page reload
 
 ### Volcengine TTS API specifics
 
@@ -112,7 +124,7 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 
 ### Storage
 
-- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `ocrApiKey`, `darkMode`, `themeName` — config synced across devices
+- **`chrome.storage.sync`**: `apiKey`, `apiBase`, `modelName`, `systemPrompt`, `ttsAppId`, `ttsAccessKey`, `ttsResourceId`, `ttsSpeaker`, `ttsAutoPlay`, `ocrApiKey`, `darkMode`, `themeName`, `language` (`'zh'` or `'en'`), `suggestQuestions` (boolean) — config synced across devices
 - **`chrome.storage.local`**: `chatHistories` (up to 50 conversations), `quickCommands` (array of `{ name, prompt }`)
 - Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
 - Settings export/import bundles all sync fields + quickCommands into a versioned JSON file
@@ -127,11 +139,14 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - `selectedText` — current highlighted text from the page (shown in quote preview bar)
 - `activeTabId` — tab ID the side panel is associated with, used to filter selection messages
 - `quickCommands` — cached array of user-defined quick commands from storage
-- TTS state: `ttsPort`, `ttsPlaying`, `ttsDone`, `ttsMediaSource`, `ttsSourceBuffer`, `ttsAudioEl`, `ttsChunkQueue`, `ttsBufferAppending`
+- `suggestQuestionsEnabled` — boolean for auto-generating follow-up questions after AI response
+- `suggestPort` — long-lived port for suggest questions streaming
 - `ocrResults` — array of `{ index, fileName, text }` for OCR-recognized image content (in-memory, cleared on send/new chat)
 - `ocrRunning` — counter for in-progress OCR API calls
 - `imageIndex` — auto-incrementing index for image numbering
 - Content is truncated to ~64000 chars for context and quotes (via `safeTruncate`)
+
+TTS state lives in `tts-streaming.js` (not side_panel.js): `ttsPort`, `ttsPlaying`, `ttsDone`, `ttsMediaSource`, `ttsSourceBuffer`, `ttsAudioEl`, `ttsChunkQueue`, `ttsBufferAppending`, `ttsSentenceQueue`, `ttsTextBuffer`, `ttsSending`, `ttsSentenceCount`, `ttsAutoPlayEnabled`
 
 ### Dark mode (夜间模式)
 
@@ -153,9 +168,24 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - Theme choice is included in export/import JSON via `SYNC_FIELDS`
 - Side panel reads `themeName` from storage and applies it but has no theme picker UI — only the settings page allows selection
 
+### Internationalization (i18n)
+
+- Bilingual support: Chinese (`zh`, default) and English (`en`)
+- `i18n.js` defines `TRANSLATIONS` object with all UI strings keyed by dot-notation (e.g., `'settings.llm.apiKey'`)
+- Translation function: `t(key, params)` — supports placeholder interpolation (e.g., `t('status.modelsLoaded', { n: 5 })` → `"已获取 5 个模型"`)
+- DOM attributes for auto-translation:
+  - `data-i18n="key"` — sets `textContent`
+  - `data-i18n-html="key"` — sets `innerHTML` (for links/hints)
+  - `data-i18n-placeholder="key"` — sets `placeholder`
+  - `data-i18n-title="key"` — sets `title` (tooltip)
+- Language stored in `chrome.storage.sync` as `language` (`'zh'` or `'en'`)
+- `loadLanguage(callback)` reads from storage and applies translations on page load
+- `chrome.storage.onChanged` listener auto-switches language in real-time when changed in settings
+
 ## Conventions
 
-- All user-facing strings are in Chinese
+- UI supports Chinese (default) and English via i18n system — all strings in `TRANSLATIONS` object, no hardcoded UI text
+- Default prompts for quick actions are in Chinese even when UI language is English (user can customize via system prompt)
 - CSS uses CSS custom properties defined in `side_panel.css` and `options.css` for theming; theme selection via `[data-theme-name="..."]` selectors, dark mode via compound `[data-theme-name="..."][data-theme="dark"]` selectors
 - No framework — vanilla JS with direct DOM manipulation
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
@@ -163,4 +193,5 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - TTS button only appears on the latest AI message; clicking while playing stops playback (toggle behavior)
 - TTS stops automatically when user sends a new AI message or starts a new chat
 - `ttsAutoPlay` — boolean in sync storage, when true automatically triggers TTS playback after AI response completes
+- `suggestQuestions` — boolean in sync storage, when true auto-generates 3 follow-up questions after AI response; questions appear as clickable buttons
 - Retry button appears on the latest user message; clicking it truncates conversation from that point and resends the message
