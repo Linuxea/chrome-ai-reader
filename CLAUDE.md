@@ -4,89 +4,128 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-小🍐子阅读助手 — a Chrome Extension (Manifest V3) that helps users summarize, translate, extract key information from, and ask questions about the current webpage. Supports bilingual UI (Chinese/English). There is no build system — all files are plain HTML/CSS/JS loaded directly by Chrome.
+小🍐子阅读助手 — a Chrome Extension (Manifest V3) that helps users summarize, translate, extract key information from, and ask questions about the current webpage. Supports bilingual UI (Chinese/English). Built with Vite — source files use ES Modules in `src/`, build produces a `dist/` directory loaded by Chrome.
 
 ## Loading & Testing
 
-- **Install**: Open `chrome://extensions/` → enable Developer mode → "Load unpacked" → select this directory
-- **No build step, no package manager** — edits to any file take effect after reloading the extension in `chrome://extensions/`
+- **Build**: `npm run build` — runs Vite then Rollup IIFE bundles for content script/service worker
+- **Watch mode**: `npm run dev` — `vite build --watch` for development
+- **Install**: Open `chrome://extensions/` → enable Developer mode → "Load unpacked" → select the `dist/` directory
 - **Configure**: Click the extension icon → settings gear → expand "大模型配置" panel → enter an API Key (and optional API base URL). Defaults to DeepSeek (`https://api.deepseek.com`) with model `deepseek-chat`
 
 ## Architecture
 
-### Module loading and global scope
+### Build system
 
-No ES modules — scripts share a single global scope, loaded in dependency order via `<script>` tags. The side panel loads:
+Vite bundles the extension with two phases:
+
+1. **Vite build** — processes `src/side_panel/index.html` and `src/options/index.html` as entry points. ES modules are bundled into chunks under `dist/assets/`. HTML references are rewritten to point to the bundled output.
+2. **Rollup IIFE** (`build-extension.js`) — bundles `src/content/index.js` and `src/background/service-worker.js` as self-contained IIFE scripts (required because Chrome cannot use ES modules for content scripts or service workers). Output: `dist/content.js` and `dist/background.js`.
+3. **Static assets** — `public/` is copied verbatim to `dist/` (includes `manifest.json`, `icons/`).
+
+### Module loading and dependency layers
+
+Source files use ES Modules (`import`/`export`). Each HTML page has a single `<script type="module">` entry point that pulls in its dependency tree. The side panel has a 5-layer dependency hierarchy:
 
 ```
-i18n.js → marked.min.js → chat-history.js → quick-commands.js → ui-helpers.js → theme.js → tts-streaming.js → outline.js → ocr.js → suggest-questions.js → model-status.js → side_panel.js → ai-chat.js → image-input.js
+Layer 1 — Shared (no deps)
+  src/shared/i18n.js        — TRANSLATIONS, t(), loadLanguage()
+  src/shared/constants.js   — TRUNCATE_LIMITS, safeTruncate(), escapeHtml()
+
+Layer 2 — State (depends on shared)
+  src/side_panel/state.js   — getter/setter for all mutable state, subscribe/notify
+
+Layer 3 — UI (depends on shared + state)
+  src/side_panel/ui/dom-helpers.js  — DOM manipulation, message rendering
+  src/side_panel/ui/theme.js        — dark mode + multi-theme management
+  src/side_panel/ui/model-status.js — model status bar display
+
+Layer 4 — Services (depends on shared + state + UI)
+  src/side_panel/services/ai-chat.js — core AI conversation logic, streaming SSE
+  src/side_panel/services/tts.js     — TTS sentence queueing, MediaSource streaming
+  src/side_panel/services/ocr.js     — image upload, OCR processing
+
+Layer 5 — Features (depends on services + UI + state)
+  src/side_panel/features/chat-history.js      — chat persistence, export
+  src/side_panel/features/quick-commands.js    — slash-command popup
+  src/side_panel/features/suggest-questions.js — auto-generate follow-up questions
+  src/side_panel/features/outline.js           — outline generation
+  src/side_panel/features/image-input.js       — image paste and drag-drop
+
+Entry point:
+  src/side_panel/main.js — orchestrates init order, binds global events
 ```
 
-`i18n.js` must load first (defines `t()`, `loadLanguage()`, `setLanguage()`). `side_panel.js` defines shared globals (DOM refs, state variables, `safeTruncate`, `TRUNCATE_LIMITS`). `ui-helpers.js` defines `escapeHtml` and DOM helper functions. `ai-chat.js` contains the core AI conversation logic and must load after `side_panel.js` (which declares the state variables it reads/writes). Helper scripts consume those globals at call time. Load order in HTML is the only thing ensuring symbols exist when referenced.
+`main.js` initializes layers bottom-up: async inits (language, state) in parallel, then UI, then services, then features, then AI chat (last, to inject feature callbacks and avoid circular deps). Each module exports `init*()` functions that accept callbacks/refs via a config object.
 
 ### Key files
 
 | File | Role |
 |------|------|
-| `manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
-| `i18n.js` | Internationalization: `TRANSLATIONS` object (zh/en), `t(key, params)` function, `loadLanguage()` from storage, auto-applies via `data-i18n`/`data-i18n-html`/`data-i18n-placeholder`/`data-i18n-title` attributes |
-| `content.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
-| `service_worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`, `tts`, `suggest`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads config from `chrome.storage.sync` |
-| `side_panel/side_panel.js` | Global state declarations, DOM refs, event bindings, small utilities (`safeTruncate`, `updateQuotePreview`). The "spine" that other modules plug into |
-| `side_panel/ai-chat.js` | Core AI conversation logic: `extractPageContent`, `handleQuickAction`, `sendToAI`, `sendMessage`, `retryMessage`, `callAI` (streaming SSE with thinking/reasoning support) |
-| `side_panel/tts-streaming.js` | TTS logic: sentence queueing, Markdown stripping, MediaSource streaming, auto-play toggle. State vars prefixed with `tts` (e.g., `ttsPort`, `ttsPlaying`, `ttsSentenceQueue`) |
-| `side_panel/chat-history.js` | Chat persistence and export: save/load/delete chats, render history list, export as Markdown |
-| `side_panel/quick-commands.js` | Slash-command popup: filter, keyboard navigation, execute. Listens to `chrome.storage.onChanged` for hot-reload |
-| `side_panel/ui-helpers.js` | DOM helpers: `escapeHtml`, append/remove/update messages, scroll management, Markdown rendering, button state toggles |
-| `side_panel/theme.js` | Dark mode toggle and multi-theme management: applies `data-theme`/`data-theme-name` attributes, storage sync |
-| `side_panel/ocr.js` | Image upload, OCR processing, preview management, context building for AI |
-| `side_panel/suggest-questions.js` | Auto-generate follow-up questions after AI response: streaming via `suggest-questions` port |
-| `side_panel/model-status.js` | Model status bar display: reads `modelName` from storage, shows current model |
-| `side_panel/image-input.js` | Image paste and drag-drop handling (IIFE) |
-| `options/options.js` | Settings page with collapsible panels: 大模型配置 + TTS 语音合成配置 (saved via button), 快捷指令 (real-time save), 数据管理 (export/import JSON) |
+| `public/manifest.json` | Extension config, permissions (`activeTab`, `sidePanel`, `scripting`, `storage`) |
+| `vite.config.js` | Vite configuration: two HTML entry points (side_panel, options), output to `dist/` |
+| `build-extension.js` | Post-Vite Rollup step: bundles content script and service worker as IIFE |
+| `src/shared/i18n.js` | Internationalization: `TRANSLATIONS` object (zh/en), `t(key, params)` function, `loadLanguage()` from storage, auto-applies via `data-i18n`/`data-i18n-html`/`data-i18n-placeholder`/`data-i18n-title` attributes |
+| `src/shared/constants.js` | Shared utilities: `TRUNCATE_LIMITS`, `safeTruncate()`, `escapeHtml()` |
+| `src/content/index.js` | Content script injected into all pages. Handles `{ action: 'extract' }` messages (Readability.js, fallback to `body.innerText`). Also monitors `selectionchange` with 300ms debounce and sends selected text to service worker |
+| `src/background/service-worker.js` | Background service worker. Opens side panel on icon click. Handles long-lived port connections (`ai-chat`, `tts`, `suggest`) for streaming API calls. Relays `selectionChanged` messages. Proxies `fetchModels` requests from options page to avoid CORS. Reads config from `chrome.storage.sync` |
+| `src/side_panel/state.js` | Centralized state with getter/setter pattern for all mutable state. Includes `subscribe(key, cb)` for reactive notifications on `isGenerating` changes. Async `initState()` reads from `chrome.storage` |
+| `src/side_panel/main.js` | Side panel entry point: orchestrates initialization of all layers, binds global DOM events, wires callbacks between modules |
+| `src/side_panel/services/ai-chat.js` | Core AI conversation logic: `extractPageContent`, `handleQuickAction`, `sendToAI`, `sendMessage`, `retryMessage`, `callAI` (streaming SSE with thinking/reasoning support) |
+| `src/side_panel/services/tts.js` | TTS logic: sentence queueing, Markdown stripping, MediaSource streaming, auto-play toggle |
+| `src/side_panel/features/chat-history.js` | Chat persistence and export: save/load/delete chats, render history list, export as Markdown |
+| `src/side_panel/features/quick-commands.js` | Slash-command popup: filter, keyboard navigation, execute. Listens to `chrome.storage.onChanged` for hot-reload |
+| `src/side_panel/ui/dom-helpers.js` | DOM helpers: `escapeHtml`, append/remove/update messages, scroll management, Markdown rendering, button state toggles |
+| `src/side_panel/ui/theme.js` | Dark mode toggle and multi-theme management: applies `data-theme`/`data-theme-name` attributes, storage sync |
+| `src/side_panel/services/ocr.js` | Image upload, OCR processing, preview management, context building for AI |
+| `src/side_panel/features/suggest-questions.js` | Auto-generate follow-up questions after AI response: streaming via `suggest-questions` port |
+| `src/side_panel/ui/model-status.js` | Model status bar display: reads `modelName` from storage, shows current model |
+| `src/side_panel/features/image-input.js` | Image paste and drag-drop handling |
+| `src/side_panel/features/outline.js` | Outline generation from page content |
+| `src/options/index.js` | Settings page with collapsible panels: 大模型配置 + TTS 语音合成配置 (saved via button), 快捷指令 (real-time save), 数据管理 (export/import JSON) |
 
 ### Message flow (the core data paths)
 
 **Page content extraction & AI chat:**
 ```
-User action in side_panel.js
-  → chrome.tabs.sendMessage → content.js (extracts page via Readability.js)
-  → chrome.runtime.connect({ name: 'ai-chat' }) → service_worker.js
+User action in side_panel
+  → chrome.tabs.sendMessage → content script (extracts page via Readability.js)
+  → chrome.runtime.connect({ name: 'ai-chat' }) → service worker
   → fetch to OpenAI-compatible API (streaming SSE)
-  → port.postMessage({ type: 'chunk', content }) back to side_panel.js
+  → port.postMessage({ type: 'chunk', content }) back to side_panel
   → rendered via marked.js into the chat area
 ```
 
 **TTS audio streaming:**
 ```
-User clicks speaker button on AI message in side_panel.js
-  → chrome.runtime.connect({ name: 'tts' }) → service_worker.js
+User clicks speaker button on AI message in side_panel
+  → chrome.runtime.connect({ name: 'tts' }) → service worker
   → POST to Volcengine TTS SSE endpoint (openspeech.bytedance.com)
   → SSE events parsed (352=audio data, 152=session finish, 153=failure)
-  → port.postMessage({ type: 'chunk', data: base64Audio }) back to side_panel.js
+  → port.postMessage({ type: 'chunk', data: base64Audio }) back to side_panel
   → MediaSource + SourceBuffer streams mp3 to Audio element (plays as chunks arrive)
 ```
 
 **Selection quote relay (user highlights text on page):**
 ```
-content.js listens to document.selectionchange (300ms debounce)
+content script listens to document.selectionchange (300ms debounce)
   → chrome.runtime.sendMessage({ action: 'selectionChanged' })
-  → service_worker.js relays (with forwarded flag to prevent loop)
-  → side_panel.js receives → shows quote preview bar above input
+  → service worker relays (with forwarded flag to prevent loop)
+  → side_panel receives → shows quote preview bar above input
   → On send: quote injected into user message with adapted prompt
 ```
 
 **Model list fetch (settings page gets available models):**
 ```
-options.js sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, apiKey })
-  → service_worker.js proxies GET {apiBase}/models (avoids CORS from options page)
-  → returns { success, models: string[] } → options.js populates <datalist>
+options sends chrome.runtime.sendMessage({ action: 'fetchModels', apiBase, apiKey })
+  → service worker proxies GET {apiBase}/models (avoids CORS from options page)
+  → returns { success, models: string[] } → options populates <datalist>
 ```
 
 **OCR text extraction (image/PDF to Markdown):**
 ```
-side_panel.js sends chrome.runtime.sendMessage({ action: 'ocrParse', file: '<url or data:uri>' })
-  → service_worker.js reads ocrApiKey from chrome.storage.sync
+side_panel sends chrome.runtime.sendMessage({ action: 'ocrParse', file: '<url or data:uri>' })
+  → service worker reads ocrApiKey from chrome.storage.sync
   → POST https://open.bigmodel.cn/api/paas/v4/layout-parsing
     headers: Authorization: Bearer <ocrApiKey>
     body: { model: 'glm-ocr', file: '<url or data:uri>' }
@@ -95,23 +134,23 @@ side_panel.js sends chrome.runtime.sendMessage({ action: 'ocrParse', file: '<url
 
 **Suggest questions (auto-generate follow-ups):**
 ```
-AI response completes in side_panel.js
-  → if suggestQuestionsEnabled, chrome.runtime.connect({ name: 'suggest' }) → service_worker.js
+AI response completes in side_panel
+  → if suggestQuestionsEnabled, chrome.runtime.connect({ name: 'suggest' }) → service worker
   → POST to same OpenAI-compatible API with special prompt (generates 3 follow-up questions)
-  → port.postMessage({ type: 'chunk', content }) back to side_panel.js
+  → port.postMessage({ type: 'chunk', content }) back to side_panel
   → rendered as clickable suggestion buttons below AI message
 ```
 
 ### Communication patterns
 
-- **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — `content.js` returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
-- **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — `side_panel.js` sends `{ type: 'chat', messages }`, receives `{ type: 'thinking', content }` (reasoning model), `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
-- **TTS streaming**: `chrome.runtime.connect` long-lived port named `tts` — `tts-streaming.js` sends `{ type: 'tts', text }`, receives `{ type: 'chunk', data }` (base64 mp3), `{ type: 'done' }`, or `{ type: 'error', error }`. Audio plays via MediaSource Extensions (MSE) for true streaming playback
-- **Suggest questions**: `chrome.runtime.connect` long-lived port named `suggest` — `side_panel.js` sends `{ type: 'suggest', messages }`, receives `{ type: 'chunk', content }` (one question per line), `{ type: 'done' }`, or `{ type: 'error', error }`
-- **Selection relay**: `chrome.runtime.sendMessage` one-shot — `content.js` sends `{ action: 'selectionChanged', text }`, `service_worker.js` re-sends with `forwarded: true` flag to prevent infinite loop, `side_panel.js` receives and shows quote preview
-- **Model list**: `chrome.runtime.sendMessage` one-shot — `options.js` sends `{ action: 'fetchModels', apiBase, apiKey }`, `service_worker.js` proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
-- **OCR text extraction**: `chrome.runtime.sendMessage` one-shot — `side_panel.js` sends `{ action: 'ocrParse', file: '<url or data:uri>' }`, `service_worker.js` reads `ocrApiKey` from sync storage, proxies `POST https://open.bigmodel.cn/api/paas/v4/layout-parsing` with `{ model: 'glm-ocr', file }`, returns `{ success, data }` or `{ success: false, error }`. Uses `sendResponse` with `return true` for async response
-- **Settings sync**: `chrome.storage.onChanged` listener in side_panel — model name, system prompt, quick commands, dark mode, theme, and language update in real-time without page reload
+- **Content extraction**: `chrome.tabs.sendMessage` (one-shot request/response) — content script returns `{ success, data: { title, textContent, excerpt, content, byline, siteName } }`
+- **AI streaming**: `chrome.runtime.connect` long-lived port named `ai-chat` — side panel sends `{ type: 'chat', messages }`, receives `{ type: 'thinking', content }` (reasoning model), `{ type: 'chunk', content }`, `{ type: 'done' }`, or `{ type: 'error', error }`
+- **TTS streaming**: `chrome.runtime.connect` long-lived port named `tts` — `tts.js` sends `{ type: 'tts', text }`, receives `{ type: 'chunk', data }` (base64 mp3), `{ type: 'done' }`, or `{ type: 'error', error }`. Audio plays via MediaSource Extensions (MSE) for true streaming playback
+- **Suggest questions**: `chrome.runtime.connect` long-lived port named `suggest` — side panel sends `{ type: 'suggest', messages }`, receives `{ type: 'chunk', content }` (one question per line), `{ type: 'done' }`, or `{ type: 'error', error }`
+- **Selection relay**: `chrome.runtime.sendMessage` one-shot — content script sends `{ action: 'selectionChanged', text }`, service worker re-sends with `forwarded: true` flag to prevent infinite loop, side panel receives and shows quote preview
+- **Model list**: `chrome.runtime.sendMessage` one-shot — options page sends `{ action: 'fetchModels', apiBase, apiKey }`, service worker proxies `GET {apiBase}/models` and returns model IDs. Uses `sendResponse` with `return true` for async response
+- **OCR text extraction**: `chrome.runtime.sendMessage` one-shot — side panel sends `{ action: 'ocrParse', file: '<url or data:uri>' }`, service worker reads `ocrApiKey` from sync storage, proxies `POST https://open.bigmodel.cn/api/paas/v4/layout-parsing` with `{ model: 'glm-ocr', file }`, returns `{ success, data }` or `{ success: false, error }`. Uses `sendResponse` with `return true` for async response
+- **Settings sync**: `chrome.storage.onChanged` listener in side panel — model name, system prompt, quick commands, dark mode, theme, and language update in real-time without page reload
 
 ### Volcengine TTS API specifics
 
@@ -135,24 +174,30 @@ The three built-in quick actions (总结, 翻译, 提取关键信息) adapt thei
 - Optional fields are removed via `chrome.storage.sync.remove()` / `chrome.storage.local.remove()` when empty, not stored as empty strings
 - Settings export/import bundles all sync fields + quickCommands into a versioned JSON file
 
-### State management in side_panel.js
+### State management
+
+Centralized in `src/side_panel/state.js` using a getter/setter pattern. Each state field has a `get*()`/`set*()` export pair. The module also provides:
+
+- `subscribe(key, callback)` — register a listener for state changes (currently used for `isGenerating` notifications)
+- `initState()` — async function that reads `systemPrompt`, `activeTabId`, `quickCommands`, and `suggestQuestions` from chrome.storage on startup
+
+State fields:
 
 - `pageContent` / `pageExcerpt` / `pageTitle` — cached extracted page content
 - `conversationHistory` — array of `{ role, content }` messages for the current session
-- `isGenerating` — boolean lock to prevent concurrent API calls
+- `isGenerating` — boolean lock to prevent concurrent API calls (has subscribe notification)
 - `customSystemPrompt` — user-defined system prompt loaded from storage, appended to default prompt
 - `currentChatId` — ID of the active conversation in history, `null` for a fresh session
 - `selectedText` — current highlighted text from the page (shown in quote preview bar)
 - `activeTabId` — tab ID the side panel is associated with, used to filter selection messages
 - `quickCommands` — cached array of user-defined quick commands from storage
 - `suggestQuestionsEnabled` — boolean for auto-generating follow-up questions after AI response
-- `suggestPort` — long-lived port for suggest questions streaming
 - `ocrResults` — array of `{ index, fileName, text }` for OCR-recognized image content (in-memory, cleared on send/new chat)
 - `ocrRunning` — counter for in-progress OCR API calls
 - `imageIndex` — auto-incrementing index for image numbering
-- Content is truncated to ~64000 chars for context and quotes (via `safeTruncate`)
+- Content is truncated to ~64000 chars for context and quotes (via `safeTruncate` from `constants.js`)
 
-TTS state lives in `tts-streaming.js` (not side_panel.js): `ttsPort`, `ttsPlaying`, `ttsDone`, `ttsMediaSource`, `ttsSourceBuffer`, `ttsAudioEl`, `ttsChunkQueue`, `ttsBufferAppending`, `ttsSentenceQueue`, `ttsTextBuffer`, `ttsSending`, `ttsSentenceCount`, `ttsAutoPlayEnabled`
+TTS state lives in `src/side_panel/services/tts.js` (module-scoped, not in state.js).
 
 ### Dark mode (夜间模式)
 
@@ -177,7 +222,7 @@ TTS state lives in `tts-streaming.js` (not side_panel.js): `ttsPort`, `ttsPlayin
 ### Internationalization (i18n)
 
 - Bilingual support: Chinese (`zh`, default) and English (`en`)
-- `i18n.js` defines `TRANSLATIONS` object with all UI strings keyed by dot-notation (e.g., `'settings.llm.apiKey'`)
+- `src/shared/i18n.js` defines `TRANSLATIONS` object with all UI strings keyed by dot-notation (e.g., `'settings.llm.apiKey'`)
 - Translation function: `t(key, params)` — supports placeholder interpolation (e.g., `t('status.modelsLoaded', { n: 5 })` → `"已获取 5 个模型"`)
 - DOM attributes for auto-translation:
   - `data-i18n="key"` — sets `textContent`
@@ -193,7 +238,7 @@ TTS state lives in `tts-streaming.js` (not side_panel.js): `ttsPort`, `ttsPlayin
 - UI supports Chinese (default) and English via i18n system — all strings in `TRANSLATIONS` object, no hardcoded UI text
 - Default prompts for quick actions are in Chinese even when UI language is English (user can customize via system prompt)
 - CSS uses CSS custom properties defined in `side_panel.css` and `options.css` for theming; theme selection via `[data-theme-name="..."]` selectors, dark mode via compound `[data-theme-name="..."][data-theme="dark"]` selectors
-- No framework — vanilla JS with direct DOM manipulation
+- No framework — vanilla JS with ES Modules, bundled by Vite for production
 - The API endpoint is OpenAI-compatible (defaults to DeepSeek, but any compatible endpoint works via the `apiBase` setting)
 - API path convention: `apiBase` does NOT include `/v1` — endpoints are `{apiBase}/chat/completions` and `{apiBase}/models`
 - TTS button only appears on the latest AI message; clicking while playing stops playback (toggle behavior)
