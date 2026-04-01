@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "小🍐子阅读助手",
+  "version": "1.0.0",
+  "description": "小🍐子陪你读网页，支持总结、翻译、关键信息提取和自由问答",
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "scripting",
+    "storage"
+  ],
+  "side_panel": {
+    "default_path": "src/side_panel/index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "src/options/index.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "打开小🍐子阅读助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  }
+}
