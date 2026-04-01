@@ -14,9 +14,7 @@ import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandP
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions.js';
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
-
-// marked is loaded globally via <script> tag (UMD build)
-const { marked } = window;
+import { marked } from 'marked';
 
 marked.setOptions({ breaks: true, gfm: true });
 

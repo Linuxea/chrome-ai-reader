@@ -2,9 +2,7 @@
 
 import { escapeHtml } from '../../shared/constants.js';
 import { t } from '../../shared/i18n.js';
-
-// marked is loaded globally via <script> tag (UMD build)
-const { marked } = window;
+import { marked } from 'marked';
 
 let _chatArea;
 let _actionBtns;

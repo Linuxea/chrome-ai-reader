@@ -2,9 +2,7 @@
 
 import { t } from '../../shared/i18n.js';
 import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants.js';
-
-// marked is loaded globally via <script> tag (UMD build)
-const { marked } = window;
+import { marked } from 'marked';
 import * as state from '../state.js';
 
 let _deps = {};

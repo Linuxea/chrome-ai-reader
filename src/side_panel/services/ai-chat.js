@@ -13,9 +13,7 @@ import {
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay
 } from './tts.js';
 import { getOcrRunning, hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
-
-// marked is loaded globally via <script> tag (UMD build)
-const { marked } = window;
+import { marked } from 'marked';
 
 let _onRemoveSuggestQuestions;
 let _onGenerateSuggestions;

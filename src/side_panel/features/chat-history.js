@@ -4,9 +4,7 @@ import { t, getCurrentLang } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants.js';
 import * as state from '../state.js';
 import { scrollToBottom } from '../ui/dom-helpers.js';
-
-// marked is loaded globally via <script> tag (UMD build)
-const { marked } = window;
+import { marked } from 'marked';
 
 const STORAGE_KEY = 'chatHistories';
 const MAX_HISTORIES = 50;
