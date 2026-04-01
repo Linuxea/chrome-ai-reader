@@ -571,11 +571,6 @@ await Promise.all([
 
 后续的 init 调用大多是同步的（仅设置回调引用和事件监听器）。
 
-| 库 | 当前方式 | 迁移后 |
-|---|---|---|
-| marked | libs/marked.min.js | `npm install marked` |
-| Readability | libs/Readability.js | `npm install @mozilla/readability` |
-
 ## 开发工作流
 
 | 操作 | 命令 |
