@@ -272,6 +272,12 @@ chrome.runtime.onConnect.addListener((port) => {
         await callTTS(msg.text, port);
       }
     });
+  } else if (port.name === 'tts-download') {
+    port.onMessage.addListener(async (msg) => {
+      if (msg.type === 'tts') {
+        await callTTS(msg.text, port);
+      }
+    });
   } else if (port.name === 'suggest-questions') {
     port.onMessage.addListener(async (msg) => {
       if (msg.type === 'suggest') {

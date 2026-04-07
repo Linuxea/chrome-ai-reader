@@ -23,6 +23,14 @@ let ttsSentenceCount = 0;
 // TTS 自动播放状态
 let ttsAutoPlayEnabled = false;
 
+// TTS 下载状态
+let ttsDownloadPort = null;
+let ttsDownloadChunks = [];
+let ttsDownloadSegments = [];
+let ttsDownloadSegmentIndex = 0;
+let ttsDownloadSending = false;
+let ttsDownloading = false;
+
 export function initTTS({ chatArea }) {
   _chatArea = chatArea;
 
@@ -94,6 +102,7 @@ function splitToSegments(text) {
 }
 
 export function stopTTS() {
+  stopTTSDownload();
   ttsPlaying = false;
   ttsDone = true;
   ttsSentenceQueue = [];
@@ -123,6 +132,151 @@ export function stopTTS() {
   if (btn) {
     btn.classList.remove('tts-playing', 'tts-loading');
   }
+}
+
+/**
+ * 停止 TTS 下载
+ */
+function stopTTSDownload() {
+  ttsDownloading = false;
+  ttsDownloadChunks = [];
+  ttsDownloadSegments = [];
+  ttsDownloadSegmentIndex = 0;
+  ttsDownloadSending = false;
+
+  if (ttsDownloadPort) {
+    try { ttsDownloadPort.disconnect(); } catch {}
+    ttsDownloadPort = null;
+  }
+
+  const btn = _chatArea.querySelector('.tts-download-btn');
+  if (btn) {
+    btn.classList.remove('tts-loading');
+    btn.disabled = false;
+  }
+}
+
+function ttsDownloadFlush() {
+  if (ttsDownloadSending || ttsDownloadSegmentIndex >= ttsDownloadSegments.length || !ttsDownloading) return;
+
+  ttsDownloadSending = true;
+  const segment = ttsDownloadSegments[ttsDownloadSegmentIndex];
+  ttsDownloadSegmentIndex++;
+
+  ttsDownloadPort = chrome.runtime.connect({ name: 'tts-download' });
+
+  ttsDownloadPort.onDisconnect.addListener(() => {
+    if (ttsDownloading) stopTTSDownload();
+  });
+
+  ttsDownloadPort.onMessage.addListener((msg) => {
+    if (msg.type === 'chunk') {
+      if (!msg.data) return;
+      ttsDownloadChunks.push(msg.data);
+    } else if (msg.type === 'done') {
+      ttsDownloadSending = false;
+      try { ttsDownloadPort.disconnect(); } catch {}
+      ttsDownloadPort = null;
+
+      if (ttsDownloadSegmentIndex < ttsDownloadSegments.length) {
+        ttsDownloadFlush();
+      } else {
+        finishTTSDownload();
+      }
+    } else if (msg.type === 'error') {
+      console.error('[TTS Download] error:', msg.error || msg.errorKey);
+      stopTTSDownload();
+    }
+  });
+
+  ttsDownloadPort.postMessage({ type: 'tts', text: segment });
+}
+
+function finishTTSDownload() {
+  if (ttsDownloadChunks.length === 0) {
+    stopTTSDownload();
+    return;
+  }
+
+  // Decode all base64 chunks into a single Uint8Array
+  const totalLength = ttsDownloadChunks.reduce((sum, chunk) => {
+    const binary = atob(chunk);
+    return sum + binary.length;
+  }, 0);
+
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of ttsDownloadChunks) {
+    const binary = atob(chunk);
+    for (let i = 0; i < binary.length; i++) {
+      result[offset++] = binary.charCodeAt(i);
+    }
+  }
+
+  // Create blob and trigger download
+  const blob = new Blob([result], { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `voice-${timestamp}.mp3`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  // Show success state briefly
+  const btn = _chatArea.querySelector('.tts-download-btn');
+  if (btn) {
+    btn.classList.remove('tts-loading');
+    btn.disabled = false;
+    // Brief checkmark feedback
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    btn.title = t('action.copied');
+    setTimeout(() => {
+      btn.innerHTML = origHtml;
+      btn.title = t('action.ttsDownload');
+    }, 1500);
+  }
+
+  // Reset state
+  ttsDownloading = false;
+  ttsDownloadChunks = [];
+  ttsDownloadSegments = [];
+  ttsDownloadSegmentIndex = 0;
+}
+
+/**
+ * TTS 下载按钮点击处理
+ */
+function handleTTSDownloadClick(msgEl) {
+  if (ttsDownloading) return; // double-click protection
+
+  const contentEl = msgEl.querySelector('.thinking-response-content');
+  const text = contentEl ? contentEl.textContent : msgEl.textContent;
+  if (!text || !text.trim()) return;
+
+  // Set loading state
+  const btn = _chatArea.querySelector('.tts-download-btn');
+  if (btn) {
+    btn.classList.add('tts-loading');
+    btn.disabled = true;
+    btn.title = t('status.ttsDownloading');
+  }
+
+  ttsDownloading = true;
+  ttsDownloadChunks = [];
+  ttsDownloadSegmentIndex = 0;
+  ttsDownloadSending = false;
+  ttsDownloadSegments = splitToSegments(text.trim());
+
+  if (ttsDownloadSegments.length === 0) {
+    stopTTSDownload();
+    return;
+  }
+
+  ttsDownloadFlush();
 }
 
 function ttsAppendNext() {
@@ -350,6 +504,8 @@ export function addTTSButton(msgEl) {
   // 移除之前的 TTS 按钮和复制按钮
   const prevTts = _chatArea.querySelector('.tts-btn');
   if (prevTts) prevTts.remove();
+  const prevDownload = _chatArea.querySelector('.tts-download-btn');
+  if (prevDownload) prevDownload.remove();
   const prevCopy = _chatArea.querySelector('.ai-action-btn');
   if (prevCopy) prevCopy.remove();
 
@@ -381,6 +537,16 @@ export function addTTSButton(msgEl) {
   btn.addEventListener('click', () => handleTTSButtonClick(msgEl));
 
   msgEl.appendChild(btn);
+
+  // TTS Download button
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'tts-download-btn';
+  dlBtn.title = t('action.ttsDownload');
+  dlBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+
+  dlBtn.addEventListener('click', () => handleTTSDownloadClick(msgEl));
+
+  msgEl.appendChild(dlBtn);
 }
 
 /**

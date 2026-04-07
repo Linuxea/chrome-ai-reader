@@ -89,6 +89,7 @@ const TRANSLATIONS = {
     'action.copy': '复制',
     'action.copied': '已复制',
     'action.tts': '朗读',
+    'action.ttsDownload': '下载语音',
     'action.export': '导出',
     'action.outline': '大纲',
     'outline.title': '文章大纲',
@@ -131,6 +132,7 @@ const TRANSLATIONS = {
     'status.invalidFile': '无效的设置文件格式',
     'status.imported': '设置已导入并保存',
     'status.parseError': '解析文件失败：',
+    'status.ttsDownloading': '正在生成语音...',
 
     'chat.today': '今天',
     'chat.yesterday': '昨天',
@@ -253,6 +255,7 @@ const TRANSLATIONS = {
     'action.copy': 'Copy',
     'action.copied': 'Copied',
     'action.tts': 'Read Aloud',
+    'action.ttsDownload': 'Download Audio',
     'action.export': 'Export',
     'action.outline': 'Outline',
     'outline.title': 'Article Outline',
@@ -295,6 +298,7 @@ const TRANSLATIONS = {
     'status.invalidFile': 'Invalid settings file format',
     'status.imported': 'Settings imported and saved',
     'status.parseError': 'Failed to parse file: ',
+    'status.ttsDownloading': 'Generating audio...',
 
     'chat.today': 'Today',
     'chat.yesterday': 'Yesterday',

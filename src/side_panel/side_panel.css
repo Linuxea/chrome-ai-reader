@@ -819,6 +819,7 @@ body {
 /* ===== TTS & AI Action Buttons ===== */
 
 .tts-btn,
+.tts-download-btn,
 .ai-action-btn {
   display: inline-flex;
   align-items: center;
@@ -837,12 +838,14 @@ body {
 }
 
 .tts-btn:hover,
+.tts-download-btn:hover,
 .ai-action-btn:hover {
   opacity: 1;
   color: var(--primary);
 }
 
 .tts-btn svg,
+.tts-download-btn svg,
 .ai-action-btn svg {
   width: 14px;
   height: 14px;
@@ -874,6 +877,16 @@ body {
 @keyframes tts-wave {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
+}
+
+.tts-download-btn.tts-loading {
+  opacity: 1;
+  color: var(--primary);
+  cursor: wait;
+}
+
+.tts-download-btn.tts-loading svg {
+  animation: tts-pulse 1.2s ease-in-out infinite;
 }
 
 /* ===== User Message Actions ===== */
