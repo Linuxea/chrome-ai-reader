@@ -132,6 +132,10 @@ export async function handleQuickAction(action) {
     return;
   }
 
+  if (action === 'podcast') {
+    return; // handled by podcast module
+  }
+
   if (state.getOcrRunning() > 0) {
     appendMessage('error', t('error.ocrRunning'));
     return;
