@@ -24,6 +24,20 @@
   gap: 6px;
 }
 
+.podcast-quote {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--primary, #4a90d9);
+  background: var(--bg-primary, #fff);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  line-height: 1.5;
+  max-height: 60px;
+  overflow: hidden;
+  word-break: break-all;
+}
+
 .podcast-card-close {
   background: none;
   border: none;

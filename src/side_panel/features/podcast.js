@@ -1,10 +1,12 @@
 // features/podcast.js — Podcast generation and streaming playback
 
 import { t } from '../../shared/i18n.js';
+import { escapeHtml } from '../../shared/constants.js';
 import * as state from '../state.js';
 import { appendMessage, scrollToBottom } from '../ui/dom-helpers.js';
 import { extractPageContent } from '../services/ai-chat.js';
 import { isTTSPlaying, stopTTS } from '../services/tts.js';
+import { clearImagePreviews } from '../services/ocr.js';
 
 // --- Constants ---
 
@@ -65,6 +67,12 @@ async function handlePodcastClick() {
   const selectedText = state.getSelectedText();
   const hasSelection = selectedText && selectedText.trim().length > 0;
 
+  // Clear quote preview and image previews (same as other quick actions)
+  const quotePreview = document.getElementById('quotePreview');
+  if (quotePreview) quotePreview.classList.add('hidden');
+  state.setSelectedText('');
+  clearImagePreviews();
+
   let textContent;
   if (hasSelection) {
     textContent = selectedText.trim();
@@ -91,11 +99,11 @@ async function handlePodcastClick() {
     return;
   }
 
-  // Truncate to avoid exceeding limits
-  const truncated = textContent.slice(0, 10000);
-
   // Create podcast card
-  const card = createPodcastCard();
+  const sourcePreview = hasSelection
+    ? selectedText.trim().slice(0, 100) + (selectedText.trim().length > 100 ? '...' : '')
+    : '';
+  const card = createPodcastCard(sourcePreview);
   _currentCard = card;
 
   // Disable button during generation
@@ -103,12 +111,12 @@ async function handlePodcastClick() {
   if (_podcastBtn) _podcastBtn.disabled = true;
 
   // Start LLM script generation
-  await generatePodcastScript(card, truncated);
+  await generatePodcastScript(card, textContent);
 }
 
 // --- Podcast card UI ---
 
-function createPodcastCard() {
+function createPodcastCard(quotePreview) {
   // Remove existing podcast card if any
   const existing = _chatArea.querySelector('.podcast-card');
   if (existing) existing.remove();
@@ -120,6 +128,10 @@ function createPodcastCard() {
   const card = document.createElement('div');
   card.className = 'podcast-card';
 
+  const quoteHtml = quotePreview
+    ? `<blockquote class="podcast-quote">${escapeHtml(quotePreview)}</blockquote>`
+    : '';
+
   card.innerHTML = `
     <div class="podcast-card-header">
       <span class="podcast-card-title">🎙️ ${t('podcast.cardTitle')}</span>
@@ -130,6 +142,7 @@ function createPodcastCard() {
         </svg>
       </button>
     </div>
+    ${quoteHtml}
     <div class="podcast-status" data-status="generating_script">
       <div class="podcast-status-spinner"></div>
       <span>${t('podcast.generatingScript')}</span>
