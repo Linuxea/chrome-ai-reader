@@ -259,6 +259,159 @@ async function callSuggestQuestions(messages, port) {
   }
 }
 
+// --- Podcast Audio (WebSocket binary protocol) ---
+
+function encodePodcastFrame(eventCode, sessionId, payloadObj) {
+  const header = new Uint8Array([0x11, 0x94, 0x10, 0x00]);
+  const eventBytes = new Uint8Array(4);
+  new DataView(eventBytes.buffer).setUint32(0, eventCode, false);
+
+  const sessionIdBytes = new TextEncoder().encode(sessionId);
+  const sessionIdLen = new Uint8Array(4);
+  new DataView(sessionIdLen.buffer).setUint32(0, sessionIdBytes.length, false);
+
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payloadObj));
+  const payloadLen = new Uint8Array(4);
+  new DataView(payloadLen.buffer).setUint32(0, payloadBytes.length, false);
+
+  const frame = new Uint8Array(
+    header.length + eventBytes.length +
+    sessionIdLen.length + sessionIdBytes.length +
+    payloadLen.length + payloadBytes.length
+  );
+  let offset = 0;
+  frame.set(header, offset); offset += header.length;
+  frame.set(eventBytes, offset); offset += eventBytes.length;
+  frame.set(sessionIdLen, offset); offset += sessionIdLen.length;
+  frame.set(sessionIdBytes, offset); offset += sessionIdBytes.length;
+  frame.set(payloadLen, offset); offset += payloadLen.length;
+  frame.set(payloadBytes, offset);
+  return frame;
+}
+
+function decodePodcastFrame(data) {
+  const view = new DataView(data.buffer || data);
+  const eventCode = view.getUint32(4, false);
+
+  const sessionIdLen = view.getUint32(8, false);
+  const sessionIdBytes = new Uint8Array(data.buffer || data, 12, sessionIdLen);
+  const sessionId = new TextDecoder().decode(sessionIdBytes);
+
+  const payloadOffset = 12 + sessionIdLen;
+  const payloadLen = view.getUint32(payloadOffset, false);
+  const payloadBytes = new Uint8Array(data.buffer || data, payloadOffset + 4, payloadLen);
+  const payloadStr = new TextDecoder().decode(payloadBytes);
+
+  let payload = null;
+  try { payload = JSON.parse(payloadStr); } catch {}
+
+  return { eventCode, sessionId, payload };
+}
+
+async function callPodcast(nlpTexts, audioConfig, port) {
+  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsResourceId']);
+
+  if (!config.ttsAppId || !config.ttsAccessKey) {
+    safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' });
+    return;
+  }
+
+  const appId = config.ttsAppId;
+  const accessKey = config.ttsAccessKey;
+  const resourceId = config.ttsResourceId || 'seed_tts';
+
+  const sessionId = 'podcast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+  const url = `wss://openspeech.bytedance.com/api/v3/tts/podcast/ws?X-Api-App-Id=${encodeURIComponent(appId)}&X-Api-Access-Key=${encodeURIComponent(accessKey)}&X-Api-Resource-Id=${encodeURIComponent(resourceId)}`;
+
+  try {
+    const ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
+
+    let resolved = false;
+
+    ws.addEventListener('open', () => {
+      const startPayload = {
+        action: 3,
+        nlp_texts: nlpTexts,
+        audio_config: {
+          format: audioConfig?.format || 'mp3',
+          sample_rate: audioConfig?.sample_rate || 24000,
+          speech_rate: audioConfig?.speech_rate || 0
+        },
+        speaker_info: {
+          random_order: true
+        }
+      };
+
+      ws.send(encodePodcastFrame(150, sessionId, startPayload));
+    });
+
+    ws.addEventListener('message', (event) => {
+      const frame = decodePodcastFrame(event.data);
+
+      switch (frame.eventCode) {
+        case 150: // SessionStarted
+          break;
+
+        case 360: // PodcastRoundStart
+          safePostMessage(port, {
+            type: 'round_start',
+            idx: frame.payload?.idx,
+            speaker: frame.payload?.speaker
+          });
+          break;
+
+        case 361: // PodcastRoundResponse — audio data
+          if (frame.payload?.data) {
+            resolved = true;
+            safePostMessage(port, { type: 'audio_chunk', data: frame.payload.data });
+          } else if (frame.payload) {
+            resolved = true;
+            safePostMessage(port, { type: 'audio_chunk', data: frame.payload });
+          }
+          break;
+
+        case 362: // PodcastRoundEnd
+          safePostMessage(port, {
+            type: 'round_end',
+            audioDuration: frame.payload?.audio_duration,
+            startTime: frame.payload?.start_time,
+            endTime: frame.payload?.end_time
+          });
+          break;
+
+        case 363: // PodcastEnd
+          break;
+
+        case 152: // SessionFinished
+          resolved = true;
+          safePostMessage(port, { type: 'done' });
+          ws.close();
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    ws.addEventListener('error', () => {
+      if (!resolved) {
+        safePostMessage(port, { type: 'error', errorKey: 'podcast.audioError' });
+      }
+    });
+
+    ws.addEventListener('close', () => {
+      if (!resolved) {
+        safePostMessage(port, { type: 'error', errorKey: 'podcast.audioError' });
+      }
+    });
+
+  } catch (e) {
+    safePostMessage(port, { type: 'error', error: e.message });
+  }
+}
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'ai-chat') {
     port.onMessage.addListener(async (msg) => {
@@ -293,6 +446,12 @@ chrome.runtime.onConnect.addListener((port) => {
         await callOpenAI(messages, port, {
           response_format: { type: 'json_object' }
         });
+      }
+    });
+  } else if (port.name === 'podcast-audio') {
+    port.onMessage.addListener(async (msg) => {
+      if (msg.type === 'generate') {
+        await callPodcast(msg.nlpTexts, msg.audioConfig, port);
       }
     });
   }
