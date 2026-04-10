@@ -322,13 +322,46 @@ async function callPodcast(nlpTexts, audioConfig, port) {
 
   const sessionId = 'podcast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
-  const url = `wss://openspeech.bytedance.com/api/v3/sami/podcasttts?X-Api-App-Id=${encodeURIComponent(appId)}&X-Api-Access-Key=${encodeURIComponent(accessKey)}&X-Api-Resource-Id=${encodeURIComponent(resourceId)}`;
+  const PODCAST_WS_URL = 'wss://openspeech.bytedance.com/api/v3/sami/podcasttts';
+
+  // Use declarativeNetRequest to inject auth headers into the WebSocket upgrade request
+  // (browser WebSocket API cannot set custom HTTP headers)
+  const dnrRuleId = 9000 + Math.floor(Math.random() * 999);
+  let ws = null;
 
   try {
-    const ws = new WebSocket(url);
+    // Add DNR rule to inject auth headers
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      addRules: [{
+        id: dnrRuleId,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'X-Api-App-Id', operation: 'set', value: appId },
+            { header: 'X-Api-Access-Key', operation: 'set', value: accessKey },
+            { header: 'X-Api-Resource-Id', operation: 'set', value: resourceId },
+          ]
+        },
+        condition: {
+          urlFilter: '||openspeech.bytedance.com/api/v3/sami/podcasttts',
+          resourceTypes: ['websocket']
+        }
+      }],
+      removeRuleIds: [dnrRuleId]
+    });
+
+    ws = new WebSocket(PODCAST_WS_URL);
     ws.binaryType = 'arraybuffer';
 
     let resolved = false;
+
+    const cleanup = () => {
+      // Remove DNR rule after WebSocket is done
+      chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [dnrRuleId]
+      }).catch(() => {});
+    };
 
     ws.addEventListener('open', () => {
       const startPayload = {
@@ -387,6 +420,7 @@ async function callPodcast(nlpTexts, audioConfig, port) {
         case 152: // SessionFinished
           resolved = true;
           safePostMessage(port, { type: 'done' });
+          cleanup();
           ws.close();
           break;
 
@@ -396,18 +430,24 @@ async function callPodcast(nlpTexts, audioConfig, port) {
     });
 
     ws.addEventListener('error', () => {
+      cleanup();
       if (!resolved) {
         safePostMessage(port, { type: 'error', errorKey: 'podcast.audioError' });
       }
     });
 
     ws.addEventListener('close', () => {
+      cleanup();
       if (!resolved) {
         safePostMessage(port, { type: 'error', errorKey: 'podcast.audioError' });
       }
     });
 
   } catch (e) {
+    // Clean up DNR rule on any error
+    chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [dnrRuleId]
+    }).catch(() => {});
     safePostMessage(port, { type: 'error', error: e.message });
   }
 }
