@@ -322,7 +322,7 @@ async function callPodcast(nlpTexts, audioConfig, port) {
 
   const sessionId = 'podcast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
-  const url = `wss://openspeech.bytedance.com/api/v3/tts/podcast/ws?X-Api-App-Id=${encodeURIComponent(appId)}&X-Api-Access-Key=${encodeURIComponent(accessKey)}&X-Api-Resource-Id=${encodeURIComponent(resourceId)}`;
+  const url = `wss://openspeech.bytedance.com/api/v3/sami/podcasttts?X-Api-App-Id=${encodeURIComponent(appId)}&X-Api-Access-Key=${encodeURIComponent(accessKey)}&X-Api-Resource-Id=${encodeURIComponent(resourceId)}`;
 
   try {
     const ws = new WebSocket(url);
