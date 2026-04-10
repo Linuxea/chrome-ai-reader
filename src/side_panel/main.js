@@ -14,6 +14,7 @@ import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandP
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions.js';
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
+import { initPodcast } from './features/podcast.js';
 import { marked } from 'marked';
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -89,6 +90,9 @@ async function init() {
     userInput: els.userInput,
     imagePreviewBar: els.imagePreviewBar,
   });
+  initPodcast({
+    chatArea: els.chatArea,
+  });
 
   // 5. AI chat (last — injects feature callbacks to avoid layer violation)
   initAIChat({
@@ -133,6 +137,10 @@ function bindGlobalEvents() {
   els.newChatBtn.addEventListener('click', () => {
     if (state.getIsGenerating()) return;
     if (isTTSPlaying()) stopTTS();
+    // Clean up any active podcast card
+    const existingPodcast = els.chatArea.querySelector('.podcast-card');
+    if (existingPodcast) existingPodcast.remove();
+    if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
     saveCurrentChat();
     removeSuggestQuestions();
     state.setPageContent('');
