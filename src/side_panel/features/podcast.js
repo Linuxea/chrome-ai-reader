@@ -272,43 +272,50 @@ async function onScriptDone(card, fullScript) {
   await generatePodcastAudio(card, nlpTexts);
 }
 
-// --- Audio Generation ---
+// --- Audio Generation (using existing TTS SSE endpoint per round) ---
 
-async function generatePodcastAudio(card, nlpTexts) {
-  podcastPort = chrome.runtime.connect({ name: 'podcast-audio' });
+async function generatePodcastAudio(card, rounds) {
+  for (let i = 0; i < rounds.length; i++) {
+    const round = rounds[i];
+    if (!round.text || !round.text.trim()) continue;
 
-  podcastPort.postMessage({
-    type: 'generate',
-    nlpTexts,
-    audioConfig: {
-      format: 'mp3',
-      sample_rate: 24000,
-      speech_rate: 0
-    }
-  });
+    const success = await synthesizeRound(round.text, round.speaker, card);
+    if (!success) return; // Error already shown
+  }
+  // All rounds done
+  finishPodcastAudio(card);
+}
 
-  podcastPort.onMessage.addListener((msg) => {
-    if (msg.type === 'audio_chunk' && msg.data) {
-      if (!podcastAudioEl) {
-        initPodcastPlayback(card);
+function synthesizeRound(text, speaker, card) {
+  return new Promise((resolve) => {
+    const port = chrome.runtime.connect({ name: 'podcast-tts' });
+
+    port.postMessage({ type: 'tts', text, speaker });
+
+    port.onMessage.addListener((msg) => {
+      if (msg.type === 'chunk' && msg.data) {
+        if (!podcastAudioEl) {
+          initPodcastPlayback(card);
+        }
+        // Decode base64 and append to SourceBuffer
+        const binaryStr = atob(msg.data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        podcastChunkQueue.push(bytes.buffer);
+        appendPodcastChunk();
+      } else if (msg.type === 'done') {
+        port.disconnect();
+        resolve(true);
+      } else if (msg.type === 'error') {
+        port.disconnect();
+        const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.audioError'));
+        updateCardStatus(card, 'error', errMsg);
+        resetPodcastState();
+        resolve(false);
       }
-      // Decode base64 and append to SourceBuffer
-      const binaryStr = atob(msg.data);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-      podcastChunkQueue.push(bytes.buffer);
-      appendPodcastChunk();
-    } else if (msg.type === 'round_end' && msg.audioDuration) {
-      // Track duration for progress display
-    } else if (msg.type === 'done') {
-      finishPodcastAudio(card);
-    } else if (msg.type === 'error') {
-      const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.audioError'));
-      updateCardStatus(card, 'error', errMsg);
-      resetPodcastState();
-    }
+    });
   });
 }
 

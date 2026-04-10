@@ -7,11 +7,7 @@
     "activeTab",
     "sidePanel",
     "scripting",
-    "storage",
-    "declarativeNetRequest"
-  ],
-  "host_permissions": [
-    "wss://openspeech.bytedance.com/*"
+    "storage"
   ],
   "side_panel": {
     "default_path": "src/side_panel/index.html"
