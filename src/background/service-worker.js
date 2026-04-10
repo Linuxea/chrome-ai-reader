@@ -457,8 +457,7 @@ async function callPodcast(nlpTexts, audioConfig, port) {
           ]
         },
         condition: {
-          urlFilter: '||openspeech.bytedance.com/api/v3/sami/podcasttts',
-          resourceTypes: ['websocket']
+          urlFilter: 'openspeech.bytedance.com/api/v3/sami/podcasttts'
         }
       }],
       removeRuleIds: [dnrRuleId]

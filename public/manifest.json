@@ -11,7 +11,7 @@
     "declarativeNetRequest"
   ],
   "host_permissions": [
-    "https://openspeech.bytedance.com/*"
+    "*://openspeech.bytedance.com/*"
   ],
   "side_panel": {
     "default_path": "src/side_panel/index.html"
