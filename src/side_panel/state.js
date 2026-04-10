@@ -72,6 +72,10 @@ let _suggestQuestionsEnabled = true;
 export function isSuggestQuestionsEnabled() { return _suggestQuestionsEnabled; }
 export function setSuggestQuestionsEnabled(v) { _suggestQuestionsEnabled = v; }
 
+let _isPodcastGenerating = false;
+export function getIsPodcastGenerating() { return _isPodcastGenerating; }
+export function setIsPodcastGenerating(v) { _isPodcastGenerating = v; }
+
 // --- Async init: read chrome.storage ---
 export async function initState() {
   const data = await chrome.storage.sync.get(['systemPrompt']);
