@@ -284,6 +284,17 @@ chrome.runtime.onConnect.addListener((port) => {
         await callSuggestQuestions(msg.messages, port);
       }
     });
+  } else if (port.name === 'podcast-llm') {
+    port.onMessage.addListener(async (msg) => {
+      if (msg.type === 'generate') {
+        const messages = [
+          { role: 'user', content: `${msg.prompt}\n\n${msg.text}` }
+        ];
+        await callOpenAI(messages, port, {
+          response_format: { type: 'json_object' }
+        });
+      }
+    });
   }
 });
 
