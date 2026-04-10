@@ -110,7 +110,6 @@ npm start
 
 **配置要求：**
 - 需在设置中配置火山引擎 TTS 凭证（`ttsAppId`、`ttsAccessKey`）
-- 可选配置 `ttsAppKey`，如未配置则使用默认值
 
 ### 使用
 

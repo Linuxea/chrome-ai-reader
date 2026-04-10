@@ -271,7 +271,7 @@ async function callSuggestQuestions(messages, port) {
 const PODCAST_PROXY_URL = 'http://localhost:3456';
 
 async function callPodcast(nlpTexts, audioConfig, port) {
-  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsAppKey', 'ttsResourceId']);
+  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsResourceId']);
 
   if (!config.ttsAppId || !config.ttsAccessKey) {
     safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' });
@@ -291,7 +291,6 @@ async function callPodcast(nlpTexts, audioConfig, port) {
       body: JSON.stringify({
         appId: config.ttsAppId,
         accessKey: config.ttsAccessKey,
-        appKey: config.ttsAppKey,
         resourceId: config.ttsResourceId || 'volc.service_type.10050',
         connectId,
         nlpTexts,
