@@ -44,6 +44,8 @@ let podcastMediaSource = null;
 let podcastSourceBuffer = null;
 let podcastChunkQueue = [];
 let podcastBufferAppending = false;
+let podcastPlayTransitioning = false; // Debounce for play/pause
+const MAX_CHUNK_QUEUE_SIZE = 50; // Prevent memory issues with long podcasts
 
 // --- Init ---
 
@@ -259,12 +261,21 @@ function parsePodcastScript(fullScript) {
   const jsonMatch = fullScript.match(/\{[\s\S]*"rounds"[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON found in script');
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error(`Invalid JSON: ${e.message}`);
+  }
+  
   if (!parsed.rounds || !Array.isArray(parsed.rounds) || parsed.rounds.length === 0) {
     throw new Error('Empty rounds array');
   }
 
   return parsed.rounds.map(round => {
+    if (!round.speaker || !round.text) {
+      throw new Error('Missing speaker or text in round');
+    }
     const speaker = SPEAKER_MAP[round.speaker] || SPEAKER_MAP[round.speaker?.toUpperCase()] || DEFAULT_SPEAKER;
     const text = (round.text || '').slice(0, 300);
     return { speaker, text };
@@ -275,8 +286,9 @@ async function onScriptDone(card, fullScript) {
   let nlpTexts;
   try {
     nlpTexts = parsePodcastScript(fullScript);
-  } catch {
-    updateCardStatus(card, 'error', t('podcast.scriptParseError'));
+  } catch (e) {
+    console.error('[Podcast] Script parsing error:', e);
+    updateCardStatus(card, 'error', `${t('podcast.scriptParseError')} (${e.message})`);
     resetPodcastState();
     return;
   }
@@ -289,6 +301,9 @@ async function onScriptDone(card, fullScript) {
 // --- Audio Generation ---
 
 async function generatePodcastAudio(card, nlpTexts) {
+  // Clean up any previous podcast playback before starting new one
+  cleanupPodcast();
+  
   podcastPort = chrome.runtime.connect({ name: 'podcast-audio' });
 
   podcastPort.postMessage({
@@ -302,6 +317,9 @@ async function generatePodcastAudio(card, nlpTexts) {
   });
 
   podcastPort.onMessage.addListener((msg) => {
+    // Guard against disconnected port
+    if (!podcastPort) return;
+    
     if (msg.type === 'audio_chunk' && msg.data) {
       if (!podcastAudioEl) {
         initPodcastPlayback(card);
@@ -311,6 +329,12 @@ async function generatePodcastAudio(card, nlpTexts) {
       const bytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) {
         bytes[i] = binaryStr.charCodeAt(i);
+      }
+      
+      // Apply backpressure: drop old chunks if queue is too large
+      if (podcastChunkQueue.length >= MAX_CHUNK_QUEUE_SIZE) {
+        console.warn('[Podcast] Queue full, dropping oldest chunk');
+        podcastChunkQueue.shift();
       }
       podcastChunkQueue.push(bytes.buffer);
       appendPodcastChunk();
@@ -329,6 +353,20 @@ async function generatePodcastAudio(card, nlpTexts) {
 // --- Audio Playback (MediaSource) ---
 
 function initPodcastPlayback(card) {
+  // Clean up any existing audio element before creating new one
+  if (podcastAudioEl) {
+    podcastAudioEl.pause();
+    podcastAudioEl.src = '';
+    podcastAudioEl = null;
+  }
+  if (podcastMediaSource) {
+    try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch {}
+    podcastMediaSource = null;
+    podcastSourceBuffer = null;
+  }
+  podcastChunkQueue = [];
+  podcastBufferAppending = false;
+
   const ms = new MediaSource();
   podcastMediaSource = ms;
 
@@ -400,7 +438,11 @@ function updatePlayerProgress(card) {
 }
 
 function handlePlayPause() {
-  if (!podcastAudioEl) return;
+  if (!podcastAudioEl || podcastPlayTransitioning) return;
+  
+  podcastPlayTransitioning = true;
+  setTimeout(() => { podcastPlayTransitioning = false; }, 300);
+  
   if (podcastAudioEl.paused) {
     podcastAudioEl.play().catch(() => {});
   } else {

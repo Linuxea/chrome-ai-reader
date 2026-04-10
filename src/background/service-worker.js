@@ -271,7 +271,7 @@ async function callSuggestQuestions(messages, port) {
 const PODCAST_PROXY_URL = 'http://localhost:3456';
 
 async function callPodcast(nlpTexts, audioConfig, port) {
-  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsResourceId']);
+  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsAppKey', 'ttsResourceId']);
 
   if (!config.ttsAppId || !config.ttsAccessKey) {
     safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' });
@@ -291,6 +291,7 @@ async function callPodcast(nlpTexts, audioConfig, port) {
       body: JSON.stringify({
         appId: config.ttsAppId,
         accessKey: config.ttsAccessKey,
+        appKey: config.ttsAppKey,
         resourceId: config.ttsResourceId || 'volc.service_type.10050',
         connectId,
         nlpTexts,
@@ -355,8 +356,6 @@ async function callPodcast(nlpTexts, audioConfig, port) {
         }
       }
     }
-
-    safePostMessage(port, { type: 'done' });
   } catch (e) {
     console.error('[Podcast] callPodcast error:', e.message);
     const msg = e.message?.includes('Failed to fetch')

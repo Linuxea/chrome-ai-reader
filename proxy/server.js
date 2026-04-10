@@ -205,7 +205,7 @@ function sendSSE(res, event, data) {
 // --- Podcast handler ---
 
 async function handlePodcast(params, res) {
-  const { nlpTexts, audioConfig, appId, accessKey, resourceId, connectId } = params;
+  const { nlpTexts, audioConfig, appId, accessKey, appKey, resourceId, connectId } = params;
   const sessionId = connectId;
 
   console.log(`[Podcast] Starting: ${nlpTexts.length} rounds, id: ${connectId}`);
@@ -215,7 +215,7 @@ async function handlePodcast(params, res) {
       'X-Api-App-Id': appId,
       'X-Api-Access-Key': accessKey,
       'X-Api-Resource-Id': resourceId || 'volc.service_type.10050',
-      'X-Api-App-Key': 'aGjiRDfUWi',
+      'X-Api-App-Key': appKey || process.env.APP_KEY || 'aGjiRDfUWi',
       'X-Api-Connect-Id': connectId,
     },
   });
