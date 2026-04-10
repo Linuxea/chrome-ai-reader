@@ -1,0 +1,12 @@
+{
+  "name": "podcast-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local proxy for Volcengine Podcast WebSocket API (browser can't set WS headers)",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

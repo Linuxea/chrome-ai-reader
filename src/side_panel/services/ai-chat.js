@@ -142,7 +142,9 @@ export async function handleQuickAction(action) {
   }
 
   if (hasImageErrors()) {
-    appendMessage('error', t('error.ocrPartialFail'));
+    const firstError = document.querySelector('.image-preview-item.error');
+    const reason = firstError?.title || '';
+    appendMessage('error', t('error.ocrPartialFail') + (reason ? `：${reason}` : ''));
     return;
   }
 
@@ -244,7 +246,9 @@ export async function sendMessage() {
   }
 
   if (hasImageErrors()) {
-    appendMessage('error', t('error.ocrPartialFail'));
+    const firstError = document.querySelector('.image-preview-item.error');
+    const reason = firstError?.title || '';
+    appendMessage('error', t('error.ocrPartialFail') + (reason ? `：${reason}` : ''));
     return;
   }
 

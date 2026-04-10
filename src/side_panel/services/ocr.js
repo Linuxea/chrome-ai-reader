@@ -71,6 +71,14 @@ export async function runOCR(index, fileName, dataUri) {
   const item = _imagePreviewBar.querySelector(`[data-index="${index}"]`);
   const statusEl = item?.querySelector('.image-status');
 
+  function setError(msg) {
+    if (statusEl) statusEl.className = 'image-status error';
+    if (item) {
+      item.classList.add('error');
+      item.title = msg;
+    }
+  }
+
   try {
     const response = await chrome.runtime.sendMessage({
       action: 'ocrParse',
@@ -85,12 +93,11 @@ export async function runOCR(index, fileName, dataUri) {
       if (statusEl) statusEl.className = 'image-status done';
       if (item) item.classList.add('done');
     } else {
-      if (statusEl) statusEl.className = 'image-status error';
-      if (item) item.classList.add('error');
+      const errorMsg = response?.errorKey ? t(response.errorKey) : (response?.error || t('error.ocrFailed'));
+      setError(errorMsg);
     }
   } catch (e) {
-    if (statusEl) statusEl.className = 'image-status error';
-    if (item) item.classList.add('error');
+    setError(e.message || t('error.ocrFailed'));
   } finally {
     let running = state.getOcrRunning();
     running--;

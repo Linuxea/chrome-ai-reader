@@ -239,7 +239,8 @@ body {
 
 .quick-actions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 10px 16px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);

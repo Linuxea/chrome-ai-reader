@@ -21,12 +21,13 @@ const PODCAST_PROMPT = `你是一位专业的播客节目制作人。请根据�
 
 待处理的内容：`;
 
-// Speaker mapping: script labels → Volcengine speaker IDs
+// Speaker mapping: script labels → Volcengine podcast speaker IDs
+// These are saturn-series speakers specifically for the podcast API (volc.service_type.10050)
 const SPEAKER_MAP = {
-  'A': 'zh_male_jnqg_24k_vq_bigtts',
-  'B': 'zh_female_vv_uranus_bigtts',
+  'A': 'zh_male_dayixiansheng_v2_saturn_bigtts',
+  'B': 'zh_female_mizaitongxue_v2_saturn_bigtts',
 };
-const DEFAULT_SPEAKER = 'zh_female_vv_uranus_bigtts';
+const DEFAULT_SPEAKER = 'zh_female_mizaitongxue_v2_saturn_bigtts';
 
 // --- Module state ---
 
@@ -272,50 +273,43 @@ async function onScriptDone(card, fullScript) {
   await generatePodcastAudio(card, nlpTexts);
 }
 
-// --- Audio Generation (using existing TTS SSE endpoint per round) ---
+// --- Audio Generation ---
 
-async function generatePodcastAudio(card, rounds) {
-  for (let i = 0; i < rounds.length; i++) {
-    const round = rounds[i];
-    if (!round.text || !round.text.trim()) continue;
+async function generatePodcastAudio(card, nlpTexts) {
+  podcastPort = chrome.runtime.connect({ name: 'podcast-audio' });
 
-    const success = await synthesizeRound(round.text, round.speaker, card);
-    if (!success) return; // Error already shown
-  }
-  // All rounds done
-  finishPodcastAudio(card);
-}
+  podcastPort.postMessage({
+    type: 'generate',
+    nlpTexts,
+    audioConfig: {
+      format: 'mp3',
+      sample_rate: 24000,
+      speech_rate: 0
+    }
+  });
 
-function synthesizeRound(text, speaker, card) {
-  return new Promise((resolve) => {
-    const port = chrome.runtime.connect({ name: 'podcast-tts' });
-
-    port.postMessage({ type: 'tts', text, speaker });
-
-    port.onMessage.addListener((msg) => {
-      if (msg.type === 'chunk' && msg.data) {
-        if (!podcastAudioEl) {
-          initPodcastPlayback(card);
-        }
-        // Decode base64 and append to SourceBuffer
-        const binaryStr = atob(msg.data);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-          bytes[i] = binaryStr.charCodeAt(i);
-        }
-        podcastChunkQueue.push(bytes.buffer);
-        appendPodcastChunk();
-      } else if (msg.type === 'done') {
-        port.disconnect();
-        resolve(true);
-      } else if (msg.type === 'error') {
-        port.disconnect();
-        const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.audioError'));
-        updateCardStatus(card, 'error', errMsg);
-        resetPodcastState();
-        resolve(false);
+  podcastPort.onMessage.addListener((msg) => {
+    if (msg.type === 'audio_chunk' && msg.data) {
+      if (!podcastAudioEl) {
+        initPodcastPlayback(card);
       }
-    });
+      // Decode base64 and append to SourceBuffer
+      const binaryStr = atob(msg.data);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      podcastChunkQueue.push(bytes.buffer);
+      appendPodcastChunk();
+    } else if (msg.type === 'round_end' && msg.audioDuration) {
+      // Track duration for progress display
+    } else if (msg.type === 'done') {
+      finishPodcastAudio(card);
+    } else if (msg.type === 'error') {
+      const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.audioError'));
+      updateCardStatus(card, 'error', errMsg);
+      resetPodcastState();
+    }
   });
 }
 
