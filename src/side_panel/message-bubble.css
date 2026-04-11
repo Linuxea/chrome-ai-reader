@@ -1,0 +1,143 @@
+.message {
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  line-height: 1.75;
+  word-wrap: break-word;
+  animation: msg-in 0.25s ease;
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.user-msg-group {
+  align-self: flex-end;
+  max-width: 88%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  animation: msg-in 0.25s ease;
+}
+
+.user-msg-group > .message {
+  max-width: 100%;
+}
+
+.message-user {
+  background: var(--user-bg);
+  color: var(--user-text);
+  border-bottom-right-radius: 4px;
+}
+
+.message-ai {
+  align-self: flex-start;
+  background: var(--ai-bg);
+  color: var(--ai-text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  box-shadow: var(--shadow);
+}
+
+.message-ai h1, .message-ai h2, .message-ai h3 {
+  margin: 10px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.message-ai h1 { font-size: 16px; }
+
+.message-ai ul, .message-ai ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.message-ai li {
+  margin: 2px 0;
+}
+
+.message-ai p {
+  margin: 4px 0;
+}
+
+.message-ai code {
+  background: var(--bg);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  color: var(--primary);
+}
+
+.message-ai pre {
+  background: var(--bg);
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 6px 0;
+  border: 1px solid var(--border);
+}
+
+.message-ai pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+}
+
+.message-ai blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 12px;
+  margin: 6px 0;
+  color: var(--text-secondary);
+}
+
+.message-ai strong {
+  font-weight: 600;
+}
+
+.message-ai a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.message-ai a:hover {
+  text-decoration: underline;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  background: var(--primary);
+  border-radius: 50%;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-5px); }
+}
+
+.message-error {
+  align-self: center;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
+  font-size: 13px;
+  text-align: center;
+}

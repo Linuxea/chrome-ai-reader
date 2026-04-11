@@ -1,10 +1,9 @@
-/* Podcast card styles */
 .podcast-card {
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--card-bg);
   border-radius: 12px;
   margin: 8px 0;
   padding: 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border);
   position: relative;
 }
 
@@ -18,7 +17,7 @@
 .podcast-card-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -27,11 +26,11 @@
 .podcast-quote {
   margin: 0 0 12px;
   padding: 8px 12px;
-  border-left: 3px solid var(--primary, #4a90d9);
-  background: var(--bg-primary, #fff);
+  border-left: 3px solid var(--primary);
+  background: var(--primary-light);
   border-radius: 0 6px 6px 0;
   font-size: 12px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   line-height: 1.5;
   max-height: 60px;
   overflow: hidden;
@@ -44,32 +43,31 @@
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .podcast-card-close:hover {
-  background: var(--hover-bg, rgba(0,0,0,0.05));
-  color: var(--text-primary, #333);
+  background: var(--hover-overlay);
+  color: var(--text);
 }
 
-/* Status area */
 .podcast-status {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   padding: 4px 0;
 }
 
 .podcast-status-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--border-color, #e0e0e0);
-  border-top-color: var(--accent-color, #6366f1);
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: podcast-spin 0.8s linear infinite;
 }
@@ -79,10 +77,9 @@
 }
 
 .podcast-status-error {
-  color: var(--error-color, #ef4444);
+  color: var(--error-text);
 }
 
-/* Player controls */
 .podcast-player {
   display: none;
   flex-direction: column;
@@ -100,7 +97,7 @@
 }
 
 .podcast-play-btn {
-  background: var(--accent-color, #6366f1);
+  background: var(--primary);
   color: #fff;
   border: none;
   border-radius: 50%;
@@ -114,7 +111,7 @@
 }
 
 .podcast-play-btn:hover {
-  opacity: 0.9;
+  background: var(--primary-hover);
 }
 
 .podcast-play-btn svg {
@@ -124,7 +121,7 @@
 .podcast-progress-bar {
   flex: 1;
   height: 4px;
-  background: var(--border-color, #e0e0e0);
+  background: var(--border);
   border-radius: 2px;
   overflow: hidden;
   cursor: pointer;
@@ -132,7 +129,7 @@
 
 .podcast-progress-fill {
   height: 100%;
-  background: var(--accent-color, #6366f1);
+  background: var(--primary);
   border-radius: 2px;
   width: 0%;
   transition: width 0.3s ease;
@@ -140,39 +137,27 @@
 
 .podcast-time {
   font-size: 11px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   min-width: 80px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-/* Action buttons (retry, replay) */
 .podcast-action-btn {
   background: none;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 12px;
   font-size: 12px;
-  color: var(--accent-color, #6366f1);
+  color: var(--primary);
   cursor: pointer;
 }
 
 .podcast-action-btn:hover {
-  background: var(--hover-bg, rgba(0,0,0,0.05));
+  background: var(--hover-overlay);
 }
 
-/* Disabled state for action button */
 .action-btn[data-action="podcast"]:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* Dark mode overrides */
-[data-theme="dark"] .podcast-card {
-  --bg-secondary: #2a2a2e;
-  --border-color: #3a3a3e;
-  --text-primary: #e0e0e0;
-  --text-secondary: #888;
-  --hover-bg: rgba(255,255,255,0.05);
-  --accent-color: #818cf8;
 }

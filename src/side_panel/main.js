@@ -190,7 +190,7 @@ function bindGlobalEvents() {
 
   els.userInput.addEventListener('input', () => {
     els.userInput.style.height = 'auto';
-    els.userInput.style.height = Math.min(els.userInput.scrollHeight, 100) + 'px';
+    els.userInput.style.height = Math.min(els.userInput.scrollHeight, 120) + 'px';
     const value = els.userInput.value;
     if (value.startsWith('/')) updateCommandPopup(value);
     else if (isCommandPopupOpen()) hideCommandPopup();

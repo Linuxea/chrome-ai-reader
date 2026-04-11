@@ -2,8 +2,8 @@
 
 import { t, loadLanguage, setLanguage, applyTranslations, getCurrentLang } from '../shared/i18n.js';
 import { escapeHtml } from '../shared/constants.js';
+import { applyTheme, getThemeState } from '../shared/theme.js';
 
-// === 语言 ===
 const languageSelect = document.getElementById('languageSelect');
 
 loadLanguage((lang) => {
@@ -16,43 +16,26 @@ languageSelect.addEventListener('change', () => {
   chrome.storage.sync.set({ language: lang });
 });
 
-// === 夜间模式 ===
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-
-function applyTheme(dark, themeName) {
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  document.documentElement.setAttribute('data-theme-name', themeName || 'sujian');
-  const moonIcon = themeToggleBtn.querySelector('.theme-icon-moon');
-  const sunIcon = themeToggleBtn.querySelector('.theme-icon-sun');
-  if (dark) {
-    moonIcon.style.display = 'none';
-    sunIcon.style.display = '';
-  } else {
-    moonIcon.style.display = '';
-    sunIcon.style.display = 'none';
-  }
-}
 
 chrome.storage.sync.get(['darkMode', 'themeName'], (data) => {
   const themeName = data.themeName || 'sujian';
-  applyTheme(!!data.darkMode, themeName);
+  applyTheme(!!data.darkMode, themeName, themeToggleBtn);
   updateThemePicker(themeName);
 });
 
 themeToggleBtn.addEventListener('click', () => {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const newDark = !isDark;
-  const currentTheme = document.documentElement.getAttribute('data-theme-name') || 'sujian';
-  applyTheme(newDark, currentTheme);
-  chrome.storage.sync.set({ darkMode: newDark });
+  const { isDark, themeName } = getThemeState();
+  applyTheme(!isDark, themeName, themeToggleBtn);
+  chrome.storage.sync.set({ darkMode: !isDark });
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'sync') {
     if (changes.darkMode || changes.themeName) {
-      const isDark = changes.darkMode ? !!changes.darkMode.newValue : document.documentElement.getAttribute('data-theme') === 'dark';
-      const currentTheme = changes.themeName ? changes.themeName.newValue : document.documentElement.getAttribute('data-theme-name') || 'sujian';
-      applyTheme(isDark, currentTheme);
+      const isDark = changes.darkMode ? !!changes.darkMode.newValue : getThemeState().isDark;
+      const currentTheme = changes.themeName ? changes.themeName.newValue : getThemeState().themeName;
+      applyTheme(isDark, currentTheme, themeToggleBtn);
       if (changes.themeName) updateThemePicker(changes.themeName.newValue);
     }
   }
