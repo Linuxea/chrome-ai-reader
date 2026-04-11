@@ -38,8 +38,12 @@
 - **智能推荐** — AI 回复完成后自动生成 3 个相关追问
 - **一键发送** — 点击推荐问题即可立即发送
 
+### 大纲生成
+- **页面大纲** — 基于页面内容自动生成结构化大纲
+- **快速导航** — 点击大纲条目快速定位内容
+
 ### OCR 图文识别
-- **图片上传** — 支持上传图片进行 OCR 文字识别
+- **图片上传** — 支持粘贴或拖拽上传图片进行 OCR 文字识别
 - **缩略图预览** — 聊天气泡中显示上传图片的缩略图
 - **多图支持** — 支持同时上传多张图片
 - **状态指示** — 显示识别中/完成/失败状态
@@ -49,6 +53,10 @@
 - **自动朗读** — 可设置 AI 回复完成后自动朗读
 - **手动控制** — 点击消息上的播放按钮手动触发朗读
 - **一键停止** — 播放中再次点击即可停止
+
+### 播客生成
+- **多说话人对话** — 将网页内容转换为多说话人对话形式的音频
+- **流式播放** — 通过本地代理服务器连接火山引擎 Podcast TTS API
 
 ### 主题与外观
 - **夜间模式** — 深色/浅色主题一键切换
@@ -72,12 +80,26 @@
 
 ## 安装使用
 
+### 构建
+
+```bash
+npm install
+npm run build
+```
+
+构建产物输出到 `dist/` 目录，包含：
+- `src/side_panel/index.html` 及打包后的 JS/CSS 资源
+- `src/options/index.html` 及打包后的 JS/CSS 资源
+- `content.js` — 内容脚本 IIFE 包
+- `background.js` — Service Worker IIFE 包
+- `manifest.json`、`icons/` 等静态资源
+
 ### 安装
 
 1. 打开 Chrome，访问 `chrome://extensions/`
 2. 开启右上角 **开发者模式**
 3. 点击 **加载已解压的扩展程序**
-4. 选择本项目目录
+4. 选择 `dist/` 目录
 
 ### 配置
 
@@ -124,54 +146,110 @@ npm start
 
 ```
 chrome-ai-reader/
-├── manifest.json              # 扩展配置（Manifest V3）
-├── service_worker.js          # 后台服务：API 调用、消息中转、OCR 代理
-├── content.js                 # 内容脚本：页面提取、选区监听
-├── i18n.js                    # 国际化：双语翻译、语言切换
-├── side_panel/
-│   ├── side_panel.html        # 侧边栏界面
-│   ├── side_panel.css         # 主样式（CSS 自定义属性主题）
-│   ├── side_panel.js          # 交互逻辑：聊天、快捷操作、流式渲染
-│   ├── chat-history.js        # 对话历史管理：保存/加载/删除/导出
-│   ├── history.css            # 历史面板样式（滑入动画）
-│   ├── quick-commands.js      # 快捷指令弹窗逻辑：过滤、键盘导航
-│   ├── quick-commands.css     # 快捷指令弹窗样式
-│   ├── tts-streaming.js       # TTS 流式播放：句子队列、MediaSource
-│   ├── ui-helpers.js          # UI 辅助函数：滚动、截断、消息渲染
-│   └── markdown.css           # Markdown 渲染样式
-├── options/
-│   ├── options.html           # 设置页面
-│   ├── options.css            # 设置页样式（含主题定义）
-│   └── options.js             # 设置逻辑：配置管理、模型列表、快捷指令 CRUD
-├── libs/
-│   ├── Readability.js         # Mozilla Readability 页面正文提取
-│   └── marked.min.js          # Markdown 渲染
-├── assets/                    # 产品截图等静态资源
-└── icons/                     # 扩展图标（16/48/128px）
+├── public/
+│   ├── manifest.json              # 扩展配置（Manifest V3）
+│   └── icons/                     # 扩展图标（16/48/128px）
+├── src/
+│   ├── background/
+│   │   └── service-worker.js      # 后台服务：API 调用、消息中转、OCR 代理
+│   ├── content/
+│   │   └── index.js               # 内容脚本：页面提取（Readability）、选区监听
+│   ├── shared/
+│   │   ├── i18n.js                # 国际化：双语翻译、语言切换
+│   │   ├── constants.js           # 共享工具：截断限制、HTML 转义
+│   │   ├── theme.js               # 主题管理
+│   │   └── themes.css             # 主题 CSS 变量定义
+│   ├── side_panel/
+│   │   ├── index.html             # 侧边栏界面
+│   │   ├── main.js                # 入口：初始化编排、全局事件绑定
+│   │   ├── state.js               # 集中状态管理：getter/setter、订阅通知
+│   │   ├── side_panel.css         # 主样式（CSS 自定义属性主题）
+│   │   ├── history.css            # 历史面板样式
+│   │   ├── quick-commands.css     # 快捷指令弹窗样式
+│   │   ├── message-bubble.css     # 消息气泡样式
+│   │   ├── outline.css            # 大纲面板样式
+│   │   ├── podcast.css            # 播客面板样式
+│   │   ├── ui/
+│   │   │   ├── dom-helpers.js     # DOM 辅助：消息渲染、滚动、Markdown
+│   │   │   ├── theme.js           # 主题切换：深色模式 + 多主题
+│   │   │   └── model-status.js    # 模型状态栏显示
+│   │   ├── services/
+│   │   │   ├── ai-chat.js         # AI 对话：流式 SSE、推理过程
+│   │   │   ├── tts.js             # TTS 流式播放：句子队列、MediaSource
+│   │   │   └── ocr.js             # OCR：图片上传、识别、预览
+│   │   └── features/
+│   │       ├── chat-history.js    # 对话历史：保存/加载/删除/导出
+│   │       ├── quick-commands.js  # 快捷指令：过滤、键盘导航
+│   │       ├── suggest-questions.js # 推荐追问：流式生成
+│   │       ├── outline.js         # 大纲生成
+│   │       ├── image-input.js     # 图片粘贴和拖拽
+│   │       └── podcast.js         # 播客生成
+│   ├── options/
+│   │   ├── index.html             # 设置页面
+│   │   ├── index.js               # 设置逻辑：配置管理、模型列表、快捷指令
+│   │   └── options.css            # 设置页样式（含主题定义）
+│   └── libs/
+│       └── marked.min.js          # Markdown 渲染
+├── proxy/                         # 播客功能的本地代理服务器
+│   ├── server.js
+│   └── package.json
+├── assets/                        # 产品截图等静态资源
+├── vite.config.js                 # Vite 构建配置
+├── build-extension.js             # Rollup IIFE 打包（content script + service worker）
+└── package.json
 ```
 
 ## 技术实现
 
-### 架构概览
+### 构建系统
 
-无构建系统、无框架依赖，所有文件由 Chrome 直接加载。侧边栏脚本按依赖顺序加载：`i18n.js` → `marked.min.js` → `chat-history.js` → `quick-commands.js` → `ui-helpers.js` → `tts-streaming.js` → `side_panel.js`。
+项目使用 [Vite](https://vitejs.dev/) 构建，分两个阶段：
+
+1. **Vite build** — 以 `src/side_panel/index.html` 和 `src/options/index.html` 为入口，打包 ES 模块到 `dist/assets/`
+2. **Rollup IIFE** (`build-extension.js`) — 将 `src/content/index.js` 和 `src/background/service-worker.js` 打包为自包含 IIFE 脚本（Chrome 内容脚本和 Service Worker 不支持 ES 模块）
+3. **静态资源** — `public/` 目录原样复制到 `dist/`
+
+### 模块分层
+
+源文件使用 ES Modules，侧边栏有 5 层依赖层次：
 
 ```
-用户操作 (side_panel.js)
-  → chrome.tabs.sendMessage → content.js (Readability 提取页面)
-  → chrome.runtime.connect (长连接) → service_worker.js
-  → fetch OpenAI 兼容 API (流式 SSE)
-  → port.postMessage 回传 → side_panel.js 渲染
+Layer 1 — 共享层（无依赖）
+  src/shared/i18n.js        — 翻译、t()、loadLanguage()
+  src/shared/constants.js   — 截断限制、safeTruncate()、escapeHtml()
+
+Layer 2 — 状态层（依赖共享层）
+  src/side_panel/state.js   — getter/setter 状态管理、subscribe/notify
+
+Layer 3 — UI 层（依赖共享层 + 状态层）
+  src/side_panel/ui/dom-helpers.js  — DOM 操作、消息渲染
+  src/side_panel/ui/theme.js        — 深色模式 + 多主题管理
+  src/side_panel/ui/model-status.js — 模型状态栏
+
+Layer 4 — 服务层（依赖共享层 + 状态层 + UI 层）
+  src/side_panel/services/ai-chat.js — AI 对话核心、流式 SSE
+  src/side_panel/services/tts.js     — TTS 句子队列、MediaSource 流式播放
+  src/side_panel/services/ocr.js     — 图片上传、OCR 处理
+
+Layer 5 — 功能层（依赖服务层 + UI 层 + 状态层）
+  src/side_panel/features/chat-history.js      — 对话持久化、导出
+  src/side_panel/features/quick-commands.js    — 斜杠指令弹窗
+  src/side_panel/features/suggest-questions.js — 自动追问推荐
+  src/side_panel/features/outline.js           — 大纲生成
+  src/side_panel/features/image-input.js       — 图片粘贴和拖拽
+  src/side_panel/features/podcast.js           — 播客生成
+
+入口：src/side_panel/main.js — 自底向上编排初始化顺序
 ```
 
 ### 核心通信机制
 
 | 通道 | 方式 | 用途 |
 |------|------|------|
-| AI 对话 | `chrome.runtime.connect` 长连接端口 | 流式传输 AI 回复（thinking/chunk/done/error） |
-| TTS 朗读 | `chrome.runtime.connect` 长连接端口 | 流式传输语音音频数据 |
-| 推荐问题 | `chrome.runtime.connect` 长连接端口 | 流式生成追问建议 |
-| 页面提取 | `chrome.tabs.sendMessage` 一次请求 | 获取当前页面正文内容 |
+| AI 对话 | `chrome.runtime.connect` 长连接端口（`ai-chat`） | 流式传输 AI 回复（thinking/chunk/done/error） |
+| TTS 朗读 | `chrome.runtime.connect` 长连接端口（`tts`） | 流式传输语音音频数据 |
+| 推荐问题 | `chrome.runtime.connect` 长连接端口（`suggest`） | 流式生成追问建议 |
+| 页面提取 | `chrome.tabs.sendMessage` 一次请求 | 获取当前页面正文内容（Readability.js） |
 | 选区中转 | `chrome.runtime.sendMessage` 一次请求 | 页面选区文字经 service worker 中转到侧边栏 |
 | 模型列表 | `chrome.runtime.sendMessage` 一次请求 | 设置页通过 service worker 代理 API 请求（规避 CORS） |
 | OCR 识别 | `chrome.runtime.sendMessage` 一次请求 | 侧边栏通过 service worker 代理 OCR API 请求 |
@@ -201,11 +279,22 @@ chrome-ai-reader/
 | Key | 类型 | 说明 |
 |-----|------|------|
 | `quickCommands` | array | 自定义快捷指令 |
-| `chatHistories` | array | 对话历史记录 |
+| `chatHistories` | array | 对话历史记录（最多 50 条） |
 
 ## 开发
 
-本项目无构建步骤，编辑文件后在 `chrome://extensions/` 页面点击刷新按钮即可生效。
+```bash
+# 安装依赖
+npm install
+
+# 开发模式（监听文件变更）
+npm run dev
+
+# 生产构建
+npm run build
+```
+
+开发时运行 `npm run dev`，编辑源文件后 Vite 会自动重新构建。在 `chrome://extensions/` 页面点击刷新按钮加载最新代码。
 
 ## 许可证
 
