@@ -175,6 +175,9 @@ const TRANSLATIONS = {
     'podcast.noTtsConfig': '请先在设置中配置 TTS 语音合成凭证',
     'podcast.scriptParseError': '对话脚本格式异常，无法生成播客',
     'podcast.audioError': '播客音频合成失败',
+    'podcast.download': '下载音频',
+    'podcast.downloading': '正在下载...',
+    'podcast.fileName': '播客',
 
     'prompt.suggest': '你是一个阅读助手。基于对话历史，生成 3 个有深度的后续问题，帮助用户更深入地理解文章内容。每行一个问题，不要编号，不要额外解释。',
     'prompt.suggestUser': '用户问题：',
@@ -358,6 +361,9 @@ const TRANSLATIONS = {
     'podcast.noTtsConfig': 'Please configure TTS credentials in settings first',
     'podcast.scriptParseError': 'Script format error, cannot generate podcast',
     'podcast.audioError': 'Podcast audio synthesis failed',
+    'podcast.download': 'Download Audio',
+    'podcast.downloading': 'Downloading...',
+    'podcast.fileName': 'podcast',
 
     'prompt.suggest': 'You are a reading assistant. Based on the conversation history, generate 3 in-depth follow-up questions to help the user better understand the article. One question per line, no numbering, no extra explanation.',
     'prompt.suggestUser': 'User question: ',

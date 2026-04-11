@@ -161,3 +161,24 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.podcast-download-inline-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.podcast-download-inline-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--hover-overlay);
+}

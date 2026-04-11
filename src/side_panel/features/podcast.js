@@ -46,6 +46,7 @@ let podcastChunkQueue = [];
 let podcastBufferAppending = false;
 let podcastPlayTransitioning = false; // Debounce for play/pause
 const MAX_CHUNK_QUEUE_SIZE = 50; // Prevent memory issues with long podcasts
+let podcastAudioChunks = []; // Collected chunks for download
 
 // --- Init ---
 
@@ -200,13 +201,15 @@ function updateCardStatus(card, status, text) {
     case 'playing':
       statusEl.style.display = 'none';
       playerEl.classList.add('active');
+      addDownloadButton(card);
       break;
     case 'done':
-      statusEl.innerHTML = `<span>${t('podcast.done')}</span> <button class="podcast-action-btn podcast-replay-btn">${t('podcast.replay')}</button>`;
+      statusEl.innerHTML = `<span>${t('podcast.done')}</span> <button class="podcast-action-btn podcast-replay-btn">${t('podcast.replay')}</button> <button class="podcast-action-btn podcast-download-btn">${t('podcast.download')}</button>`;
       statusEl.className = 'podcast-status';
       statusEl.style.display = '';
       playerEl.classList.remove('active');
       card.querySelector('.podcast-replay-btn').addEventListener('click', () => replayAudio());
+      card.querySelector('.podcast-download-btn').addEventListener('click', () => downloadPodcastAudio());
       break;
     case 'error':
       statusEl.innerHTML = `<span class="podcast-status-error">${text || t('podcast.error')}</span> <button class="podcast-action-btn podcast-retry-btn">${t('podcast.retry')}</button>`;
@@ -337,6 +340,7 @@ async function generatePodcastAudio(card, nlpTexts) {
         podcastChunkQueue.shift();
       }
       podcastChunkQueue.push(bytes.buffer);
+      podcastAudioChunks.push(bytes.buffer.slice(0));
       appendPodcastChunk();
     } else if (msg.type === 'round_end' && msg.audioDuration) {
       // Track duration for progress display
@@ -450,6 +454,31 @@ function handlePlayPause() {
   }
 }
 
+function addDownloadButton(card) {
+  if (card.querySelector('.podcast-download-btn')) return;
+  const playerRow = card.querySelector('.podcast-player-row');
+  if (!playerRow) return;
+  const btn = document.createElement('button');
+  btn.className = 'podcast-download-inline-btn';
+  btn.title = t('podcast.download');
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+  btn.addEventListener('click', downloadPodcastAudio);
+  playerRow.appendChild(btn);
+}
+
+function downloadPodcastAudio() {
+  if (podcastAudioChunks.length === 0) return;
+  const blob = new Blob(podcastAudioChunks, { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${t('podcast.fileName')}-${new Date().toISOString().slice(0, 10)}.mp3`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function replayAudio() {
   if (podcastAudioEl) {
     podcastAudioEl.currentTime = 0;
@@ -486,6 +515,7 @@ function cleanupPodcast() {
     podcastPort = null;
   }
   podcastChunkQueue = [];
+  podcastAudioChunks = [];
   podcastBufferAppending = false;
   resetPodcastState();
 }
