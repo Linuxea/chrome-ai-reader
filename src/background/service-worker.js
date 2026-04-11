@@ -443,6 +443,42 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.action === 'analyzeChart') {
+    const { apiKey, apiBase, modelName } = msg;
+    if (!apiKey) {
+      sendResponse({ success: false, error: 'No API Key' });
+      return;
+    }
+    const baseUrl = apiBase || 'https://api.deepseek.com';
+
+    fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: modelName || 'deepseek-chat',
+        messages: msg.messages,
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      })
+    })
+    .then(res => {
+      if (!res.ok) return res.json().then(d => { throw new Error(d.error?.message || `API request failed (${res.status})`); });
+      return res.json();
+    })
+    .then(data => {
+      const content = data.choices?.[0]?.message?.content || '';
+      sendResponse({ success: true, content });
+    })
+    .catch(e => {
+      sendResponse({ success: false, error: e.message });
+    });
+
+    return true;
+  }
+
   if (msg.action === 'ocrParse') {
     chrome.storage.sync.get('ocrApiKey', (config) => {
       console.log('[OCR] Received ocrParse, has key:', !!config.ocrApiKey, 'file length:', msg.file?.length);
