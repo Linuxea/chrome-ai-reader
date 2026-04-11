@@ -7,6 +7,8 @@ npm run dev    # vite build --watch (development)
 npm run build  # vite build && node build-extension.js (production)
 ```
 
+**`npm run dev` only watches Vite builds** (side panel + options). Content script and service worker (IIFE bundles) are NOT rebuilt on watch — run `npm run build` manually after editing `src/content/` or `src/background/`.
+
 No tests, no linter, no typecheck configured.
 
 ## Build Architecture (non-obvious)
@@ -55,6 +57,7 @@ Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `
 - `dist/` is the loadable extension — do not reference `public/manifest.json` paths directly when reasoning about the running extension
 - Content script and service worker must be IIFE — they cannot use `import` at runtime
 - `Readability` is imported from `@mozilla/readability` npm package, not a local file
+- `src/libs/marked.min.js` is dead code — all imports use `marked` from npm
 - `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`, runs on `localhost:3456`)
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
 - TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure
