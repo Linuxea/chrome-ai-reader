@@ -53,6 +53,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const MAX_IMAGES = 10;
 
         const canvasPromises = [];
+        let filteredCanvasIndex = 0;
         document.querySelectorAll('canvas').forEach((canvas, i) => {
           if (canvas.width > 80 && canvas.height > 40) {
             let thumb = '';
@@ -60,11 +61,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const rect = canvas.getBoundingClientRect();
             canvasPromises.push(
               createThumbnail(thumb, 120, 80).then(thumbnail => ({
-                type: 'canvas', index: i, width: canvas.width, height: canvas.height,
+                type: 'canvas', index: filteredCanvasIndex, width: canvas.width, height: canvas.height,
                 thumbnail, pageX: Math.round(rect.left + window.scrollX), pageY: Math.round(rect.top + window.scrollY),
                 pageW: Math.round(rect.width), pageH: Math.round(rect.height)
               }))
             );
+            filteredCanvasIndex++;
           }
         });
         const canvasResults = await Promise.all(canvasPromises);
@@ -141,7 +143,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const tryCaptureElement = () => {
       if (type === 'canvas') {
-        const canvas = document.querySelectorAll('canvas')[index];
+        const validCanvases = Array.from(document.querySelectorAll('canvas'))
+          .filter(c => c.width > 80 && c.height > 40);
+        const canvas = validCanvases[index];
         if (!canvas) throw new Error('Canvas element not found at index ' + index);
         try { return canvas.toDataURL('image/png'); } catch (e) {
           console.warn(_tag, 'canvas.toDataURL failed (likely tainted):', e.message);
