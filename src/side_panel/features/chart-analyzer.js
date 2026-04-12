@@ -22,12 +22,14 @@ let _currentCard = null;
 export function initChartAnalyzer({ chatArea }) {
   _chatArea = chatArea;
   _chartBtn = document.querySelector('[data-action="chart"]');
-  if (_chartBtn) {
-    _chartBtn.addEventListener('click', handleChartClick);
-  }
+  state.subscribe('isGenerating', (v) => {
+    if (_chartBtn && !state.getIsChartGenerating()) {
+      _chartBtn.disabled = v;
+    }
+  });
 }
 
-async function handleChartClick() {
+export async function handleChartClick() {
   if (state.getIsGenerating() || state.getIsChartGenerating()) return;
 
   const existing = _chatArea.querySelector('.chart-card');
@@ -61,12 +63,6 @@ async function handleChartClick() {
 }
 
 function createChartCard() {
-  const existing = _chatArea.querySelector('.chart-card');
-  if (existing) existing.remove();
-
-  const welcome = _chatArea.querySelector('.welcome-msg');
-  if (welcome) welcome.remove();
-
   const card = document.createElement('div');
   card.className = 'chart-card';
 
@@ -92,6 +88,7 @@ function createChartCard() {
     card.remove();
     _currentCard = null;
     resetState();
+    restoreWelcomeIfNeeded();
   });
 
   _chatArea.appendChild(card);
@@ -236,10 +233,10 @@ function renderResults(card, chartData, insights) {
 
     const stats = insights.statistics;
     const statEntries = [
-      { label: 'Mean', value: stats.mean },
-      { label: 'Max', value: stats.max },
-      { label: 'Min', value: stats.min },
-      { label: 'Growth', value: stats.growth }
+      { label: t('chart.statMean'), value: stats.mean },
+      { label: t('chart.statMax'), value: stats.max },
+      { label: t('chart.statMin'), value: stats.min },
+      { label: t('chart.statGrowth'), value: stats.growth }
     ].filter(e => e.value != null && e.value !== '');
 
     statEntries.forEach(entry => {
@@ -345,11 +342,11 @@ function renderBarChart(container, chartData) {
 function renderDataTable(container, chartData) {
   if (chartData.dataPoints && chartData.dataPoints.length > 0) {
     const table = document.createElement('table');
-    table.innerHTML = `<thead><tr><th>Label</th><th>Value</th></tr></thead><tbody>${chartData.dataPoints.map(dp => `<tr><td>${escapeHtml(String(dp.label || ''))}</td><td>${dp.value != null ? dp.value : ''}</td></tr>`).join('')}</tbody>`;
+    table.innerHTML = `<thead><tr><th>${escapeHtml(t('chart.label'))}</th><th>${escapeHtml(t('chart.value'))}</th></tr></thead><tbody>${chartData.dataPoints.map(dp => `<tr><td>${escapeHtml(String(dp.label || ''))}</td><td>${dp.value != null ? dp.value : ''}</td></tr>`).join('')}</tbody>`;
     container.appendChild(table);
   } else if (chartData.series && chartData.series.length > 0) {
     const labels = chartData.xAxis?.values || chartData.series[0]?.data?.map((_, i) => String(i + 1)) || [];
-    const headerCells = ['Label', ...chartData.series.map(s => escapeHtml(s.name || 'Series'))];
+    const headerCells = [t('chart.label'), ...chartData.series.map(s => escapeHtml(s.name || t('chart.series')))];
     const rows = labels.map((label, i) => {
       const cells = [`<td>${escapeHtml(String(label))}</td>`];
       chartData.series.forEach(s => {
@@ -378,4 +375,13 @@ function downloadFile(content, filename, mimeType) {
 function resetState() {
   state.setIsChartGenerating(false);
   if (_chartBtn) _chartBtn.disabled = false;
+}
+
+function restoreWelcomeIfNeeded() {
+  if (_chatArea.children.length === 0) {
+    const welcome = document.createElement('div');
+    welcome.className = 'welcome-msg';
+    welcome.innerHTML = `<p data-i18n="sidebar.welcome">${t('sidebar.welcome')}</p>`;
+    _chatArea.appendChild(welcome);
+  }
 }

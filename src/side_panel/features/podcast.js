@@ -84,14 +84,14 @@ let podcastAudioChunks = []; // Collected chunks for download
 export function initPodcast({ chatArea }) {
   _chatArea = chatArea;
   _podcastBtn = document.querySelector('[data-action="podcast"]');
-  if (_podcastBtn) {
-    _podcastBtn.addEventListener('click', handlePodcastClick);
-  }
+  state.subscribe('isGenerating', (v) => {
+    if (_podcastBtn && !state.getIsPodcastGenerating()) {
+      _podcastBtn.disabled = v;
+    }
+  });
 }
 
-// --- Podcast button handler ---
-
-async function handlePodcastClick() {
+export async function handlePodcastClick() {
   if (state.getIsGenerating() || state.getIsPodcastGenerating()) return;
 
   // Stop any currently playing TTS

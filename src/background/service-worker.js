@@ -516,28 +516,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'captureChartScreenshot') {
     const { scrollX, scrollY, pageX, pageY, pageW, pageH, devicePixelRatio } = msg;
     const dpr = devicePixelRatio || 1;
-    chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+    console.log('[AI Reader SW] captureChartScreenshot received:', { scrollX, scrollY, pageX, pageY, pageW, pageH, dpr });
+    chrome.tabs.captureVisibleTab(null, { format: 'png' }, async (dataUrl) => {
       if (chrome.runtime.lastError || !dataUrl) {
+        console.error('[AI Reader SW] captureVisibleTab failed:', chrome.runtime.lastError?.message);
         sendResponse({ success: false, error: chrome.runtime.lastError?.message || 'capture failed' });
         return;
       }
-      const img = new Image();
-      img.onload = () => {
-        const sx = (pageX - scrollX) * dpr;
-        const sy = (pageY - scrollY) * dpr;
+      console.log('[AI Reader SW] captureVisibleTab ok, dataUrl length:', dataUrl.length);
+      try {
+        const resp = await fetch(dataUrl);
+        const blob = await resp.blob();
+        const bmp = await createImageBitmap(blob);
+        const sx = Math.max(0, (pageX - scrollX) * dpr);
+        const sy = Math.max(0, (pageY - scrollY) * dpr);
         const sw = pageW * dpr;
         const sh = pageH * dpr;
+        console.log('[AI Reader SW] crop params:', { sx, sy, sw, sh, bmpW: bmp.width, bmpH: bmp.height });
         const c = new OffscreenCanvas(Math.round(sw), Math.round(sh));
         const ctx = c.getContext('2d');
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, Math.round(sw), Math.round(sh));
-        c.convertToBlob({ type: 'image/png' }).then(async (blob) => {
-          const buffer = await blob.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          sendResponse({ success: true, dataUri: `data:image/png;base64,${base64}` });
-        }).catch(e => sendResponse({ success: false, error: e.message }));
-      };
-      img.onerror = () => sendResponse({ success: false, error: 'screenshot image load failed' });
-      img.src = dataUrl;
+        ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, Math.round(sw), Math.round(sh));
+        const outBlob = await c.convertToBlob({ type: 'image/png' });
+        const buffer = await outBlob.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+        }
+        const base64 = btoa(binary);
+        console.log('[AI Reader SW] screenshot crop ok, base64 length:', base64.length);
+        sendResponse({ success: true, dataUri: `data:image/png;base64,${base64}` });
+      } catch (e) {
+        console.error('[AI Reader SW] screenshot crop failed:', e.message);
+        sendResponse({ success: false, error: 'screenshot crop failed: ' + e.message });
+      }
     });
     return true;
   }

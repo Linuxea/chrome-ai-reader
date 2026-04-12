@@ -14,8 +14,8 @@ import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandP
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions.js';
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
-import { initPodcast } from './features/podcast.js';
-import { initChartAnalyzer } from './features/chart-analyzer.js';
+import { initPodcast, handlePodcastClick } from './features/podcast.js';
+import { initChartAnalyzer, handleChartClick } from './features/chart-analyzer.js';
 import { marked } from 'marked';
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -111,6 +111,8 @@ async function init() {
       },
       onGenerateOutline: generateOutline,
       onClearQuotePreview: () => updateQuotePreview(''),
+      onChartClick: handleChartClick,
+      onPodcastClick: handlePodcastClick,
     },
     isCommandPopupOpen,
     getFilteredCommands,

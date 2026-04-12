@@ -163,6 +163,10 @@ export function smartScrollToBottom() {
 }
 
 export function setButtonsDisabled(disabled) {
-  _actionBtns.forEach(btn => btn.disabled = disabled);
+  _actionBtns.forEach(btn => {
+    const action = btn.dataset.action;
+    if (action === 'chart' || action === 'podcast') return;
+    btn.disabled = disabled;
+  });
   _sendBtn.disabled = disabled;
 }

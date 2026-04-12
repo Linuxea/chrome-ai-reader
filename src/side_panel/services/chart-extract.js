@@ -50,7 +50,13 @@ export async function detectCharts() {
   if (!tab) throw new Error(t('error.noTab'));
   state.setActiveTabId(tab.id);
 
-  const response = await chrome.tabs.sendMessage(tab.id, { action: 'detectCharts' });
+  let response;
+  try {
+    response = await chrome.tabs.sendMessage(tab.id, { action: 'detectCharts' });
+  } catch (e) {
+    console.error('[AI Reader] detectCharts sendMessage failed:', e.message);
+    throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')');
+  }
   if (!response?.success) {
     throw new Error(response?.error || t('chart.extractFailed'));
   }
@@ -61,15 +67,24 @@ export async function captureChart(chartInfo) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error(t('error.noTab'));
 
-  const response = await chrome.tabs.sendMessage(tab.id, {
-    action: 'captureChart',
-    type: chartInfo.type,
-    index: chartInfo.index,
-    pageX: chartInfo.pageX,
-    pageY: chartInfo.pageY,
-    pageW: chartInfo.pageW,
-    pageH: chartInfo.pageH
-  });
+  console.log('[AI Reader] captureChart sending to tab', tab.id, chartInfo);
+  let response;
+  try {
+    response = await chrome.tabs.sendMessage(tab.id, {
+      action: 'captureChart',
+      type: chartInfo.type,
+      index: chartInfo.index,
+      src: chartInfo.src || null,
+      pageX: chartInfo.pageX,
+      pageY: chartInfo.pageY,
+      pageW: chartInfo.pageW,
+      pageH: chartInfo.pageH
+    });
+  } catch (e) {
+    console.error('[AI Reader] captureChart sendMessage failed (content script not injected?):', e.message);
+    throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')');
+  }
+  console.log('[AI Reader] captureChart response:', response?.success, response?.error || '');
   if (!response?.success) {
     throw new Error(response?.error || t('chart.extractFailed'));
   }
@@ -141,23 +156,23 @@ export async function generateInsights(chartData) {
 export function chartDataToCSV(chartData) {
   const rows = [];
   if (chartData.dataPoints && chartData.dataPoints.length > 0) {
-    rows.push('Label,Value');
+    rows.push('"Label","Value"');
     chartData.dataPoints.forEach(dp => {
-      rows.push(`"${dp.label || ''}",${dp.value != null ? dp.value : ''}`);
+      rows.push(`"${String(dp.label || '').replace(/"/g, '""')}",${dp.value != null ? dp.value : ''}`);
     });
   } else if (chartData.series && chartData.series.length > 0) {
     const labels = chartData.xAxis?.values || chartData.series[0]?.data?.map((_, i) => i + 1) || [];
-    const header = ['Label', ...chartData.series.map(s => s.name || 'Series')];
+    const header = ['"Label"', ...chartData.series.map(s => `"${(s.name || 'Series').replace(/"/g, '""')}"`)];
     rows.push(header.join(','));
     labels.forEach((label, i) => {
-      const row = [`"${label}"`];
+      const row = [`"${String(label).replace(/"/g, '""')}"`];
       chartData.series.forEach(s => {
         row.push(s.data?.[i] != null ? s.data[i] : '');
       });
       rows.push(row.join(','));
     });
   }
-  return rows.join('\n');
+  return '\uFEFF' + rows.join('\n');
 }
 
 export function chartDataToJSON(chartData) {

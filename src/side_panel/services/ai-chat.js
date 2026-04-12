@@ -19,6 +19,8 @@ let _onRemoveSuggestQuestions;
 let _onGenerateSuggestions;
 let _onGenerateOutline;
 let _onClearQuotePreview;
+let _onChartClick;
+let _onPodcastClick;
 let _chatArea;
 let _userInput;
 let _sendBtn;
@@ -41,6 +43,8 @@ export function initAIChat({ chatArea, userInput, sendBtn, actionBtns, callbacks
   _onGenerateSuggestions = callbacks.onGenerateSuggestions;
   _onGenerateOutline = callbacks.onGenerateOutline;
   _onClearQuotePreview = callbacks.onClearQuotePreview;
+  _onChartClick = callbacks.onChartClick;
+  _onPodcastClick = callbacks.onPodcastClick;
 
   // Command popup helpers (injected from features layer to avoid layer violation)
   _isCommandPopupOpen = isCommandPopupOpen;
@@ -133,11 +137,13 @@ export async function handleQuickAction(action) {
   }
 
   if (action === 'podcast') {
-    return; // handled by podcast module
+    _onPodcastClick?.();
+    return;
   }
 
   if (action === 'chart') {
-    return; // handled by chart analyzer module
+    _onChartClick?.();
+    return;
   }
 
   if (state.getOcrRunning() > 0) {
