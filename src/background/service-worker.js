@@ -530,8 +530,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const bmp = await createImageBitmap(blob);
         const sx = Math.max(0, (pageX - scrollX) * dpr);
         const sy = Math.max(0, (pageY - scrollY) * dpr);
-        const sw = pageW * dpr;
-        const sh = pageH * dpr;
+        const maxSw = Math.max(0, bmp.width - sx);
+        const maxSh = Math.max(0, bmp.height - sy);
+        const sw = Math.min(pageW * dpr, maxSw);
+        const sh = Math.min(pageH * dpr, maxSh);
+        if (sw === 0 || sh === 0) throw new Error('Crop area is outside the screenshot');
         console.log('[AI Reader SW] crop params:', { sx, sy, sw, sh, bmpW: bmp.width, bmpH: bmp.height });
         const c = new OffscreenCanvas(Math.round(sw), Math.round(sh));
         const ctx = c.getContext('2d');

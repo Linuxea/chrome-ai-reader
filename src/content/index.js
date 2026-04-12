@@ -72,7 +72,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const canvasResults = await Promise.all(canvasPromises);
         charts.push(...canvasResults);
 
-      document.querySelectorAll('svg').forEach((svg, i) => {
+      let filteredSvgIndex = 0;
+      document.querySelectorAll('svg').forEach((svg) => {
         const w = svg.clientWidth || parseInt(svg.getAttribute('width')) || 0;
         const h = svg.clientHeight || parseInt(svg.getAttribute('height')) || 0;
         if (w > 80 && h > 40) {
@@ -86,16 +87,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } catch {}
             const rect = svg.getBoundingClientRect();
             charts.push({
-              type: 'svg', index: i, width: w, height: h,
+              type: 'svg', index: filteredSvgIndex, width: w, height: h,
               thumbnail, pageX: Math.round(rect.left + window.scrollX), pageY: Math.round(rect.top + window.scrollY),
               pageW: Math.round(rect.width), pageH: Math.round(rect.height)
             });
+            filteredSvgIndex++;
           }
         }
       });
 
       let imgCount = 0;
-      document.querySelectorAll('img').forEach((img, i) => {
+      let filteredImgIndex = 0;
+      document.querySelectorAll('img').forEach((img) => {
         if (imgCount >= MAX_IMAGES) return;
         const w = img.naturalWidth || img.width || 0;
         const h = img.naturalHeight || img.height || 0;
@@ -112,19 +115,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (chartKeywords.test(src) || chartKeywords.test(alt) || chartKeywords.test(cls)) {
           const rect = img.getBoundingClientRect();
           charts.push({
-            type: 'image', index: i, width: w, height: h, src,
+            type: 'image', index: filteredImgIndex, width: w, height: h, src,
             thumbnail: src, pageX: Math.round(rect.left + window.scrollX), pageY: Math.round(rect.top + window.scrollY),
             pageW: Math.round(rect.width), pageH: Math.round(rect.height)
           });
           imgCount++;
+          filteredImgIndex++;
         } else if (!isLikelyIcon && !isLikelyDecorative && w >= 150 && h >= 80) {
           const rect = img.getBoundingClientRect();
           charts.push({
-            type: 'image', index: i, width: w, height: h, src,
+            type: 'image', index: filteredImgIndex, width: w, height: h, src,
             thumbnail: src, pageX: Math.round(rect.left + window.scrollX), pageY: Math.round(rect.top + window.scrollY),
             pageW: Math.round(rect.width), pageH: Math.round(rect.height)
           });
           imgCount++;
+          filteredImgIndex++;
         }
       });
 
@@ -171,7 +176,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return null;
       }
       if (type === 'svg') {
-        const svg = document.querySelectorAll('svg')[index];
+        const validSvgs = Array.from(document.querySelectorAll('svg'))
+          .filter(s => {
+            const w = s.clientWidth || parseInt(s.getAttribute('width')) || 0;
+            const h = s.clientHeight || parseInt(s.getAttribute('height')) || 0;
+            return w > 80 && h > 40 && s.querySelector('path, rect, circle, line, polyline, polygon');
+          });
+        const svg = validSvgs[index];
         if (!svg) throw new Error('SVG element not found at index ' + index);
         return new Promise((resolve) => {
           const svgStr = new XMLSerializer().serializeToString(svg);

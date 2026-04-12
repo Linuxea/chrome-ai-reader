@@ -64,13 +64,13 @@ export async function detectCharts() {
 }
 
 export async function captureChart(chartInfo) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) throw new Error(t('error.noTab'));
+  const tabId = state.getActiveTabId();
+  if (!tabId) throw new Error(t('error.noTab'));
 
-  console.log('[AI Reader] captureChart sending to tab', tab.id, chartInfo);
+  console.log('[AI Reader] captureChart sending to tab', tabId, chartInfo);
   let response;
   try {
-    response = await chrome.tabs.sendMessage(tab.id, {
+    response = await chrome.tabs.sendMessage(tabId, {
       action: 'captureChart',
       type: chartInfo.type,
       index: chartInfo.index,
