@@ -76,6 +76,14 @@ let _isPodcastGenerating = false;
 export function getIsPodcastGenerating() { return _isPodcastGenerating; }
 export function setIsPodcastGenerating(v) { _isPodcastGenerating = v; }
 
+let _isChartGenerating = false;
+export function getIsChartGenerating() { return _isChartGenerating; }
+export function setIsChartGenerating(v) { _isChartGenerating = v; }
+
+let _detectedCharts = [];
+export function getDetectedCharts() { return _detectedCharts; }
+export function setDetectedCharts(v) { _detectedCharts = v; }
+
 // --- Async init: read chrome.storage ---
 export async function initState() {
   const data = await chrome.storage.sync.get(['systemPrompt']);

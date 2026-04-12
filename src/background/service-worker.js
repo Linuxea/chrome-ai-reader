@@ -443,6 +443,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.action === 'analyzeChartVision') {
+    const { apiKey, messages } = msg;
+    if (!apiKey) {
+      sendResponse({ success: false, error: 'No API Key' });
+      return;
+    }
+
+    fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'glm-4v-flash',
+        messages,
+        temperature: 0.3
+      })
+    })
+    .then(res => {
+      if (!res.ok) return res.json().then(d => { throw new Error(d.error?.message || `API request failed (${res.status})`); });
+      return res.json();
+    })
+    .then(data => {
+      const content = data.choices?.[0]?.message?.content || '';
+      sendResponse({ success: true, content });
+    })
+    .catch(e => {
+      sendResponse({ success: false, error: e.message });
+    });
+
+    return true;
+  }
+
   if (msg.action === 'analyzeChart') {
     const { apiKey, apiBase, modelName } = msg;
     if (!apiKey) {
@@ -476,6 +510,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: false, error: e.message });
     });
 
+    return true;
+  }
+
+  if (msg.action === 'captureChartScreenshot') {
+    const { scrollX, scrollY, pageX, pageY, pageW, pageH, devicePixelRatio } = msg;
+    const dpr = devicePixelRatio || 1;
+    chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+      if (chrome.runtime.lastError || !dataUrl) {
+        sendResponse({ success: false, error: chrome.runtime.lastError?.message || 'capture failed' });
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const sx = (pageX - scrollX) * dpr;
+        const sy = (pageY - scrollY) * dpr;
+        const sw = pageW * dpr;
+        const sh = pageH * dpr;
+        const c = new OffscreenCanvas(Math.round(sw), Math.round(sh));
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, Math.round(sw), Math.round(sh));
+        c.convertToBlob({ type: 'image/png' }).then(async (blob) => {
+          const buffer = await blob.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          sendResponse({ success: true, dataUri: `data:image/png;base64,${base64}` });
+        }).catch(e => sendResponse({ success: false, error: e.message }));
+      };
+      img.onerror = () => sendResponse({ success: false, error: 'screenshot image load failed' });
+      img.src = dataUrl;
+    });
     return true;
   }
 

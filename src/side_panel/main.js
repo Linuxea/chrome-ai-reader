@@ -15,6 +15,7 @@ import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } fro
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
 import { initPodcast } from './features/podcast.js';
+import { initChartAnalyzer } from './features/chart-analyzer.js';
 import { marked } from 'marked';
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -93,6 +94,7 @@ async function init() {
   initPodcast({
     chatArea: els.chatArea,
   });
+  initChartAnalyzer({ chatArea: els.chatArea });
 
   // 5. AI chat (last — injects feature callbacks to avoid layer violation)
   initAIChat({

@@ -135,8 +135,12 @@ function renderChartList(card, charts) {
 
     const sizeText = chart.width && chart.height ? `${chart.width}×${chart.height}` : '';
 
+    const thumbHtml = chart.thumbnail
+      ? `<img class="chart-chart-thumb" src="${escapeHtml(chart.thumbnail)}" alt="${escapeHtml(typeLabel)}" loading="lazy">`
+      : `<span class="chart-chart-type">${typeIcon}</span>`;
+
     item.innerHTML = `
-      <span class="chart-chart-type">${typeIcon}</span>
+      ${thumbHtml}
       <div class="chart-chart-info">
         <span class="chart-chart-label">${escapeHtml(typeLabel)}</span>
         ${sizeText ? `<span class="chart-chart-size">${sizeText}</span>` : ''}

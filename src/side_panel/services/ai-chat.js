@@ -136,6 +136,10 @@ export async function handleQuickAction(action) {
     return; // handled by podcast module
   }
 
+  if (action === 'chart') {
+    return; // handled by chart analyzer module
+  }
+
   if (state.getOcrRunning() > 0) {
     appendMessage('error', t('error.ocrRunning'));
     return;
