@@ -79,6 +79,9 @@ let podcastPlayTransitioning = false; // Debounce for play/pause
 const MAX_CHUNK_QUEUE_SIZE = 50; // Prevent memory issues with long podcasts
 let podcastAudioChunks = []; // Collected chunks for download
 let _podcastTitle = ''; // Content-based title for download filename
+let _podcastRounds = []; // Parsed script rounds: [{speaker, text, speakerLabel}]
+let _roundTimings = []; // Per-round audio timings: [{startTime, endTime}]
+let _lastHighlightIdx = -1; // Debounce: avoid redundant DOM updates
 
 // LLM script generation state
 let podcastLlmPort = null;
@@ -231,6 +234,80 @@ function createPodcastCard(quotePreview) {
   return card;
 }
 
+function renderTranscript(card, rounds) {
+  // Remove existing transcript if any
+  const existing = card.querySelector('.podcast-transcript');
+  if (existing) existing.remove();
+
+  const container = document.createElement('div');
+  container.className = 'podcast-transcript';
+
+  const COLLAPSED_LIMIT = 4;
+  rounds.forEach((round, idx) => {
+    const el = document.createElement('div');
+    el.className = 'podcast-round';
+    el.dataset.round = idx;
+    if (idx >= COLLAPSED_LIMIT) el.classList.add('podcast-round-hidden');
+    el.innerHTML = `<span class="podcast-round-speaker speaker-${round.speakerLabel}">${round.speakerLabel}</span><span class="podcast-round-text">${escapeHtml(round.text)}</span>`;
+    container.appendChild(el);
+  });
+
+  // Toggle button if there are more rounds than the collapsed limit
+  if (rounds.length > COLLAPSED_LIMIT) {
+    const toggle = document.createElement('button');
+    toggle.className = 'podcast-transcript-toggle';
+    toggle.textContent = t('podcast.showMore');
+    toggle.addEventListener('click', () => {
+      const isCollapsed = container.classList.contains('podcast-transcript-collapsed');
+      container.classList.toggle('podcast-transcript-collapsed', !isCollapsed);
+      toggle.textContent = isCollapsed ? t('podcast.showMore') : t('podcast.showLess');
+      if (isCollapsed) {
+        container.querySelectorAll('.podcast-round-hidden').forEach(el => el.classList.remove('podcast-round-hidden'));
+      } else {
+        container.querySelectorAll('.podcast-round').forEach((el, i) => {
+          if (i >= COLLAPSED_LIMIT) el.classList.add('podcast-round-hidden');
+        });
+      }
+    });
+    container.classList.add('podcast-transcript-collapsed');
+    container.appendChild(toggle);
+  }
+
+  // Insert between .podcast-info and .podcast-status
+  const statusEl = card.querySelector('.podcast-status');
+  card.insertBefore(container, statusEl);
+}
+
+function updateTranscriptHighlight(roundIdx) {
+  if (roundIdx < 0 || roundIdx === _lastHighlightIdx) return;
+  _lastHighlightIdx = roundIdx;
+
+  const card = _currentCard;
+  if (!card) return;
+
+  const container = card.querySelector('.podcast-transcript');
+  const rounds = card.querySelectorAll('.podcast-round');
+  if (!container || rounds.length === 0) return;
+
+  // Auto-expand transcript when highlighting a hidden round
+  if (container.classList.contains('podcast-transcript-collapsed')) {
+    container.classList.remove('podcast-transcript-collapsed');
+    container.querySelectorAll('.podcast-round-hidden').forEach(el => el.classList.remove('podcast-round-hidden'));
+    const toggle = container.querySelector('.podcast-transcript-toggle');
+    if (toggle) toggle.textContent = t('podcast.showLess');
+  }
+
+  rounds.forEach((el, i) => {
+    el.classList.toggle('active', i === roundIdx);
+  });
+
+  // Auto-scroll active round into view
+  const activeEl = rounds[roundIdx];
+  if (activeEl) {
+    activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
 function updateCardStatus(card, status, text) {
   const statusEl = card.querySelector('.podcast-status');
   const playerEl = card.querySelector('.podcast-player');
@@ -374,9 +451,10 @@ function validateAndMapRounds(parsed) {
     if (!round.speaker || !round.text) {
       throw new Error('Missing speaker or text in round');
     }
-    const speaker = SPEAKER_MAP[round.speaker] || SPEAKER_MAP[round.speaker?.toUpperCase()] || DEFAULT_SPEAKER;
+    const speakerLabel = round.speaker.toUpperCase();
+    const speaker = SPEAKER_MAP[round.speaker] || SPEAKER_MAP[speakerLabel] || DEFAULT_SPEAKER;
     const text = (round.text || '').slice(0, 300);
-    return { speaker, text };
+    return { speaker, text, speakerLabel };
   });
 }
 
@@ -423,7 +501,7 @@ function extractRoundsFallback(jsonStr) {
                .replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     const speaker = SPEAKER_MAP[letter] || DEFAULT_SPEAKER;
     text = text.slice(0, 300);
-    if (text) rounds.push({ speaker, text });
+    if (text) rounds.push({ speaker, text, speakerLabel: letter });
   }
   return rounds;
 }
@@ -498,7 +576,13 @@ async function onScriptDone(card, fullScript) {
 
   // Fallback title in case AI metadata generation fails or takes too long
   _podcastTitle = extractPodcastTitle(nlpTexts);
-  
+
+  // Store rounds and render transcript
+  _podcastRounds = nlpTexts;
+  _roundTimings = [];
+  _lastHighlightIdx = -1;
+  renderTranscript(card, nlpTexts);
+
   // Fire and forget metadata generation
   generatePodcastMetadata(card, fullScript);
 
@@ -551,7 +635,12 @@ async function generatePodcastAudio(card, nlpTexts) {
       podcastAudioChunks.push(bytes.buffer.slice(0));
       appendPodcastChunk();
     } else if (msg.type === 'round_end' && msg.audioDuration) {
-      // Track duration for progress display
+      if (msg.startTime != null && msg.endTime != null) {
+        _roundTimings.push({ startTime: msg.startTime, endTime: msg.endTime });
+      } else {
+        const prevEnd = _roundTimings.length > 0 ? _roundTimings[_roundTimings.length - 1].endTime : 0;
+        _roundTimings.push({ startTime: prevEnd, endTime: prevEnd + msg.audioDuration });
+      }
     } else if (msg.type === 'done') {
       finishPodcastAudio(card);
     } else if (msg.type === 'error') {
@@ -663,6 +752,23 @@ function updatePlayerProgress(card) {
       playBtn.title = t('podcast.pause');
     }
   }
+
+  // Sync transcript highlight with current playback position
+  if (_roundTimings.length > 0 && !podcastAudioEl.paused) {
+    const ct = podcastAudioEl.currentTime;
+    let roundIdx = -1;
+    for (let i = 0; i < _roundTimings.length; i++) {
+      if (ct >= _roundTimings[i].startTime && ct < _roundTimings[i].endTime) {
+        roundIdx = i;
+        break;
+      }
+    }
+    if (roundIdx === -1 && ct >= _roundTimings[_roundTimings.length - 1].endTime) {
+      // Past all known timings — highlight last round
+      roundIdx = _roundTimings.length - 1;
+    }
+    updateTranscriptHighlight(roundIdx);
+  }
 }
 
 function handlePlayPause() {
@@ -748,12 +854,14 @@ function cleanupPodcast() {
   podcastChunkQueue = [];
   podcastAudioChunks = [];
   podcastBufferAppending = false;
+  _podcastTitle = '';
+  _roundTimings = [];
+  _lastHighlightIdx = -1;
   resetPodcastState();
 }
 
 function resetPodcastState() {
   state.setIsPodcastGenerating(false);
-  _podcastTitle = '';
   if (_podcastBtn) _podcastBtn.disabled = false;
 }
 

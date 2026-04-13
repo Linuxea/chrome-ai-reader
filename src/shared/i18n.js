@@ -178,6 +178,8 @@ const TRANSLATIONS = {
     'podcast.download': '下载音频',
     'podcast.downloading': '正在下载...',
     'podcast.fileName': '播客',
+    'podcast.showMore': '展开脚本',
+    'podcast.showLess': '收起脚本',
 
     // Chart Analyzer
     'chart.button': '图表',
@@ -399,6 +401,8 @@ const TRANSLATIONS = {
     'podcast.download': 'Download Audio',
     'podcast.downloading': 'Downloading...',
     'podcast.fileName': 'podcast',
+    'podcast.showMore': 'Show transcript',
+    'podcast.showLess': 'Hide transcript',
 
     // Chart Analyzer
     'chart.button': 'Chart',
