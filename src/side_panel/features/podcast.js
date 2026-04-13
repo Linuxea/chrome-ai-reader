@@ -334,21 +334,37 @@ async function generatePodcastScript(card, textContent) {
 // --- Script Parsing ---
 
 function parsePodcastScript(fullScript) {
-  // Try to extract JSON — LLM may wrap in markdown code block
-  const jsonMatch = fullScript.match(/\{[\s\S]*"rounds"[\s\S]*\}/);
+  // Step 1: Extract JSON from LLM output
+  let jsonStr = fullScript.trim();
+  // Strip markdown code block if present
+  const codeBlock = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlock) jsonStr = codeBlock[1].trim();
+  // Extract the JSON object containing "rounds"
+  const jsonMatch = jsonStr.match(/\{[\s\S]*"rounds"[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON found in script');
+  jsonStr = jsonMatch[0];
 
-  let parsed;
+  // Step 2: Try direct parse
   try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch (e) {
-    throw new Error(`Invalid JSON: ${e.message}`);
+    return validateAndMapRounds(JSON.parse(jsonStr));
+  } catch (originalError) {
+    // Step 3: Repair common LLM JSON issues (trailing commas, unescaped newlines)
+    const repaired = repairLLMJson(jsonStr);
+    try {
+      return validateAndMapRounds(JSON.parse(repaired));
+    } catch {
+      // Step 4: Last resort — extract rounds individually with state machine
+      const rounds = extractRoundsFallback(jsonStr);
+      if (rounds.length > 0) return rounds;
+      throw new Error(`Invalid JSON: ${originalError.message}`);
+    }
   }
-  
+}
+
+function validateAndMapRounds(parsed) {
   if (!parsed.rounds || !Array.isArray(parsed.rounds) || parsed.rounds.length === 0) {
     throw new Error('Empty rounds array');
   }
-
   return parsed.rounds.map(round => {
     if (!round.speaker || !round.text) {
       throw new Error('Missing speaker or text in round');
@@ -357,6 +373,54 @@ function parsePodcastScript(fullScript) {
     const text = (round.text || '').slice(0, 300);
     return { speaker, text };
   });
+}
+
+/** Fix common JSON issues in LLM output: trailing commas, unescaped control chars in strings */
+function repairLLMJson(jsonStr) {
+  // Fix trailing commas before ] or }
+  let result = jsonStr.replace(/,\s*([}\]])/g, '$1');
+  // Escape unescaped control characters within string values
+  let inString = false, escaped = false, output = '';
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i];
+    if (escaped) { output += ch; escaped = false; continue; }
+    if (ch === '\\' && inString) { output += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; output += ch; continue; }
+    if (inString) {
+      if (ch === '\n') { output += '\\n'; continue; }
+      if (ch === '\r') { output += '\\r'; continue; }
+      if (ch === '\t') { output += '\\t'; continue; }
+    }
+    output += ch;
+  }
+  return output;
+}
+
+/** Fallback: extract rounds individually using state-machine parsing to tolerate broken JSON */
+function extractRoundsFallback(jsonStr) {
+  const rounds = [];
+  const speakerRe = /"speaker"\s*:\s*"(A|B)"/g;
+  let m;
+  while ((m = speakerRe.exec(jsonStr)) !== null) {
+    const letter = m[1];
+    const rest = jsonStr.substring(m.index + m[0].length);
+    const prefix = rest.match(/^\s*,\s*"text"\s*:\s*"/);
+    if (!prefix) continue;
+    const src = rest.substring(prefix[0].length);
+    // Read text value until unescaped " followed by } (end of round object)
+    let text = '', i = 0;
+    while (i < src.length) {
+      if (src[i] === '\\') { text += src.substring(i, i + 2); i += 2; continue; }
+      if (src[i] === '"' && /^\s*\}/.test(src.substring(i + 1))) break;
+      text += src[i]; i++;
+    }
+    text = text.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
+               .replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const speaker = SPEAKER_MAP[letter] || DEFAULT_SPEAKER;
+    text = text.slice(0, 300);
+    if (text) rounds.push({ speaker, text });
+  }
+  return rounds;
 }
 
 async function onScriptDone(card, fullScript) {
