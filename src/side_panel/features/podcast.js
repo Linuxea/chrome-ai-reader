@@ -78,6 +78,7 @@ let podcastBufferAppending = false;
 let podcastPlayTransitioning = false; // Debounce for play/pause
 const MAX_CHUNK_QUEUE_SIZE = 50; // Prevent memory issues with long podcasts
 let podcastAudioChunks = []; // Collected chunks for download
+let _podcastTitle = ''; // Content-based title for download filename
 
 // LLM script generation state
 let podcastLlmPort = null;
@@ -187,6 +188,10 @@ function createPodcastCard(quotePreview) {
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
+    </div>
+    <div class="podcast-info">
+      <h3 class="podcast-info-title"></h3>
+      <p class="podcast-info-desc"></p>
     </div>
     ${quoteHtml}
     <div class="podcast-status" data-status="generating_script">
@@ -423,6 +428,61 @@ function extractRoundsFallback(jsonStr) {
   return rounds;
 }
 
+function extractPodcastTitle(rounds) {
+  if (!rounds || rounds.length === 0) return '';
+  const firstTexts = rounds.slice(0, 3).map(r => (r.text || '').trim()).filter(Boolean).join(' ');
+  let title = firstTexts
+    .replace(/[，。！？、；："\'「」『』【】（）《》—…\s]+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  if (title.length > 30) {
+    const lastPunct = title.lastIndexOf(' ', 30);
+    title = title.slice(0, lastPunct > 0 ? lastPunct : 30);
+  }
+  return title.replace(/[\/\\:*?"<>|]/g, '_').trim();
+}
+
+function generatePodcastMetadata(card, fullScript) {
+  const port = chrome.runtime.connect({ name: 'ai-chat' });
+  let result = '';
+  port.postMessage({
+    type: 'chat',
+    messages: [
+      { role: 'system', content: 'Generate a captivating title and a short summary description for this podcast conversation. Return ONLY valid JSON with two keys: "title" (string, max 30 chars) and "description" (string, max 100 chars, highlighting the core topic).' },
+      { role: 'user', content: fullScript.slice(0, 4000) }
+    ],
+    response_format: { type: 'json_object' }
+  });
+
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'chunk' && msg.content) {
+      result += msg.content;
+    } else if (msg.type === 'done') {
+      port.disconnect();
+      if (podcastCancelled) return;
+      try {
+        // AI might return markdown code block if model ignores response_format
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return;
+        const data = JSON.parse(jsonMatch[0]);
+        if (data.title) {
+          _podcastTitle = data.title.replace(/[\/\\:*?"<>|]/g, '_').trim();
+          const infoEl = card.querySelector('.podcast-info');
+          const titleEl = card.querySelector('.podcast-info-title');
+          const descEl = card.querySelector('.podcast-info-desc');
+          if (infoEl && titleEl && descEl) {
+            titleEl.textContent = data.title;
+            if (data.description) descEl.textContent = data.description;
+            infoEl.classList.add('active');
+          }
+        }
+      } catch (e) {
+        console.error('[Podcast] Failed to parse metadata:', e);
+      }
+    }
+  });
+}
+
 async function onScriptDone(card, fullScript) {
   if (podcastCancelled) return;
 
@@ -435,6 +495,12 @@ async function onScriptDone(card, fullScript) {
     resetPodcastState();
     return;
   }
+
+  // Fallback title in case AI metadata generation fails or takes too long
+  _podcastTitle = extractPodcastTitle(nlpTexts);
+  
+  // Fire and forget metadata generation
+  generatePodcastMetadata(card, fullScript);
 
   // Transition to audio generation phase
   updateCardStatus(card, 'generating_audio');
@@ -630,7 +696,10 @@ function downloadPodcastAudio() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${t('podcast.fileName')}-${new Date().toISOString().slice(0, 10)}.mp3`;
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const name = _podcastTitle || t('podcast.fileName');
+  a.download = `${name}-${dateStr}.mp3`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -684,6 +753,7 @@ function cleanupPodcast() {
 
 function resetPodcastState() {
   state.setIsPodcastGenerating(false);
+  _podcastTitle = '';
   if (_podcastBtn) _podcastBtn.disabled = false;
 }
 

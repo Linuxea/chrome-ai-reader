@@ -21,6 +21,34 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+}
+
+.podcast-info {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  display: none;
+}
+
+.podcast-info.active {
+  display: block;
+}
+
+.podcast-info-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+
+.podcast-info-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
 }
 
 .podcast-quote {
