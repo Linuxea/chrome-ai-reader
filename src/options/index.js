@@ -464,12 +464,24 @@ importFile.addEventListener('change', (e) => {
       Object.keys(textFields).forEach(f => {
         if (!(f in data)) chrome.storage.sync.remove(f);
       });
+      Object.keys(checkboxFields).forEach(f => {
+        if (!(f in data)) {
+          chrome.storage.sync.remove(f);
+          // Reset checkbox to default (HTML defaultChecked)
+          checkboxFields[f].checked = checkboxFields[f].defaultChecked;
+        }
+      });
 
       chrome.storage.sync.set(syncData, () => {
         if (data.quickCommands && Array.isArray(data.quickCommands)) {
           saveQuickCommands(data.quickCommands);
           renderQuickCommands(data.quickCommands);
+        } else if ('quickCommands' in data) {
+          // Import file explicitly has empty/null quickCommands — clear storage
+          saveQuickCommands([]);
+          renderQuickCommands([]);
         }
+        // If 'quickCommands' key is absent from import, keep existing commands (no-op)
 
         if (syncData.apiKey) fetchModels();
 

@@ -144,6 +144,8 @@ function parseFrame(data) {
 function createMessageQueue(ws) {
   const queue = [];
   const waiters = [];
+  let closed = false;
+  let closeReason = null;
 
   ws.on('message', (data) => {
     const frame = parseFrame(data);
@@ -155,8 +157,32 @@ function createMessageQueue(ws) {
     }
   });
 
+  ws.on('close', (code, reason) => {
+    closed = true;
+    closeReason = new Error(`WebSocket closed (${code}): ${reason || 'no reason'}`);
+    // Reject all pending waiters
+    while (waiters.length > 0) {
+      const waiter = waiters.shift();
+      waiter(null); // Will be caught by waitForMessage's null check
+    }
+  });
+
+  ws.on('error', (err) => {
+    if (closed) return;
+    closed = true;
+    closeReason = new Error(`WebSocket error: ${err.message}`);
+    while (waiters.length > 0) {
+      const waiter = waiters.shift();
+      waiter(null);
+    }
+  });
+
   function waitForMessage(timeout = 30000) {
     return new Promise((resolve, reject) => {
+      if (closed) {
+        reject(closeReason);
+        return;
+      }
       const timer = setTimeout(() => reject(new Error('WebSocket message timeout')), timeout);
       if (queue.length > 0) {
         clearTimeout(timer);
@@ -165,7 +191,11 @@ function createMessageQueue(ws) {
       }
       waiters.push((frame) => {
         clearTimeout(timer);
-        resolve(frame);
+        if (frame === null) {
+          reject(closeReason);
+        } else {
+          resolve(frame);
+        }
       });
     });
   }
@@ -199,7 +229,11 @@ function createMessageQueue(ws) {
 // --- SSE helper ---
 
 function sendSSE(res, event, data) {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  try {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  } catch {
+    // Response may have been closed by client disconnect
+  }
 }
 
 // --- Podcast handler ---
@@ -210,7 +244,18 @@ async function handlePodcast(params, res) {
 
   console.log(`[Podcast] Starting: ${nlpTexts.length} rounds, id: ${connectId}`);
 
-  const ws = new WebSocket('wss://openspeech.bytedance.com/api/v3/sami/podcasttts', {
+  // Track client disconnect to clean up WebSocket
+  let clientDisconnected = false;
+  let ws = null;
+  res.on('close', () => {
+    clientDisconnected = true;
+    console.log('[Podcast] Client disconnected, closing WebSocket');
+    if (ws) try { ws.close(); } catch {}
+  });
+  // Prevent unhandled 'error' on res.write() after client disconnect
+  res.on('error', () => {});
+
+  ws = new WebSocket('wss://openspeech.bytedance.com/api/v3/sami/podcasttts', {
     headers: {
       'X-Api-App-Id': appId,
       'X-Api-Access-Key': accessKey,
@@ -263,6 +308,8 @@ async function handlePodcast(params, res) {
     // Step 4: Receive streaming data
     let audioChunks = 0;
     while (true) {
+      if (clientDisconnected) break;
+
       const frame = await waitForMessage(120000);
 
       if (frame.msgType === MsgType.Error) {
@@ -277,10 +324,6 @@ async function handlePodcast(params, res) {
       if (frame.msgType === MsgType.AudioOnlyServer &&
           frame.eventCode === PodcastEvent.PodcastRoundResponse) {
         const audioBytes = frame.payload instanceof Uint8Array ? frame.payload : new Uint8Array(0);
-        let binary = '';
-        for (let i = 0; i < audioBytes.length; i++) {
-          binary += String.fromCharCode(audioBytes[i]);
-        }
         sendSSE(res, 'audio_chunk', { data: Buffer.from(audioBytes).toString('base64') });
         audioChunks++;
       } else if (frame.eventCode === PodcastEvent.PodcastRoundStart) {
@@ -308,8 +351,12 @@ async function handlePodcast(params, res) {
     sendSSE(res, 'error', { error: e.message });
   }
 
-  ws.close();
-  res.end();
+  if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+    ws.close();
+  }
+  if (!res.writableEnded) {
+    res.end();
+  }
 }
 
 // --- HTTP Server ---

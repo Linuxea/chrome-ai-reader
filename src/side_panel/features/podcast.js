@@ -79,6 +79,10 @@ let podcastPlayTransitioning = false; // Debounce for play/pause
 const MAX_CHUNK_QUEUE_SIZE = 50; // Prevent memory issues with long podcasts
 let podcastAudioChunks = []; // Collected chunks for download
 
+// LLM script generation state
+let podcastLlmPort = null;
+let podcastCancelled = false;
+
 // --- Init ---
 
 export function initPodcast({ chatArea }) {
@@ -94,8 +98,19 @@ export function initPodcast({ chatArea }) {
 export async function handlePodcastClick() {
   if (state.getIsGenerating() || state.getIsPodcastGenerating()) return;
 
-  // Stop any currently playing TTS
+  // Lock immediately to prevent double-click race condition
+  state.setIsPodcastGenerating(true);
+  if (_podcastBtn) _podcastBtn.disabled = true;
+
+  // Reset cancellation flag for new invocation
+  podcastCancelled = false;
+
+  // Stop any currently playing TTS and clean up previous podcast audio
   if (isTTSPlaying()) stopTTS();
+  cleanupPodcast();
+  // Re-acquire lock (cleanupPodcast resets isPodcastGenerating)
+  state.setIsPodcastGenerating(true);
+  if (_podcastBtn) _podcastBtn.disabled = true;
 
   // Extract text source (same priority as quick actions)
   const selectedText = state.getSelectedText();
@@ -130,6 +145,7 @@ export async function handlePodcastClick() {
 
   if (!textContent || !textContent.trim()) {
     appendMessage('error', t('podcast.noContent'));
+    resetPodcastState();
     return;
   }
 
@@ -139,10 +155,6 @@ export async function handlePodcastClick() {
     : '';
   const card = createPodcastCard(sourcePreview);
   _currentCard = card;
-
-  // Disable button during generation
-  state.setIsPodcastGenerating(true);
-  if (_podcastBtn) _podcastBtn.disabled = true;
 
   // Start LLM script generation
   await generatePodcastScript(card, textContent);
@@ -169,7 +181,7 @@ function createPodcastCard(quotePreview) {
   card.innerHTML = `
     <div class="podcast-card-header">
       <span class="podcast-card-title">🎙️ ${t('podcast.cardTitle')}</span>
-      <button class="podcast-card-close" title="关闭">
+      <button class="podcast-card-close" title="${t('chart.close')}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -198,9 +210,11 @@ function createPodcastCard(quotePreview) {
 
   // Close button handler
   card.querySelector('.podcast-card-close').addEventListener('click', () => {
+    podcastCancelled = true;
     cleanupPodcast();
     card.remove();
     _currentCard = null;
+    restoreWelcomeIfNeeded();
   });
 
   // Play/pause button handler
@@ -243,7 +257,7 @@ function updateCardStatus(card, status, text) {
       card.querySelector('.podcast-download-btn').addEventListener('click', () => downloadPodcastAudio());
       break;
     case 'error':
-      statusEl.innerHTML = `<span class="podcast-status-error">${text || t('podcast.error')}</span> <button class="podcast-action-btn podcast-retry-btn">${t('podcast.retry')}</button>`;
+      statusEl.innerHTML = `<span class="podcast-status-error">${escapeHtml(text || t('podcast.error'))}</span> <button class="podcast-action-btn podcast-retry-btn">${t('podcast.retry')}</button>`;
       statusEl.className = 'podcast-status';
       statusEl.style.display = '';
       playerEl.classList.remove('active');
@@ -260,6 +274,7 @@ function updateCardStatus(card, status, text) {
 
 async function generatePodcastScript(card, textContent) {
   const port = chrome.runtime.connect({ name: 'podcast-llm' });
+  podcastLlmPort = port;
 
   let fullScript = '';
 
@@ -275,14 +290,42 @@ async function generatePodcastScript(card, textContent) {
         fullScript += msg.content;
       } else if (msg.type === 'done') {
         port.disconnect();
-        onScriptDone(card, fullScript);
+        podcastLlmPort = null;
+        if (!podcastCancelled) onScriptDone(card, fullScript);
         resolve();
       } else if (msg.type === 'error') {
         port.disconnect();
-        const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.error'));
-        updateCardStatus(card, 'error', errMsg);
-        resetPodcastState();
+        podcastLlmPort = null;
+        if (!podcastCancelled) {
+          const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.error'));
+          updateCardStatus(card, 'error', errMsg);
+          resetPodcastState();
+        }
         resolve();
+      }
+    });
+
+    // Safety net: handle unexpected port disconnect during script generation
+    port.onDisconnect.addListener(() => {
+      podcastLlmPort = null;
+      if (podcastCancelled) { resolve(); return; }
+      if (state.getIsPodcastGenerating()) {
+        if (!fullScript) {
+          updateCardStatus(card, 'error', t('podcast.error'));
+          resetPodcastState();
+          resolve();
+        } else {
+          // Partial script received — try to parse and proceed, or show error
+          try {
+            const nlpTexts = parsePodcastScript(fullScript);
+            updateCardStatus(card, 'generating_audio');
+            generatePodcastAudio(card, nlpTexts);
+          } catch {
+            updateCardStatus(card, 'error', t('podcast.scriptParseError'));
+            resetPodcastState();
+          }
+          resolve();
+        }
       }
     });
   });
@@ -317,6 +360,8 @@ function parsePodcastScript(fullScript) {
 }
 
 async function onScriptDone(card, fullScript) {
+  if (podcastCancelled) return;
+
   let nlpTexts;
   try {
     nlpTexts = parsePodcastScript(fullScript);
@@ -335,9 +380,11 @@ async function onScriptDone(card, fullScript) {
 // --- Audio Generation ---
 
 async function generatePodcastAudio(card, nlpTexts) {
+  if (podcastCancelled) return;
+
   // Clean up any previous podcast playback before starting new one
   cleanupPodcast();
-  
+
   podcastPort = chrome.runtime.connect({ name: 'podcast-audio' });
 
   podcastPort.postMessage({
@@ -351,9 +398,9 @@ async function generatePodcastAudio(card, nlpTexts) {
   });
 
   podcastPort.onMessage.addListener((msg) => {
-    // Guard against disconnected port
-    if (!podcastPort) return;
-    
+    // Guard against cancelled or disconnected port
+    if (!podcastPort || podcastCancelled) return;
+
     if (msg.type === 'audio_chunk' && msg.data) {
       if (!podcastAudioEl) {
         initPodcastPlayback(card);
@@ -364,7 +411,7 @@ async function generatePodcastAudio(card, nlpTexts) {
       for (let i = 0; i < binaryStr.length; i++) {
         bytes[i] = binaryStr.charCodeAt(i);
       }
-      
+
       // Apply backpressure: drop old chunks if queue is too large
       if (podcastChunkQueue.length >= MAX_CHUNK_QUEUE_SIZE) {
         console.warn('[Podcast] Queue full, dropping oldest chunk');
@@ -381,6 +428,22 @@ async function generatePodcastAudio(card, nlpTexts) {
       const errMsg = msg.errorKey ? t(msg.errorKey) : (msg.error || t('podcast.audioError'));
       updateCardStatus(card, 'error', errMsg);
       resetPodcastState();
+    }
+  });
+
+  // Safety net: handle unexpected port disconnect (e.g., service worker terminated)
+  podcastPort.onDisconnect.addListener(() => {
+    if (podcastCancelled) return;
+    if (state.getIsPodcastGenerating()) {
+      if (podcastAudioEl && podcastMediaSource && podcastMediaSource.readyState === 'open') {
+        // Audio already streaming — finalize MediaSource so buffered data plays to completion
+        try { podcastMediaSource.endOfStream(); } catch {}
+        // The 'ended' event on the audio element will update the card to 'done' status
+        resetPodcastState();
+      } else {
+        updateCardStatus(card, 'error', t('podcast.audioError'));
+        resetPodcastState();
+      }
     }
   });
 }
@@ -545,6 +608,10 @@ function cleanupPodcast() {
     try { podcastPort.disconnect(); } catch {}
     podcastPort = null;
   }
+  if (podcastLlmPort) {
+    try { podcastLlmPort.disconnect(); } catch {}
+    podcastLlmPort = null;
+  }
   podcastChunkQueue = [];
   podcastAudioChunks = [];
   podcastBufferAppending = false;
@@ -557,6 +624,15 @@ function resetPodcastState() {
 }
 
 // --- Utilities ---
+
+function restoreWelcomeIfNeeded() {
+  if (_chatArea.children.length === 0) {
+    const welcome = document.createElement('div');
+    welcome.className = 'welcome-msg';
+    welcome.innerHTML = `<p data-i18n="sidebar.welcome">${t('sidebar.welcome')}</p>`;
+    _chatArea.appendChild(welcome);
+  }
+}
 
 function formatTime(seconds) {
   if (!seconds || !isFinite(seconds)) return '0:00';

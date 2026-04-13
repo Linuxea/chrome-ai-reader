@@ -279,6 +279,8 @@ export function generateOutline() {
 
   if (!pageContent) {
     _deps.onExtractPageContent().then(function() {
+      // Re-check isGenerating — user may have started another operation during the async extract
+      if (state.getIsGenerating()) return;
       if (!state.getPageContent()) {
         _deps.onAppendMessage('error', t('outline.noContent'));
         return;
@@ -345,6 +347,10 @@ function doGenerateOutline() {
   // Safety net: reset lock if port disconnects unexpectedly
   port.onDisconnect.addListener(function() {
     if (state.getIsGenerating()) {
+      if (!fullText) {
+        msgEl.className = 'message message-error';
+        msgEl.innerHTML = escapeHtml(t('error.apiFailed'));
+      }
       state.setIsGenerating(false);
       _deps.onSetButtonsDisabled(false);
     }
@@ -385,7 +391,8 @@ function doGenerateOutline() {
     } else if (msg.type === 'error') {
       port.disconnect();
       var errorText = msg.errorKey ? t(msg.errorKey) : (msg.error || '');
-      msgEl.innerHTML = '<span style="color:var(--error-text)">' + escapeHtml(errorText) + '</span>';
+      msgEl.className = 'message message-error';
+      msgEl.innerHTML = escapeHtml(errorText);
       state.setIsGenerating(false);
       _deps.onSetButtonsDisabled(false);
     }

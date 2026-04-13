@@ -83,6 +83,7 @@
   overflow-x: auto;
   margin: 6px 0;
   border: 1px solid var(--border);
+  max-width: 100%;
 }
 
 .message-ai pre code {

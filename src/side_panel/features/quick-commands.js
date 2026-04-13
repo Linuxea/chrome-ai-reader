@@ -54,6 +54,14 @@ export function isCommandPopupOpen() {
   return commandPopupOpen;
 }
 
+export function getCommandSelectedIndex() {
+  return commandSelectedIndex;
+}
+
+export function setCommandSelectedIndex(v) {
+  commandSelectedIndex = v;
+}
+
 export function getFilteredCommands(input) {
   const query = input.slice(1).toLowerCase();
   const quickCommands = state.getQuickCommands();

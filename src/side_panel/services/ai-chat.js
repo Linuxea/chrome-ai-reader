@@ -1,7 +1,7 @@
 // services/ai-chat.js — 核心对话逻辑（页面提取、快捷操作、AI 调用、消息发送）
 
 import { t } from '../../shared/i18n.js';
-import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants.js';
+import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants.js';
 import * as state from '../state.js';
 import {
   appendMessage, appendMessageWithQuote, addTypingIndicator,
@@ -32,9 +32,12 @@ let _getFilteredCommands;
 let _renderCommandPopup;
 let _hideCommandPopup;
 let _executeQuickCommand;
+let _getCommandSelectedIndex;
+let _setCommandSelectedIndex;
 
 export function initAIChat({ chatArea, userInput, sendBtn, actionBtns, callbacks,
-  isCommandPopupOpen, getFilteredCommands, renderCommandPopup, hideCommandPopup, executeQuickCommand }) {
+  isCommandPopupOpen, getFilteredCommands, renderCommandPopup, hideCommandPopup, executeQuickCommand,
+  getCommandSelectedIndex, setCommandSelectedIndex }) {
   _chatArea = chatArea;
   _userInput = userInput;
   _sendBtn = sendBtn;
@@ -52,6 +55,8 @@ export function initAIChat({ chatArea, userInput, sendBtn, actionBtns, callbacks
   _renderCommandPopup = renderCommandPopup;
   _hideCommandPopup = hideCommandPopup;
   _executeQuickCommand = executeQuickCommand;
+  _getCommandSelectedIndex = getCommandSelectedIndex;
+  _setCommandSelectedIndex = setCommandSelectedIndex;
 
   // Event bindings
   _sendBtn.addEventListener('click', sendMessage);
@@ -67,7 +72,7 @@ function handleKeydown(e) {
       e.preventDefault();
       const filtered = _getFilteredCommands(_userInput.value);
       if (filtered.length > 0) {
-        commandSelectedIndex = (commandSelectedIndex + 1) % filtered.length;
+        _setCommandSelectedIndex((_getCommandSelectedIndex() + 1) % filtered.length);
         _renderCommandPopup(filtered);
       }
       return;
@@ -76,7 +81,7 @@ function handleKeydown(e) {
       e.preventDefault();
       const filtered = _getFilteredCommands(_userInput.value);
       if (filtered.length > 0) {
-        commandSelectedIndex = (commandSelectedIndex - 1 + filtered.length) % filtered.length;
+        _setCommandSelectedIndex((_getCommandSelectedIndex() - 1 + filtered.length) % filtered.length);
         _renderCommandPopup(filtered);
       }
       return;
@@ -85,7 +90,7 @@ function handleKeydown(e) {
       e.preventDefault();
       const filtered = _getFilteredCommands(_userInput.value);
       if (filtered.length > 0) {
-        _executeQuickCommand(filtered[commandSelectedIndex]);
+        _executeQuickCommand(filtered[_getCommandSelectedIndex()]);
       } else {
         _hideCommandPopup();
       }
@@ -105,16 +110,10 @@ function handleKeydown(e) {
   }
 }
 
-// Command popup selection state (managed here because keydown handler uses it)
-let commandSelectedIndex = 0;
-
-export function getCommandSelectedIndex() { return commandSelectedIndex; }
-export function setCommandSelectedIndex(v) { commandSelectedIndex = v; }
-
 export async function extractPageContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  state.setActiveTabId(tab.id);
   if (!tab) throw new Error(t('error.noTab'));
+  state.setActiveTabId(tab.id);
 
   const response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
   if (!response?.success) {
@@ -182,6 +181,11 @@ export async function handleQuickAction(action) {
 
 export async function sendToAI(text, displayText, retryQuote, ocrContext, imageUris) {
   _onRemoveSuggestQuestions?.();
+
+  // Lock immediately to prevent double-click race condition
+  state.setIsGenerating(true);
+  setButtonsDisabled(true);
+
   const quoteForContext = retryQuote || state.getSelectedText();
 
   if (quoteForContext) {
@@ -242,7 +246,14 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
     await callAI(messages);
   } catch (e) {
     removeLastMessage();
+    // Roll back the orphaned user message from conversation history
+    const hist = state.getConversationHistory();
+    if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
+      state.spliceConversation(hist.length - 1, 1);
+    }
     appendMessage('error', e.message);
+    state.setIsGenerating(false);
+    setButtonsDisabled(false);
   }
 }
 
@@ -278,6 +289,11 @@ export async function retryMessage(wrapper, rawText, rawDisplay, rawQuote) {
   if (isTTSPlaying()) stopTTS();
   _onRemoveSuggestQuestions?.();
 
+  // Reset podcast/chart generating flags so their buttons aren't permanently disabled.
+  // Audio playback and ports will be cleaned up on the next podcast/chart invocation.
+  if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
+  if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
+
   const children = [..._chatArea.children];
   let found = false;
   for (const child of children) {
@@ -291,7 +307,8 @@ export async function retryMessage(wrapper, rawText, rawDisplay, rawQuote) {
   const conversationHistory = state.getConversationHistory();
   const idx = conversationHistory.findLastIndex(m => m.role === 'user' && m.content === userContent);
   if (idx !== -1) {
-    state.spliceConversation(idx);
+    // Remove the user message and all subsequent messages (assistant replies, etc.)
+    state.spliceConversation(idx, conversationHistory.length - idx);
   }
 
   await sendToAI(rawText, rawDisplay, rawQuote);
@@ -378,11 +395,36 @@ async function callAI(messages) {
     } else if (msg.type === 'error') {
       removeTypingIndicator(typingEl);
       if (thinkingEl) thinkingEl.open = false;
-      const errorText = msg.errorKey ? t(msg.errorKey) : (msg.error || '');
-      msgEl.innerHTML = `<span style="color:var(--error-text)">${errorText}</span>`;
+      const errorText = msg.errorKey ? t(msg.errorKey) : escapeHtml(msg.error || '');
+      msgEl.className = 'message message-error';
+      msgEl.textContent = errorText;
+      // Roll back the user message pushed by sendToAI — no assistant response was generated
+      const hist = state.getConversationHistory();
+      if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
+        state.spliceConversation(hist.length - 1, 1);
+      }
       state.setIsGenerating(false);
       setButtonsDisabled(false);
       port.disconnect();
+    }
+  });
+
+  // Safety net: reset UI if port disconnects unexpectedly (e.g., service worker terminated)
+  port.onDisconnect.addListener(() => {
+    if (state.getIsGenerating()) {
+      removeTypingIndicator(typingEl);
+      if (thinkingEl) thinkingEl.open = false;
+      if (!fullText) {
+        msgEl.className = 'message message-error';
+        msgEl.textContent = t('error.apiFailed');
+        // Roll back the orphaned user message
+        const hist = state.getConversationHistory();
+        if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
+          state.spliceConversation(hist.length - 1, 1);
+        }
+      }
+      state.setIsGenerating(false);
+      setButtonsDisabled(false);
     }
   });
 }

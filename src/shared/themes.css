@@ -8,6 +8,9 @@
 [data-theme-name="sujian"] {
   --bg: #f5f0e8;
   --card-bg: #fffdf8;
+  --bg-primary: #fffdf8;
+  --bg-secondary: #f0ebe2;
+  --bg-hover: rgba(0, 0, 0, 0.04);
   --text: #2d2a26;
   --text-secondary: #9a9084;
   --primary: #c07842;
@@ -34,6 +37,9 @@
 [data-theme-name="sujian"][data-theme="dark"] {
   --bg: #171412;
   --card-bg: #221e1a;
+  --bg-primary: #221e1a;
+  --bg-secondary: #2a2520;
+  --bg-hover: rgba(255, 255, 255, 0.06);
   --text: #e3dbd0;
   --text-secondary: #9e9285;
   --primary: #dba06a;
@@ -60,6 +66,9 @@
 [data-theme-name="ocean"] {
   --bg: #e8f0f8;
   --card-bg: #f4f8fc;
+  --bg-primary: #f4f8fc;
+  --bg-secondary: #dce8f2;
+  --bg-hover: rgba(0, 0, 0, 0.04);
   --text: #1a2a3a;
   --text-secondary: #7a8a9a;
   --primary: #3a7bd5;
@@ -86,6 +95,9 @@
 [data-theme-name="ocean"][data-theme="dark"] {
   --bg: #121a26;
   --card-bg: #1a2332;
+  --bg-primary: #1a2332;
+  --bg-secondary: #1e2838;
+  --bg-hover: rgba(255, 255, 255, 0.06);
   --text: #d0dae8;
   --text-secondary: #8a9aaa;
   --primary: #5a9cf0;
@@ -112,6 +124,9 @@
 [data-theme-name="forest"] {
   --bg: #f0f4ec;
   --card-bg: #f8faf6;
+  --bg-primary: #f8faf6;
+  --bg-secondary: #e6ece2;
+  --bg-hover: rgba(0, 0, 0, 0.04);
   --text: #1a2418;
   --text-secondary: #7a8a72;
   --primary: #5a8a50;
@@ -138,6 +153,9 @@
 [data-theme-name="forest"][data-theme="dark"] {
   --bg: #141812;
   --card-bg: #1e221a;
+  --bg-primary: #1e221a;
+  --bg-secondary: #22281e;
+  --bg-hover: rgba(255, 255, 255, 0.06);
   --text: #d0dac8;
   --text-secondary: #8a9a82;
   --primary: #7db87a;

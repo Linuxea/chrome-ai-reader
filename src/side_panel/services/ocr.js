@@ -7,6 +7,7 @@ import * as state from '../state.js';
 let _imageUploadBtn;
 let _imageFileInput;
 let _imagePreviewBar;
+let _ocrGeneration = 0; // Incremented on clearImagePreviews to invalidate in-flight OCR
 
 export function initOCR() {
   _imageUploadBtn = document.getElementById('imageUploadBtn');
@@ -65,6 +66,7 @@ export function addImagePreview(index, fileName, dataUri) {
 }
 
 export async function runOCR(index, fileName, dataUri) {
+  const generation = _ocrGeneration;
   let ocrRunning = state.getOcrRunning();
   ocrRunning++;
   state.setOcrRunning(ocrRunning);
@@ -87,9 +89,12 @@ export async function runOCR(index, fileName, dataUri) {
 
     if (response && response.success) {
       const text = extractOcrText(response.data);
-      const results = state.getOcrResults();
-      results.push({ index, fileName, text });
-      state.setOcrResults(results);
+      // Only update state if this OCR belongs to the current generation
+      if (generation === _ocrGeneration) {
+        const results = state.getOcrResults();
+        results.push({ index, fileName, text });
+        state.setOcrResults(results);
+      }
       if (statusEl) statusEl.className = 'image-status done';
       if (item) item.classList.add('done');
     } else {
@@ -131,8 +136,10 @@ export function collectImageDataUris() {
 }
 
 export function clearImagePreviews() {
+  _ocrGeneration++;
   state.setOcrResults([]);
-  state.setOcrRunning(0);
+  // Don't reset ocrRunning to 0 — in-flight OCR requests will decrement it in their finally blocks.
+  // The generation counter above prevents stale results from being added.
   state.setImageIndex(0);
   _imagePreviewBar.innerHTML = '';
   _imagePreviewBar.classList.add('hidden');

@@ -10,7 +10,7 @@ import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts.js'
 import { initOCR, clearImagePreviews } from './services/ocr.js';
 import { initAIChat, sendToAI, sendMessage, retryMessage, extractPageContent } from './services/ai-chat.js';
 import { initChatHistory, saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from './features/chat-history.js';
-import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand } from './features/quick-commands.js';
+import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands.js';
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions.js';
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
@@ -119,6 +119,8 @@ async function init() {
     renderCommandPopup,
     hideCommandPopup,
     executeQuickCommand,
+    getCommandSelectedIndex,
+    setCommandSelectedIndex,
   });
 
   // 6. Global event bindings
@@ -126,6 +128,16 @@ async function init() {
 }
 
 function handleLoadChat(chatData) {
+  // Clean up active resources from previous chat (same pattern as newChatBtn handler)
+  if (isTTSPlaying()) stopTTS();
+  const existingPodcast = els.chatArea.querySelector('.podcast-card');
+  if (existingPodcast) existingPodcast.remove();
+  if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
+  const existingChart = els.chatArea.querySelector('.chart-card');
+  if (existingChart) existingChart.remove();
+  if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
+  removeSuggestQuestions();
+
   state.setCurrentChatId(chatData.id);
   state.setPageTitle(chatData.pageTitle || '');
   state.setPageContent(chatData.pageContent || '');
@@ -145,6 +157,10 @@ function bindGlobalEvents() {
     const existingPodcast = els.chatArea.querySelector('.podcast-card');
     if (existingPodcast) existingPodcast.remove();
     if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
+    // Clean up any active chart card
+    const existingChart = els.chatArea.querySelector('.chart-card');
+    if (existingChart) existingChart.remove();
+    if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
     saveCurrentChat();
     removeSuggestQuestions();
     state.setPageContent('');
@@ -180,6 +196,9 @@ function bindGlobalEvents() {
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === 'selectionChanged') {
+      // Only process forwarded messages which include tabId from the service worker.
+      // Direct messages from content scripts lack tabId, breaking the tab filter below.
+      if (!msg.forwarded) return;
       const tabId = state.getActiveTabId();
       if (tabId && msg.tabId && msg.tabId !== tabId) return;
       updateQuotePreview(msg.text);

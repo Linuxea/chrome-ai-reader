@@ -32,6 +32,10 @@ export function initChartAnalyzer({ chatArea }) {
 export async function handleChartClick() {
   if (state.getIsGenerating() || state.getIsChartGenerating()) return;
 
+  // Lock immediately to prevent double-click race during async detectCharts
+  state.setIsChartGenerating(true);
+  if (_chartBtn) _chartBtn.disabled = true;
+
   const existing = _chatArea.querySelector('.chart-card');
   if (existing) existing.remove();
 

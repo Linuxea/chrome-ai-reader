@@ -21,6 +21,8 @@ async function callOpenAI(messages, port, options) {
   }
 
   const baseUrl = apiBase || 'https://api.deepseek.com';
+  const controller = new AbortController();
+  port.onDisconnect.addListener(() => controller.abort());
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -40,7 +42,8 @@ async function callOpenAI(messages, port, options) {
           requestBody.response_format = options.response_format;
         }
         return requestBody;
-      })())
+      })()),
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -101,6 +104,8 @@ async function callTTS(text, port) {
 
   const resourceId = config.ttsResourceId || 'seed-tts-2.0';
   const speaker = config.ttsSpeaker || 'zh_female_vv_uranus_bigtts';
+  const controller = new AbortController();
+  port.onDisconnect.addListener(() => controller.abort());
 
   try {
     const response = await fetch('https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse', {
@@ -119,7 +124,8 @@ async function callTTS(text, port) {
           audio_params: { format: 'mp3', sample_rate: 24000 },
           additions: '{"disable_markdown_filter":true}'
         }
-      })
+      }),
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -173,9 +179,6 @@ async function callTTS(text, port) {
           } else if (eventType === '152' && receivedAudio) {
             safePostMessage(port, { type: 'done' });
             return;
-          } else {
-            safePostMessage(port, { type: 'done' });
-            return;
           }
         } catch {
           // skip
@@ -198,6 +201,8 @@ async function callSuggestQuestions(messages, port) {
   }
 
   const baseUrl = apiBase || 'https://api.deepseek.com';
+  const controller = new AbortController();
+  port.onDisconnect.addListener(() => controller.abort());
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -211,7 +216,8 @@ async function callSuggestQuestions(messages, port) {
         messages: messages,
         stream: true,
         temperature: 0.8
-      })
+      }),
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -542,12 +548,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const outBlob = await c.convertToBlob({ type: 'image/png' });
         const buffer = await outBlob.arrayBuffer();
         const bytes = new Uint8Array(buffer);
-        let binary = '';
+        // Build base64 using chunk array to avoid O(n²) string concatenation
+        const chunks = [];
         const chunkSize = 8192;
         for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+          chunks.push(String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length))));
         }
-        const base64 = btoa(binary);
+        const base64 = chunks.join('');
         console.log('[AI Reader SW] screenshot crop ok, base64 length:', base64.length);
         sendResponse({ success: true, dataUri: `data:image/png;base64,${base64}` });
       } catch (e) {

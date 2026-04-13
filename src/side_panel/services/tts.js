@@ -328,6 +328,8 @@ export function initTTSPlayback() {
     ttsSourceBuffer = ms.addSourceBuffer('audio/mpeg');
     ttsSourceBuffer.addEventListener('updateend', () => {
       ttsBufferAppending = false;
+      // Guard against stopTTS having cleared the source buffer
+      if (!ttsSourceBuffer) return;
       // 首次有数据后自动播放
       if (!started && ttsAudioEl && ttsSourceBuffer.buffered.length > 0) {
         started = true;
@@ -360,6 +362,9 @@ function ttsFlush() {
 
   ttsSending = true;
   const sentence = ttsSentenceQueue.shift();
+
+  // Disconnect previous port before creating new one to prevent orphaned ports
+  if (ttsPort) { try { ttsPort.disconnect(); } catch {} }
 
   // 创建新的 TTS port
   ttsPort = chrome.runtime.connect({ name: 'tts' });
@@ -446,7 +451,7 @@ export function ttsAppendChunk(content) {
 
     const segment = ttsTextBuffer.slice(0, cutPos);
     ttsTextBuffer = ttsTextBuffer.slice(cutPos);
-    ttsSentenceCount -= 5;
+    ttsSentenceCount -= 2;
     ttsEnqueue(segment);
   }
 }

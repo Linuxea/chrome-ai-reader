@@ -109,7 +109,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const alt = img.alt || '';
         const cls = img.className || '';
         const parent = img.closest('a, button, [role="link"], [role="button"]');
-        const isLikelyIcon = w < 80 && h < 80;
+        const isLikelyIcon = w < 150 && h < 150;
         const isLikelyDecorative = parent && (w < 150 || h < 150);
 
         if (chartKeywords.test(src) || chartKeywords.test(alt) || chartKeywords.test(cls)) {

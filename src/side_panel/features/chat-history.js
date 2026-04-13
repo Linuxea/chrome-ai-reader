@@ -120,6 +120,8 @@ export async function deleteChat(id) {
 }
 
 async function loadChat(id) {
+  if (state.getIsGenerating()) return;
+
   const histories = await getChatHistories();
   const chat = histories.find(h => h.id === id);
   if (!chat) return;
@@ -142,6 +144,9 @@ async function loadChat(id) {
     if (msg.role === 'user') {
       div.className = 'message message-user';
       div.textContent = msg.content;
+      // Set dataset for retry functionality
+      div.dataset.rawText = msg.content;
+      div.dataset.rawDisplay = msg.content;
     } else if (msg.role === 'assistant') {
       div.className = 'message message-ai';
       if (msg.type === 'outline') {
