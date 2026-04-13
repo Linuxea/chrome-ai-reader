@@ -78,6 +78,7 @@ let podcastBufferAppending = false;
 let podcastPlayTransitioning = false; // Debounce for play/pause
 const MAX_CHUNK_QUEUE_SIZE = 50; // Prevent memory issues with long podcasts
 let podcastAudioChunks = []; // Collected chunks for download
+let _podcastTitle = ''; // Content-based title for download filename
 
 // LLM script generation state
 let podcastLlmPort = null;
@@ -359,6 +360,20 @@ function parsePodcastScript(fullScript) {
   });
 }
 
+function extractPodcastTitle(rounds) {
+  if (!rounds || rounds.length === 0) return '';
+  const firstTexts = rounds.slice(0, 3).map(r => (r.text || '').trim()).filter(Boolean).join(' ');
+  let title = firstTexts
+    .replace(/[，。！？、；：""''「」『』【】（）《》—…\s]+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  if (title.length > 30) {
+    const lastPunct = title.lastIndexOf(' ', 30);
+    title = title.slice(0, lastPunct > 0 ? lastPunct : 30);
+  }
+  return title.replace(/[\/\\:*?"<>|]/g, '_').trim();
+}
+
 async function onScriptDone(card, fullScript) {
   if (podcastCancelled) return;
 
@@ -371,6 +386,8 @@ async function onScriptDone(card, fullScript) {
     resetPodcastState();
     return;
   }
+
+  _podcastTitle = extractPodcastTitle(nlpTexts);
 
   // Transition to audio generation phase
   updateCardStatus(card, 'generating_audio');
@@ -566,7 +583,9 @@ function downloadPodcastAudio() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${t('podcast.fileName')}-${new Date().toISOString().slice(0, 10)}.mp3`;
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const name = _podcastTitle || t('podcast.fileName');
+  a.download = `${name}-${dateStr}.mp3`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -620,6 +639,7 @@ function cleanupPodcast() {
 
 function resetPodcastState() {
   state.setIsPodcastGenerating(false);
+  _podcastTitle = '';
   if (_podcastBtn) _podcastBtn.disabled = false;
 }
 
