@@ -210,6 +210,7 @@ function createPodcastCard(quotePreview) {
         </button>
         <div class="podcast-progress-bar">
           <div class="podcast-progress-fill"></div>
+          <div class="podcast-progress-thumb"></div>
         </div>
         <span class="podcast-time">0:00 / 0:00</span>
       </div>
@@ -227,6 +228,45 @@ function createPodcastCard(quotePreview) {
 
   // Play/pause button handler
   card.querySelector('.podcast-play-btn').addEventListener('click', handlePlayPause);
+
+  // Progress bar seek (click + drag)
+  const progressBar = card.querySelector('.podcast-progress-bar');
+  let isDragging = false;
+
+  progressBar.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDragging = true;
+    progressBar.classList.add('dragging');
+    seekToMouse(e, card, progressBar);
+    const onMove = (ev) => { if (isDragging) seekToMouse(ev, card, progressBar); };
+    const onUp = (ev) => {
+      if (!isDragging) return;
+      isDragging = false;
+      progressBar.classList.remove('dragging');
+      seekToMouse(ev, card, progressBar);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Touch support for mobile
+  progressBar.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    isDragging = true;
+    progressBar.classList.add('dragging');
+    seekToTouch(e, card, progressBar);
+  }, { passive: false });
+  progressBar.addEventListener('touchmove', (e) => {
+    if (isDragging) { e.preventDefault(); seekToTouch(e, card, progressBar); }
+  }, { passive: false });
+  progressBar.addEventListener('touchend', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    progressBar.classList.remove('dragging');
+    seekToTouch(e, card, progressBar);
+  });
 
   _chatArea.appendChild(card);
   scrollToBottom();
@@ -732,12 +772,14 @@ function appendPodcastChunk() {
 function updatePlayerProgress(card) {
   if (!podcastAudioEl) return;
   const fill = card.querySelector('.podcast-progress-fill');
+  const thumb = card.querySelector('.podcast-progress-thumb');
   const timeEl = card.querySelector('.podcast-time');
   const playBtn = card.querySelector('.podcast-play-btn');
 
   if (podcastAudioEl.duration && isFinite(podcastAudioEl.duration)) {
     const pct = (podcastAudioEl.currentTime / podcastAudioEl.duration) * 100;
     if (fill) fill.style.width = pct + '%';
+    if (thumb) thumb.style.left = pct + '%';
     if (timeEl) {
       timeEl.textContent = `${formatTime(podcastAudioEl.currentTime)} / ${formatTime(podcastAudioEl.duration)}`;
     }
@@ -773,15 +815,73 @@ function updatePlayerProgress(card) {
 
 function handlePlayPause() {
   if (!podcastAudioEl || podcastPlayTransitioning) return;
-  
+
   podcastPlayTransitioning = true;
   setTimeout(() => { podcastPlayTransitioning = false; }, 300);
-  
+
   if (podcastAudioEl.paused) {
     podcastAudioEl.play().catch(() => {});
   } else {
     podcastAudioEl.pause();
   }
+}
+
+// --- Seek helpers ---
+
+function seekToMouse(e, card, bar) {
+  if (!podcastAudioEl || !podcastAudioEl.duration || !isFinite(podcastAudioEl.duration)) return;
+  const rect = bar.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  applySeek(card, ratio);
+}
+
+function seekToTouch(e, card, bar) {
+  if (!podcastAudioEl || !podcastAudioEl.duration || !isFinite(podcastAudioEl.duration)) return;
+  const rect = bar.getBoundingClientRect();
+  const touch = e.touches[0] || e.changedTouches[0];
+  if (!touch) return;
+  const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+  applySeek(card, ratio);
+}
+
+function applySeek(card, ratio) {
+  const targetTime = ratio * podcastAudioEl.duration;
+
+  // Clamp to buffered range to avoid MediaSource errors
+  if (podcastSourceBuffer && podcastSourceBuffer.buffered.length > 0) {
+    const bufEnd = podcastSourceBuffer.buffered.end(podcastSourceBuffer.buffered.length - 1);
+    podcastAudioEl.currentTime = Math.min(targetTime, bufEnd);
+  } else {
+    podcastAudioEl.currentTime = targetTime;
+  }
+
+  // Update visual progress immediately
+  const fill = card.querySelector('.podcast-progress-fill');
+  const thumb = card.querySelector('.podcast-progress-thumb');
+  const timeEl = card.querySelector('.podcast-time');
+  if (fill) fill.style.width = (ratio * 100) + '%';
+  if (thumb) thumb.style.left = (ratio * 100) + '%';
+  if (timeEl) {
+    timeEl.textContent = `${formatTime(podcastAudioEl.currentTime)} / ${formatTime(podcastAudioEl.duration)}`;
+  }
+
+  // Sync transcript highlight to seeked position
+  syncHighlightToTime(podcastAudioEl.currentTime);
+}
+
+function syncHighlightToTime(currentTime) {
+  if (_roundTimings.length === 0) return;
+  let roundIdx = -1;
+  for (let i = 0; i < _roundTimings.length; i++) {
+    if (currentTime >= _roundTimings[i].startTime && currentTime < _roundTimings[i].endTime) {
+      roundIdx = i;
+      break;
+    }
+  }
+  if (roundIdx === -1 && currentTime >= _roundTimings[_roundTimings.length - 1].endTime) {
+    roundIdx = _roundTimings.length - 1;
+  }
+  updateTranscriptHighlight(roundIdx);
 }
 
 function addDownloadButton(card) {

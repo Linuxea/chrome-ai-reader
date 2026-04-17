@@ -148,19 +148,55 @@
 
 .podcast-progress-bar {
   flex: 1;
+  height: 14px;
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.podcast-progress-bar::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
   height: 4px;
   background: var(--border);
   border-radius: 2px;
-  overflow: hidden;
-  cursor: pointer;
 }
 
 .podcast-progress-fill {
-  height: 100%;
+  height: 4px;
   background: var(--primary);
   border-radius: 2px;
   width: 0%;
   transition: width 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.podcast-progress-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--primary);
+  border-radius: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.15s ease;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.podcast-progress-bar:hover .podcast-progress-thumb,
+.podcast-progress-bar.dragging .podcast-progress-thumb {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.podcast-progress-bar.dragging .podcast-progress-fill {
+  transition: none;
 }
 
 .podcast-time {
