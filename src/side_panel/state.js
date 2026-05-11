@@ -11,58 +11,85 @@ function notify(key, value) {
   listeners.get(key)?.forEach(cb => cb(value));
 }
 
-// --- State fields (getter/setter pairs) ---
+// --- Per-tab state internals ---
 
-let _pageContent = '';
-export function getPageContent() { return _pageContent; }
-export function setPageContent(v) { _pageContent = v; }
+const _tabStates = new Map();
+let _activeState = null;
+let _activeTabId = null;
 
-let _pageExcerpt = '';
-export function getPageExcerpt() { return _pageExcerpt; }
-export function setPageExcerpt(v) { _pageExcerpt = v; }
+function createFreshTabState() {
+  return {
+    pageContent: '',
+    pageTitle: '',
+    pageExcerpt: '',
+    conversationHistory: [],
+    currentChatId: null,
+    selectedText: '',
+    isGenerating: false,
+    isPodcastGenerating: false,
+    isChartGenerating: false,
+    detectedCharts: [],
+    ocrRunning: 0,
+    ocrResults: [],
+    imageIndex: 0
+  };
+}
 
-let _pageTitle = '';
-export function getPageTitle() { return _pageTitle; }
-export function setPageTitle(v) { _pageTitle = v; }
+function persistTabState() {
+  if (!_activeTabId || !_activeState) return;
+  chrome.storage.session.set({ [`tabState_${_activeTabId}`]: _activeState });
+}
 
-let _conversationHistory = [];
-export function getConversationHistory() { return _conversationHistory; }
-export function setConversationHistory(v) { _conversationHistory = v; }
-export function pushConversation(msg) { _conversationHistory.push(msg); }
-export function spliceConversation(...args) { _conversationHistory.splice(...args); }
-export function clearConversation() { _conversationHistory = []; }
+export async function switchToTab(newTabId) {
+  if (newTabId === _activeTabId) return;
 
-let _isGenerating = false;
-export function getIsGenerating() { return _isGenerating; }
-export function setIsGenerating(v) { _isGenerating = v; notify('isGenerating', v); }
+  persistTabState();
+  _activeTabId = newTabId;
+
+  const stored = await chrome.storage.session.get(`tabState_${newTabId}`);
+  _activeState = stored[`tabState_${newTabId}`]
+    ? stored[`tabState_${newTabId}`]
+    : createFreshTabState();
+  _tabStates.set(newTabId, _activeState);
+
+  notify('tabSwitched');
+}
+
+export async function initState() {
+  const data = await chrome.storage.sync.get(['systemPrompt']);
+  if (data.systemPrompt) _customSystemPrompt = data.systemPrompt;
+
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tabs[0]) {
+    const tabId = tabs[0].id;
+    _activeTabId = tabId;
+    const stored = await chrome.storage.session.get(`tabState_${tabId}`);
+    _activeState = stored[`tabState_${tabId}`] || createFreshTabState();
+    _tabStates.set(tabId, _activeState);
+  }
+
+  const local = await chrome.storage.local.get(['quickCommands']);
+  if (local.quickCommands) _quickCommands = local.quickCommands;
+
+  const syncData = await chrome.storage.sync.get(['suggestQuestions']);
+  if (syncData.suggestQuestions !== undefined) _suggestQuestionsEnabled = syncData.suggestQuestions;
+}
+
+// Clean up tab state when a tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  _tabStates.delete(tabId);
+  chrome.storage.session.remove(`tabState_${tabId}`);
+  if (tabId === _activeTabId) {
+    _activeState = null;
+    _activeTabId = null;
+  }
+});
+
+// --- Global state fields (unchanged — module-level variables) ---
 
 let _customSystemPrompt = '';
 export function getCustomSystemPrompt() { return _customSystemPrompt; }
 export function setCustomSystemPrompt(v) { _customSystemPrompt = v; }
-
-let _currentChatId = null;
-export function getCurrentChatId() { return _currentChatId; }
-export function setCurrentChatId(v) { _currentChatId = v; }
-
-let _selectedText = '';
-export function getSelectedText() { return _selectedText; }
-export function setSelectedText(v) { _selectedText = v; }
-
-let _activeTabId = null;
-export function getActiveTabId() { return _activeTabId; }
-export function setActiveTabId(v) { _activeTabId = v; }
-
-let _ocrRunning = 0;
-export function getOcrRunning() { return _ocrRunning; }
-export function setOcrRunning(v) { _ocrRunning = v; }
-
-let _ocrResults = [];
-export function getOcrResults() { return _ocrResults; }
-export function setOcrResults(v) { _ocrResults = v; }
-
-let _imageIndex = 0;
-export function getImageIndex() { return _imageIndex; }
-export function setImageIndex(v) { _imageIndex = v; }
 
 let _quickCommands = [];
 export function getQuickCommands() { return _quickCommands; }
@@ -72,29 +99,48 @@ let _suggestQuestionsEnabled = true;
 export function isSuggestQuestionsEnabled() { return _suggestQuestionsEnabled; }
 export function setSuggestQuestionsEnabled(v) { _suggestQuestionsEnabled = v; }
 
-let _isPodcastGenerating = false;
-export function getIsPodcastGenerating() { return _isPodcastGenerating; }
-export function setIsPodcastGenerating(v) { _isPodcastGenerating = v; }
+export function getActiveTabId() { return _activeTabId; }
 
-let _isChartGenerating = false;
-export function getIsChartGenerating() { return _isChartGenerating; }
-export function setIsChartGenerating(v) { _isChartGenerating = v; }
+// --- Per-tab state fields (now read/write through _activeState) ---
 
-let _detectedCharts = [];
-export function getDetectedCharts() { return _detectedCharts; }
-export function setDetectedCharts(v) { _detectedCharts = v; }
+export function getPageContent() { return _activeState?.pageContent || ''; }
+export function setPageContent(v) { _activeState.pageContent = v; persistTabState(); }
 
-// --- Async init: read chrome.storage ---
-export async function initState() {
-  const data = await chrome.storage.sync.get(['systemPrompt']);
-  if (data.systemPrompt) setCustomSystemPrompt(data.systemPrompt);
+export function getPageExcerpt() { return _activeState?.pageExcerpt || ''; }
+export function setPageExcerpt(v) { _activeState.pageExcerpt = v; persistTabState(); }
 
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tabs[0]) setActiveTabId(tabs[0].id);
+export function getPageTitle() { return _activeState?.pageTitle || ''; }
+export function setPageTitle(v) { _activeState.pageTitle = v; persistTabState(); }
 
-  const local = await chrome.storage.local.get(['quickCommands']);
-  if (local.quickCommands) setQuickCommands(local.quickCommands);
+export function getConversationHistory() { return _activeState?.conversationHistory || []; }
+export function setConversationHistory(v) { _activeState.conversationHistory = v; persistTabState(); }
+export function pushConversation(msg) { _activeState.conversationHistory.push(msg); persistTabState(); }
+export function spliceConversation(...args) { _activeState.conversationHistory.splice(...args); persistTabState(); }
+export function clearConversation() { _activeState.conversationHistory = []; persistTabState(); }
 
-  const sync = await chrome.storage.sync.get(['suggestQuestions']);
-  if (sync.suggestQuestions !== undefined) setSuggestQuestionsEnabled(sync.suggestQuestions);
-}
+export function getIsGenerating() { return _activeState?.isGenerating || false; }
+export function setIsGenerating(v) { _activeState.isGenerating = v; notify('isGenerating', v); }
+
+export function getCurrentChatId() { return _activeState?.currentChatId || null; }
+export function setCurrentChatId(v) { _activeState.currentChatId = v; persistTabState(); }
+
+export function getSelectedText() { return _activeState?.selectedText || ''; }
+export function setSelectedText(v) { _activeState.selectedText = v; }
+
+export function getOcrRunning() { return _activeState?.ocrRunning || 0; }
+export function setOcrRunning(v) { _activeState.ocrRunning = v; }
+
+export function getOcrResults() { return _activeState?.ocrResults || []; }
+export function setOcrResults(v) { _activeState.ocrResults = v; }
+
+export function getImageIndex() { return _activeState?.imageIndex || 0; }
+export function setImageIndex(v) { _activeState.imageIndex = v; }
+
+export function getIsPodcastGenerating() { return _activeState?.isPodcastGenerating || false; }
+export function setIsPodcastGenerating(v) { _activeState.isPodcastGenerating = v; }
+
+export function getIsChartGenerating() { return _activeState?.isChartGenerating || false; }
+export function setIsChartGenerating(v) { _activeState.isChartGenerating = v; }
+
+export function getDetectedCharts() { return _activeState?.detectedCharts || []; }
+export function setDetectedCharts(v) { _activeState.detectedCharts = v; }
