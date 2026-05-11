@@ -147,6 +147,27 @@ function handleLoadChat(chatData) {
   clearImagePreviews();
 }
 
+function resetUIForTabSwitch() {
+  removeSuggestQuestions();
+  clearImagePreviews();
+  updateQuotePreview('');
+
+  const history = state.getConversationHistory();
+  els.chatArea.innerHTML = '';
+
+  if (history.length > 0) {
+    for (const msg of history) {
+      if (msg.role === 'user') {
+        appendMessage('user', msg.content);
+      } else if (msg.role === 'assistant') {
+        appendMessage('ai', msg.content);
+      }
+    }
+  } else {
+    els.chatArea.innerHTML = `<div class="welcome-msg"><p>${t('sidebar.welcome')}</p></div>`;
+  }
+}
+
 function bindGlobalEvents() {
   els.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
@@ -193,6 +214,19 @@ function bindGlobalEvents() {
   });
 
   els.quoteClose.addEventListener('click', () => updateQuotePreview(''));
+
+  chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    if (activeInfo.tabId === state.getActiveTabId()) return;
+
+    // Cancel active generations
+    state.setIsGenerating(false);
+    state.setIsPodcastGenerating(false);
+    state.setIsChartGenerating(false);
+    if (isTTSPlaying()) stopTTS();
+
+    await state.switchToTab(activeInfo.tabId);
+    resetUIForTabSwitch();
+  });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === 'selectionChanged') {
