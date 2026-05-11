@@ -41,16 +41,18 @@ function persistTabState() {
 }
 
 export async function switchToTab(newTabId) {
-  if (newTabId === _activeTabId) return;
+  if (!newTabId || newTabId === _activeTabId) return;
 
   persistTabState();
   _activeTabId = newTabId;
 
-  const stored = await chrome.storage.session.get(`tabState_${newTabId}`);
-  _activeState = stored[`tabState_${newTabId}`]
-    ? stored[`tabState_${newTabId}`]
-    : createFreshTabState();
-  _tabStates.set(newTabId, _activeState);
+  if (_tabStates.has(newTabId)) {
+    _activeState = _tabStates.get(newTabId);
+  } else {
+    const stored = await chrome.storage.session.get(`tabState_${newTabId}`);
+    _activeState = stored[`tabState_${newTabId}`] || createFreshTabState();
+    _tabStates.set(newTabId, _activeState);
+  }
 
   notify('tabSwitched');
 }
@@ -104,43 +106,43 @@ export function getActiveTabId() { return _activeTabId; }
 // --- Per-tab state fields (now read/write through _activeState) ---
 
 export function getPageContent() { return _activeState?.pageContent || ''; }
-export function setPageContent(v) { _activeState.pageContent = v; persistTabState(); }
+export function setPageContent(v) { if (_activeState) { _activeState.pageContent = v; persistTabState(); } }
 
 export function getPageExcerpt() { return _activeState?.pageExcerpt || ''; }
-export function setPageExcerpt(v) { _activeState.pageExcerpt = v; persistTabState(); }
+export function setPageExcerpt(v) { if (_activeState) { _activeState.pageExcerpt = v; persistTabState(); } }
 
 export function getPageTitle() { return _activeState?.pageTitle || ''; }
-export function setPageTitle(v) { _activeState.pageTitle = v; persistTabState(); }
+export function setPageTitle(v) { if (_activeState) { _activeState.pageTitle = v; persistTabState(); } }
 
 export function getConversationHistory() { return _activeState?.conversationHistory || []; }
-export function setConversationHistory(v) { _activeState.conversationHistory = v; persistTabState(); }
-export function pushConversation(msg) { _activeState.conversationHistory.push(msg); persistTabState(); }
-export function spliceConversation(...args) { _activeState.conversationHistory.splice(...args); persistTabState(); }
-export function clearConversation() { _activeState.conversationHistory = []; persistTabState(); }
+export function setConversationHistory(v) { if (_activeState) { _activeState.conversationHistory = v; persistTabState(); } }
+export function pushConversation(msg) { if (_activeState) { _activeState.conversationHistory.push(msg); persistTabState(); } }
+export function spliceConversation(...args) { if (_activeState) { _activeState.conversationHistory.splice(...args); persistTabState(); } }
+export function clearConversation() { if (_activeState) { _activeState.conversationHistory = []; persistTabState(); } }
 
 export function getIsGenerating() { return _activeState?.isGenerating || false; }
-export function setIsGenerating(v) { _activeState.isGenerating = v; persistTabState(); notify('isGenerating', v); }
+export function setIsGenerating(v) { if (_activeState) { _activeState.isGenerating = v; persistTabState(); notify('isGenerating', v); } }
 
 export function getCurrentChatId() { return _activeState?.currentChatId || null; }
-export function setCurrentChatId(v) { _activeState.currentChatId = v; persistTabState(); }
+export function setCurrentChatId(v) { if (_activeState) { _activeState.currentChatId = v; persistTabState(); } }
 
 export function getSelectedText() { return _activeState?.selectedText || ''; }
-export function setSelectedText(v) { _activeState.selectedText = v; persistTabState(); }
+export function setSelectedText(v) { if (_activeState) { _activeState.selectedText = v; persistTabState(); } }
 
 export function getOcrRunning() { return _activeState?.ocrRunning || 0; }
-export function setOcrRunning(v) { _activeState.ocrRunning = v; persistTabState(); }
+export function setOcrRunning(v) { if (_activeState) { _activeState.ocrRunning = v; persistTabState(); } }
 
 export function getOcrResults() { return _activeState?.ocrResults || []; }
-export function setOcrResults(v) { _activeState.ocrResults = v; persistTabState(); }
+export function setOcrResults(v) { if (_activeState) { _activeState.ocrResults = v; persistTabState(); } }
 
 export function getImageIndex() { return _activeState?.imageIndex || 0; }
-export function setImageIndex(v) { _activeState.imageIndex = v; persistTabState(); }
+export function setImageIndex(v) { if (_activeState) { _activeState.imageIndex = v; persistTabState(); } }
 
 export function getIsPodcastGenerating() { return _activeState?.isPodcastGenerating || false; }
-export function setIsPodcastGenerating(v) { _activeState.isPodcastGenerating = v; persistTabState(); }
+export function setIsPodcastGenerating(v) { if (_activeState) { _activeState.isPodcastGenerating = v; persistTabState(); } }
 
 export function getIsChartGenerating() { return _activeState?.isChartGenerating || false; }
-export function setIsChartGenerating(v) { _activeState.isChartGenerating = v; persistTabState(); }
+export function setIsChartGenerating(v) { if (_activeState) { _activeState.isChartGenerating = v; persistTabState(); } }
 
 export function getDetectedCharts() { return _activeState?.detectedCharts || []; }
-export function setDetectedCharts(v) { _activeState.detectedCharts = v; persistTabState(); }
+export function setDetectedCharts(v) { if (_activeState) { _activeState.detectedCharts = v; persistTabState(); } }
