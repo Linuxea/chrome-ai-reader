@@ -46,13 +46,12 @@ const CHART_INSIGHT_PROMPT = `你是一个专业的数据分析师。以下是�
 用中文回答，保持专业但易懂。只输出 JSON，不要输出其他内容。`;
 
 export async function detectCharts() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) throw new Error(t('error.noTab'));
-  state.setActiveTabId(tab.id);
+  const tabId = state.getActiveTabId();
+  if (!tabId) throw new Error(t('error.noTab'));
 
   let response;
   try {
-    response = await chrome.tabs.sendMessage(tab.id, { action: 'detectCharts' });
+    response = await chrome.tabs.sendMessage(tabId, { action: 'detectCharts' });
   } catch (e) {
     console.error('[AI Reader] detectCharts sendMessage failed:', e.message);
     throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')');

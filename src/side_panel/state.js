@@ -119,28 +119,28 @@ export function spliceConversation(...args) { _activeState.conversationHistory.s
 export function clearConversation() { _activeState.conversationHistory = []; persistTabState(); }
 
 export function getIsGenerating() { return _activeState?.isGenerating || false; }
-export function setIsGenerating(v) { _activeState.isGenerating = v; notify('isGenerating', v); }
+export function setIsGenerating(v) { _activeState.isGenerating = v; persistTabState(); notify('isGenerating', v); }
 
 export function getCurrentChatId() { return _activeState?.currentChatId || null; }
 export function setCurrentChatId(v) { _activeState.currentChatId = v; persistTabState(); }
 
 export function getSelectedText() { return _activeState?.selectedText || ''; }
-export function setSelectedText(v) { _activeState.selectedText = v; }
+export function setSelectedText(v) { _activeState.selectedText = v; persistTabState(); }
 
 export function getOcrRunning() { return _activeState?.ocrRunning || 0; }
-export function setOcrRunning(v) { _activeState.ocrRunning = v; }
+export function setOcrRunning(v) { _activeState.ocrRunning = v; persistTabState(); }
 
 export function getOcrResults() { return _activeState?.ocrResults || []; }
-export function setOcrResults(v) { _activeState.ocrResults = v; }
+export function setOcrResults(v) { _activeState.ocrResults = v; persistTabState(); }
 
 export function getImageIndex() { return _activeState?.imageIndex || 0; }
-export function setImageIndex(v) { _activeState.imageIndex = v; }
+export function setImageIndex(v) { _activeState.imageIndex = v; persistTabState(); }
 
 export function getIsPodcastGenerating() { return _activeState?.isPodcastGenerating || false; }
-export function setIsPodcastGenerating(v) { _activeState.isPodcastGenerating = v; }
+export function setIsPodcastGenerating(v) { _activeState.isPodcastGenerating = v; persistTabState(); }
 
 export function getIsChartGenerating() { return _activeState?.isChartGenerating || false; }
-export function setIsChartGenerating(v) { _activeState.isChartGenerating = v; }
+export function setIsChartGenerating(v) { _activeState.isChartGenerating = v; persistTabState(); }
 
 export function getDetectedCharts() { return _activeState?.detectedCharts || []; }
-export function setDetectedCharts(v) { _activeState.detectedCharts = v; }
+export function setDetectedCharts(v) { _activeState.detectedCharts = v; persistTabState(); }
