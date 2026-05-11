@@ -111,11 +111,10 @@ function handleKeydown(e) {
 }
 
 export async function extractPageContent() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) throw new Error(t('error.noTab'));
-  state.setActiveTabId(tab.id);
+  const tabId = state.getActiveTabId();
+  if (!tabId) throw new Error(t('error.noTab'));
 
-  const response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
+  const response = await chrome.tabs.sendMessage(tabId, { action: 'extract' });
   if (!response?.success) {
     throw new Error(response?.error || t('error.extractFailed'));
   }
