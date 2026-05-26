@@ -125,6 +125,11 @@ async function init() {
 
   // 6. Global event bindings
   bindGlobalEvents();
+
+  // 7. Render persisted conversation on initial load (side panel reopen, etc.)
+  if (state.getConversationHistory().length > 0) {
+    resetUIForTabSwitch();
+  }
 }
 
 function handleLoadChat(chatData) {
@@ -225,6 +230,7 @@ function bindGlobalEvents() {
     if (isTTSPlaying()) stopTTS();
 
     await state.switchToTab(activeInfo.tabId);
+    setButtonsDisabled(false);
     resetUIForTabSwitch();
   });
 

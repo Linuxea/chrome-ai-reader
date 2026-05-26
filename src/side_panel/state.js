@@ -103,6 +103,18 @@ export function setSuggestQuestionsEnabled(v) { _suggestQuestionsEnabled = v; }
 
 export function getActiveTabId() { return _activeTabId; }
 
+// 获取指定 tab 的 state 对象引用 —— 异步操作中用它绕过 _activeState，
+// 避免切 tab 后数据写入错误的目标。
+export function getStateForTab(tabId) {
+  return _tabStates.get(tabId) || null;
+}
+
+// 将指定 tab 的 state 持久化到 chrome.storage.session
+export function persistForTab(tabId) {
+  const ts = _tabStates.get(tabId);
+  if (ts) chrome.storage.session.set({ [`tabState_${tabId}`]: ts });
+}
+
 // --- Per-tab state fields (now read/write through _activeState) ---
 
 export function getPageContent() { return _activeState?.pageContent || ''; }

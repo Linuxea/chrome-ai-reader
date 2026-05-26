@@ -110,8 +110,10 @@ function handleKeydown(e) {
   }
 }
 
-export async function extractPageContent() {
-  const tabId = state.getActiveTabId();
+// expectTabId 可选 —— 异步链中传入发起请求时的 tabId，
+// 确保提取结果写入正确的 tab state，而非被切 tab 后的 _activeState 污染。
+export async function extractPageContent(expectTabId) {
+  const tabId = expectTabId || state.getActiveTabId();
   if (!tabId) throw new Error(t('error.noTab'));
 
   const response = await chrome.tabs.sendMessage(tabId, { action: 'extract' });
@@ -119,9 +121,13 @@ export async function extractPageContent() {
     throw new Error(response?.error || t('error.extractFailed'));
   }
 
-  state.setPageContent(response.data.textContent);
-  state.setPageExcerpt(response.data.excerpt);
-  state.setPageTitle(response.data.title);
+  const tabState = state.getStateForTab(tabId);
+  if (tabState) {
+    tabState.pageContent = response.data.textContent;
+    tabState.pageExcerpt = response.data.excerpt;
+    tabState.pageTitle = response.data.title;
+    state.persistForTab(tabId);
+  }
 
   return response.data;
 }
@@ -181,11 +187,17 @@ export async function handleQuickAction(action) {
 export async function sendToAI(text, displayText, retryQuote, ocrContext, imageUris) {
   _onRemoveSuggestQuestions?.();
 
-  // Lock immediately to prevent double-click race condition
-  state.setIsGenerating(true);
+  // 捕捉发起请求时的 tabId 和 state 引用 —— 全程直接操作该对象，
+  // 避免切 tab 后 _activeState 指针变化导致数据写入错误的目标。
+  const startTabId = state.getActiveTabId();
+  const tabState = state.getStateForTab(startTabId);
+  if (!tabState) return;
+
+  tabState.isGenerating = true;
+  state.persistForTab(startTabId);
   setButtonsDisabled(true);
 
-  const quoteForContext = retryQuote || state.getSelectedText();
+  const quoteForContext = retryQuote || tabState.selectedText;
 
   if (quoteForContext) {
     const truncated = quoteForContext.length > 50
@@ -203,18 +215,15 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
   }
 
   try {
-    await extractPageContent();
+    // 提取页面时传入 startTabId，确保结果写入正确的 tab state
+    await extractPageContent(startTabId);
 
     const messages = [];
-    const pageContent = state.getPageContent();
+    const pageContent = tabState.pageContent || '';
     if (pageContent) {
       const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
-
-      const systemContent = t('prompt.default', { title: state.getPageTitle(), content: context });
-      messages.push({
-        role: 'system',
-        content: systemContent
-      });
+      const systemContent = t('prompt.default', { title: tabState.pageTitle, content: context });
+      messages.push({ role: 'system', content: systemContent });
 
       const customSystemPrompt = state.getCustomSystemPrompt();
       if (customSystemPrompt) {
@@ -222,7 +231,7 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
       }
     }
 
-    const conversationHistory = state.getConversationHistory();
+    const conversationHistory = tabState.conversationHistory || [];
     messages.push(...conversationHistory);
 
     let historyContent = text;
@@ -235,24 +244,31 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
       apiContent = withQuote;
     }
 
-    state.pushConversation({ role: 'user', content: historyContent });
+    tabState.conversationHistory.push({ role: 'user', content: historyContent });
+    state.persistForTab(startTabId);
 
     if (ocrContext) {
       apiContent = apiContent + '\n\n' + ocrContext;
     }
     messages.push({ role: 'user', content: apiContent });
 
-    await callAI(messages);
+    await callAI(messages, startTabId);
   } catch (e) {
-    removeLastMessage();
-    // Roll back the orphaned user message from conversation history
-    const hist = state.getConversationHistory();
-    if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
-      state.spliceConversation(hist.length - 1, 1);
+    // UI 清理仅在未切 tab 时执行 —— 已切 tab 的话 DOM 已被 resetUIForTabSwitch 清空
+    if (state.getActiveTabId() === startTabId) {
+      removeLastMessage();
+      appendMessage('error', e.message);
+      state.setIsGenerating(false);
+      setButtonsDisabled(false);
     }
-    appendMessage('error', e.message);
-    state.setIsGenerating(false);
-    setButtonsDisabled(false);
+    // 回滚始终打到发起请求的 tab state
+    const hist = tabState.conversationHistory;
+    if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
+      hist.splice(hist.length - 1, 1);
+      state.persistForTab(startTabId);
+    }
+    tabState.isGenerating = false;
+    state.persistForTab(startTabId);
   }
 }
 
@@ -283,15 +299,17 @@ export async function sendMessage() {
 }
 
 export async function retryMessage(wrapper, rawText, rawDisplay, rawQuote) {
-  if (state.getIsGenerating()) return;
+  const startTabId = state.getActiveTabId();
+  const tabState = state.getStateForTab(startTabId);
+  if (!tabState || tabState.isGenerating) return;
 
   if (isTTSPlaying()) stopTTS();
   _onRemoveSuggestQuestions?.();
 
   // Reset podcast/chart generating flags so their buttons aren't permanently disabled.
-  // Audio playback and ports will be cleaned up on the next podcast/chart invocation.
-  if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
-  if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
+  if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;
+  if (tabState.isChartGenerating) tabState.isChartGenerating = false;
+  state.persistForTab(startTabId);
 
   const children = [..._chatArea.children];
   let found = false;
@@ -303,20 +321,26 @@ export async function retryMessage(wrapper, rawText, rawDisplay, rawQuote) {
   const userContent = rawQuote
     ? t('ai.quotePrefix') + '\n\n' + safeTruncate(rawQuote, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated')) + '\n\n' + rawText
     : rawText;
-  const conversationHistory = state.getConversationHistory();
+  const conversationHistory = tabState.conversationHistory;
   const idx = conversationHistory.findLastIndex(m => m.role === 'user' && m.content === userContent);
   if (idx !== -1) {
     // Remove the user message and all subsequent messages (assistant replies, etc.)
-    state.spliceConversation(idx, conversationHistory.length - idx);
+    conversationHistory.splice(idx, conversationHistory.length - idx);
+    state.persistForTab(startTabId);
   }
 
   await sendToAI(rawText, rawDisplay, rawQuote);
 }
 
-async function callAI(messages) {
+// tabId: 发起请求的 tab，用于隔离 state 写入和 DOM 操作守卫。
+async function callAI(messages, tabId) {
   if (isTTSPlaying()) stopTTS();
 
-  state.setIsGenerating(true);
+  const tabState = state.getStateForTab(tabId);
+  if (!tabState) return;
+
+  tabState.isGenerating = true;
+  state.persistForTab(tabId);
   setButtonsDisabled(true);
 
   if (isTTSAutoPlay()) {
@@ -338,12 +362,15 @@ async function callAI(messages) {
     messages: messages
   });
 
+  // 当前是否还在发起请求的 tab —— DOM 操作仅在此为 true 时执行
+  function isCurrentTab() { return state.getActiveTabId() === tabId; }
+
   port.onMessage.addListener((msg) => {
     if (msg.type === 'thinking') {
       thinkingText += msg.content;
-      removeTypingIndicator(typingEl);
+      if (isCurrentTab()) removeTypingIndicator(typingEl);
 
-      if (!thinkingEl) {
+      if (isCurrentTab() && !thinkingEl) {
         thinkingEl = document.createElement('details');
         thinkingEl.className = 'thinking-block';
         thinkingEl.open = true;
@@ -357,73 +384,88 @@ async function callAI(messages) {
         msgEl.appendChild(thinkingEl);
       }
 
-      thinkingContentEl.innerHTML = marked.parse(thinkingText);
-      smartScrollToBottom();
-    } else if (msg.type === 'chunk') {
-      if (thinkingEl) {
-        thinkingEl.open = false;
-        thinkingEl = null;
+      if (isCurrentTab() && thinkingContentEl) {
+        thinkingContentEl.innerHTML = marked.parse(thinkingText);
+        smartScrollToBottom();
       }
+    } else if (msg.type === 'chunk') {
+      if (thinkingEl) thinkingEl.open = false;
 
       fullText += msg.content;
-      removeTypingIndicator(typingEl);
+      if (isCurrentTab()) removeTypingIndicator(typingEl);
 
-      if (!contentEl) {
+      if (isCurrentTab() && !contentEl) {
         contentEl = document.createElement('div');
         contentEl.className = 'thinking-response-content';
         msgEl.appendChild(contentEl);
       }
 
-      contentEl.innerHTML = marked.parse(fullText);
-      smartScrollToBottom();
-      if (isTTSAutoPlay()) {
+      if (isCurrentTab() && contentEl) {
+        contentEl.innerHTML = marked.parse(fullText);
+        smartScrollToBottom();
+      }
+      if (isCurrentTab() && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content);
       }
     } else if (msg.type === 'done') {
-      removeTypingIndicator(typingEl);
-      if (thinkingEl) thinkingEl.open = false;
-      state.pushConversation({ role: 'assistant', content: fullText });
-      state.setIsGenerating(false);
-      setButtonsDisabled(false);
+      // 状态写入始终打到发起请求的 tab state
+      tabState.conversationHistory.push({ role: 'assistant', content: fullText });
+      tabState.isGenerating = false;
+      state.persistForTab(tabId);
       port.disconnect();
-      addTTSButton(msgEl);
-      initTTSAutoPlay(msgEl);
-      // saveCurrentChat and generateSuggestions are injected callbacks
-      // saveCurrentChat is called via main.js wiring; the suggest callback handles it
-      _onGenerateSuggestions?.(msgEl, state.getConversationHistory());
-    } else if (msg.type === 'error') {
-      removeTypingIndicator(typingEl);
-      if (thinkingEl) thinkingEl.open = false;
-      const errorText = msg.errorKey ? t(msg.errorKey) : escapeHtml(msg.error || '');
-      msgEl.className = 'message message-error';
-      msgEl.textContent = errorText;
-      // Roll back the user message pushed by sendToAI — no assistant response was generated
-      const hist = state.getConversationHistory();
-      if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
-        state.spliceConversation(hist.length - 1, 1);
+
+      // DOM 操作仅在未切 tab 时执行
+      if (isCurrentTab()) {
+        removeTypingIndicator(typingEl);
+        if (thinkingEl) thinkingEl.open = false;
+        setButtonsDisabled(false);
+        addTTSButton(msgEl);
+        initTTSAutoPlay(msgEl);
+        _onGenerateSuggestions?.(msgEl, tabState.conversationHistory);
       }
-      state.setIsGenerating(false);
-      setButtonsDisabled(false);
+    } else if (msg.type === 'error') {
+      // 回滚 user 消息 —— 始终操作发起 tab 的 state
+      const hist = tabState.conversationHistory;
+      if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
+        hist.splice(hist.length - 1, 1);
+        state.persistForTab(tabId);
+      }
+      tabState.isGenerating = false;
+      state.persistForTab(tabId);
       port.disconnect();
+
+      if (isCurrentTab()) {
+        removeTypingIndicator(typingEl);
+        if (thinkingEl) thinkingEl.open = false;
+        const errorText = msg.errorKey ? t(msg.errorKey) : escapeHtml(msg.error || '');
+        msgEl.className = 'message message-error';
+        msgEl.textContent = errorText;
+        setButtonsDisabled(false);
+      }
     }
   });
 
-  // Safety net: reset UI if port disconnects unexpectedly (e.g., service worker terminated)
+  // 断连清理 —— 回滚始终打到发起 tab 的 state
   port.onDisconnect.addListener(() => {
-    if (state.getIsGenerating()) {
-      removeTypingIndicator(typingEl);
-      if (thinkingEl) thinkingEl.open = false;
+    if (tabState.isGenerating) {
+      if (isCurrentTab()) {
+        removeTypingIndicator(typingEl);
+        if (thinkingEl) thinkingEl.open = false;
+      }
       if (!fullText) {
-        msgEl.className = 'message message-error';
-        msgEl.textContent = t('error.apiFailed');
-        // Roll back the orphaned user message
-        const hist = state.getConversationHistory();
+        if (isCurrentTab()) {
+          msgEl.className = 'message message-error';
+          msgEl.textContent = t('error.apiFailed');
+        }
+        const hist = tabState.conversationHistory;
         if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
-          state.spliceConversation(hist.length - 1, 1);
+          hist.splice(hist.length - 1, 1);
+          state.persistForTab(tabId);
         }
       }
-      state.setIsGenerating(false);
-      setButtonsDisabled(false);
+      tabState.isGenerating = false;
+      state.persistForTab(tabId);
+      if (isCurrentTab()) setButtonsDisabled(false);
     }
   });
 }
