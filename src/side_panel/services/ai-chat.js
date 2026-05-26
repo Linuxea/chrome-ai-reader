@@ -17,6 +17,7 @@ import { marked } from 'marked';
 
 let _onRemoveSuggestQuestions;
 let _onGenerateSuggestions;
+let _onRequestRerender;
 let _onGenerateOutline;
 let _onClearQuotePreview;
 let _onChartClick;
@@ -44,6 +45,7 @@ export function initAIChat({ chatArea, userInput, sendBtn, actionBtns, callbacks
   _actionBtns = actionBtns;
   _onRemoveSuggestQuestions = callbacks.onRemoveSuggestQuestions;
   _onGenerateSuggestions = callbacks.onGenerateSuggestions;
+  _onRequestRerender = callbacks.onRequestRerender;
   _onGenerateOutline = callbacks.onGenerateOutline;
   _onClearQuotePreview = callbacks.onClearQuotePreview;
   _onChartClick = callbacks.onChartClick;
@@ -368,9 +370,9 @@ async function callAI(messages, tabId) {
   port.onMessage.addListener((msg) => {
     if (msg.type === 'thinking') {
       thinkingText += msg.content;
-      if (isCurrentTab()) removeTypingIndicator(typingEl);
+      if (isCurrentTab() && msgEl.isConnected) removeTypingIndicator(typingEl);
 
-      if (isCurrentTab() && !thinkingEl) {
+      if (isCurrentTab() && msgEl.isConnected && !thinkingEl) {
         thinkingEl = document.createElement('details');
         thinkingEl.className = 'thinking-block';
         thinkingEl.open = true;
@@ -384,7 +386,7 @@ async function callAI(messages, tabId) {
         msgEl.appendChild(thinkingEl);
       }
 
-      if (isCurrentTab() && thinkingContentEl) {
+      if (isCurrentTab() && msgEl.isConnected && thinkingContentEl) {
         thinkingContentEl.innerHTML = marked.parse(thinkingText);
         smartScrollToBottom();
       }
@@ -392,19 +394,19 @@ async function callAI(messages, tabId) {
       if (thinkingEl) thinkingEl.open = false;
 
       fullText += msg.content;
-      if (isCurrentTab()) removeTypingIndicator(typingEl);
+      if (isCurrentTab() && msgEl.isConnected) removeTypingIndicator(typingEl);
 
-      if (isCurrentTab() && !contentEl) {
+      if (isCurrentTab() && msgEl.isConnected && !contentEl) {
         contentEl = document.createElement('div');
         contentEl.className = 'thinking-response-content';
         msgEl.appendChild(contentEl);
       }
 
-      if (isCurrentTab() && contentEl) {
+      if (isCurrentTab() && msgEl.isConnected && contentEl) {
         contentEl.innerHTML = marked.parse(fullText);
         smartScrollToBottom();
       }
-      if (isCurrentTab() && isTTSAutoPlay()) {
+      if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content);
       }
     } else if (msg.type === 'done') {
@@ -414,14 +416,27 @@ async function callAI(messages, tabId) {
       state.persistForTab(tabId);
       port.disconnect();
 
-      // DOM 操作仅在未切 tab 时执行
       if (isCurrentTab()) {
-        removeTypingIndicator(typingEl);
-        if (thinkingEl) thinkingEl.open = false;
-        setButtonsDisabled(false);
-        addTTSButton(msgEl);
-        initTTSAutoPlay(msgEl);
-        _onGenerateSuggestions?.(msgEl, tabState.conversationHistory);
+        if (!msgEl.isConnected) {
+          // msgEl 已被 resetUIForTabSwitch 清出 DOM，
+          // conversationHistory 已更新，触发全量重渲染
+          _onRequestRerender?.();
+          setButtonsDisabled(false);
+          // 重渲染后找到新的 AI message，补上 TTS 按钮和 suggest
+          const newMsgEl = _chatArea.querySelector('.message-ai:last-of-type');
+          if (newMsgEl) {
+            addTTSButton(newMsgEl);
+            initTTSAutoPlay(newMsgEl);
+            _onGenerateSuggestions?.(newMsgEl, tabState.conversationHistory);
+          }
+        } else {
+          removeTypingIndicator(typingEl);
+          if (thinkingEl) thinkingEl.open = false;
+          setButtonsDisabled(false);
+          addTTSButton(msgEl);
+          initTTSAutoPlay(msgEl);
+          _onGenerateSuggestions?.(msgEl, tabState.conversationHistory);
+        }
       }
     } else if (msg.type === 'error') {
       // 回滚 user 消息 —— 始终操作发起 tab 的 state
@@ -435,12 +450,17 @@ async function callAI(messages, tabId) {
       port.disconnect();
 
       if (isCurrentTab()) {
-        removeTypingIndicator(typingEl);
-        if (thinkingEl) thinkingEl.open = false;
-        const errorText = msg.errorKey ? t(msg.errorKey) : escapeHtml(msg.error || '');
-        msgEl.className = 'message message-error';
-        msgEl.textContent = errorText;
-        setButtonsDisabled(false);
+        if (!msgEl.isConnected) {
+          _onRequestRerender?.();
+          setButtonsDisabled(false);
+        } else {
+          removeTypingIndicator(typingEl);
+          if (thinkingEl) thinkingEl.open = false;
+          const errorText = msg.errorKey ? t(msg.errorKey) : escapeHtml(msg.error || '');
+          msgEl.className = 'message message-error';
+          msgEl.textContent = errorText;
+          setButtonsDisabled(false);
+        }
       }
     }
   });
@@ -448,12 +468,12 @@ async function callAI(messages, tabId) {
   // 断连清理 —— 回滚始终打到发起 tab 的 state
   port.onDisconnect.addListener(() => {
     if (tabState.isGenerating) {
-      if (isCurrentTab()) {
+      if (isCurrentTab() && msgEl.isConnected) {
         removeTypingIndicator(typingEl);
         if (thinkingEl) thinkingEl.open = false;
       }
       if (!fullText) {
-        if (isCurrentTab()) {
+        if (isCurrentTab() && msgEl.isConnected) {
           msgEl.className = 'message message-error';
           msgEl.textContent = t('error.apiFailed');
         }

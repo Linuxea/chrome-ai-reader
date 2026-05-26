@@ -102,10 +102,11 @@ async function init() {
     userInput: els.userInput,
     sendBtn: els.sendBtn,
     actionBtns: els.actionBtns,
-    callbacks: {
-      onRetry: retryMessage,
-      onRemoveSuggestQuestions: removeSuggestQuestions,
-      onGenerateSuggestions: (msgEl, history) => {
+      callbacks: {
+        onRetry: retryMessage,
+        onRemoveSuggestQuestions: removeSuggestQuestions,
+        onRequestRerender: () => resetUIForTabSwitch(),
+        onGenerateSuggestions: (msgEl, history) => {
         generateSuggestions(msgEl, history);
         saveCurrentChat();
       },
