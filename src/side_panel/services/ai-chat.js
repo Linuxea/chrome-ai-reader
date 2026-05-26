@@ -217,8 +217,10 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
   }
 
   try {
-    // 提取页面时传入 startTabId，确保结果写入正确的 tab state
-    await extractPageContent(startTabId);
+    // 仅会话首条消息或缓存为空时提取页面，后续消息复用 tabState.pageContent
+    if (!tabState.conversationHistory.length || !tabState.pageContent) {
+      await extractPageContent(startTabId);
+    }
 
     const messages = [];
     const pageContent = tabState.pageContent || '';
