@@ -52,12 +52,12 @@ export function stopTTSPlayback() {
     ttsAudioEl = null;
   }
   if (ttsMediaSource) {
-    try { if (ttsMediaSource.readyState === 'open') ttsMediaSource.endOfStream(); } catch {}
+    try { if (ttsMediaSource.readyState === 'open') ttsMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
     ttsMediaSource = null;
     ttsSourceBuffer = null;
   }
   if (ttsPort) {
-    try { ttsPort.disconnect(); } catch {}
+    try { ttsPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
     ttsPort = null;
   }
 }
@@ -126,7 +126,7 @@ function ttsFlush() {
   ttsSending = true;
   const sentence = ttsSentenceQueue.shift();
 
-  if (ttsPort) { try { ttsPort.disconnect(); } catch {} }
+  if (ttsPort) { try { ttsPort.disconnect(); } catch { /* cleanup — safe to ignore */ } }
 
   ttsPort = chrome.runtime.connect({ name: 'tts' });
 
@@ -147,7 +147,7 @@ function ttsFlush() {
 
     } else if (msg.type === 'done') {
       ttsSending = false;
-      try { ttsPort.disconnect(); } catch {}
+      try { ttsPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
       ttsPort = null;
 
       if (ttsSentenceQueue.length > 0) {
@@ -156,7 +156,7 @@ function ttsFlush() {
         ttsDone = true;
         const finish = () => {
           if (ttsSourceBuffer && !ttsBufferAppending) {
-            try { ttsMediaSource.endOfStream(); } catch {}
+            try { ttsMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
           }
         };
         if (ttsBufferAppending) {
@@ -239,7 +239,7 @@ export function ttsFlushRemaining() {
   if (ttsSentenceQueue.length === 0 && !ttsSending) {
     const finish = () => {
       if (ttsSourceBuffer && !ttsBufferAppending) {
-        try { ttsMediaSource.endOfStream(); } catch {}
+        try { ttsMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
       }
     };
     if (ttsBufferAppending) {

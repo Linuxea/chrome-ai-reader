@@ -41,12 +41,12 @@ export function cleanupPodcastAudio() {
     podcastAudioEl = null;
   }
   if (podcastMediaSource) {
-    try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch {}
+    try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
     podcastMediaSource = null;
     podcastSourceBuffer = null;
   }
   if (podcastPort) {
-    try { podcastPort.disconnect(); } catch {}
+    try { podcastPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
     podcastPort = null;
   }
   podcastChunkQueue = [];
@@ -63,7 +63,7 @@ function initPodcastPlayback(card) {
     podcastAudioEl = null;
   }
   if (podcastMediaSource) {
-    try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch {}
+    try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
     podcastMediaSource = null;
     podcastSourceBuffer = null;
   }
@@ -253,7 +253,7 @@ function replayAudio(currentCard) {
 
 function finishPodcastAudio(card) {
   if (podcastMediaSource && podcastMediaSource.readyState === 'open') {
-    try { podcastMediaSource.endOfStream(); } catch {}
+    try { podcastMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
   }
   if (podcastAudioEl && podcastAudioEl.ended) {
     _showStatus(card, 'done');
@@ -318,7 +318,7 @@ async function generatePodcastAudio(card, nlpTexts) {
     if (_isCancelled()) return;
     if (state.getIsPodcastGenerating()) {
       if (podcastAudioEl && podcastMediaSource && podcastMediaSource.readyState === 'open') {
-        try { podcastMediaSource.endOfStream(); } catch {}
+        try { podcastMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }
         _resetPodcastState();
       } else {
         _showStatus(card, 'error', t('podcast.audioError'));

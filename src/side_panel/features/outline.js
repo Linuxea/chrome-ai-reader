@@ -26,14 +26,14 @@ export function parseOutlineResponse(rawText) {
   try {
     const data = JSON.parse(rawText);
     if (data && data.title && data.sections) return data;
-  } catch (e) {}
+  } catch { /* not direct JSON — try stripped version next */ }
 
   // Try parse on trimmed text (strip leading/trailing whitespace or markdown fences)
   try {
     const trimmed = stripMarkdownFence(rawText);
     const data = JSON.parse(trimmed);
     if (data && data.title && data.sections) return data;
-  } catch (e) {}
+  } catch { /* not valid outline JSON — return null */ }
 
   return null;
 }

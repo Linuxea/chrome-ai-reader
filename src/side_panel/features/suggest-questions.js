@@ -27,7 +27,7 @@ export function initSuggestQuestions({ chatArea, userInput, onSend }) {
 
 export function removeSuggestQuestions() {
   if (suggestPort) {
-    try { suggestPort.disconnect(); } catch {}
+    try { suggestPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
     suggestPort = null;
   }
   const el = _chatArea.querySelector('.suggest-questions, .suggest-loading');

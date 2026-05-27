@@ -57,7 +57,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         document.querySelectorAll('canvas').forEach((canvas, i) => {
           if (canvas.width > 80 && canvas.height > 40) {
             let thumb = '';
-            try { thumb = canvas.toDataURL('image/png'); } catch {}
+            try { thumb = canvas.toDataURL('image/png'); } catch { /* tainted canvas — cross-origin restriction */ }
             const rect = canvas.getBoundingClientRect();
             canvasPromises.push(
               createThumbnail(thumb, 120, 80).then(thumbnail => ({
@@ -84,7 +84,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               const serializer = new XMLSerializer();
               const svgStr = serializer.serializeToString(svg);
               thumbnail = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
-            } catch {}
+            } catch { /* SVG serialization may fail for complex elements */ }
             const rect = svg.getBoundingClientRect();
             charts.push({
               type: 'svg', index: filteredSvgIndex, width: w, height: h,

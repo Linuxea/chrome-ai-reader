@@ -28,7 +28,7 @@ export function stopTTSDownload() {
   ttsDownloadSending = false;
 
   if (ttsDownloadPort) {
-    try { ttsDownloadPort.disconnect(); } catch {}
+    try { ttsDownloadPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
     ttsDownloadPort = null;
   }
 
@@ -58,7 +58,7 @@ function ttsDownloadFlush() {
       ttsDownloadChunks.push(msg.data);
     } else if (msg.type === 'done') {
       ttsDownloadSending = false;
-      try { ttsDownloadPort.disconnect(); } catch {}
+      try { ttsDownloadPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
       ttsDownloadPort = null;
 
       if (ttsDownloadSegmentIndex < ttsDownloadSegments.length) {

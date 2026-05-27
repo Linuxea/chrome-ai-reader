@@ -19,7 +19,7 @@ export function initScriptCallbacks({ showStatus, resetPodcastState, isCancelled
 
 export function cleanupScriptPort() {
   if (podcastLlmPort) {
-    try { podcastLlmPort.disconnect(); } catch {}
+    try { podcastLlmPort.disconnect(); } catch { /* cleanup — safe to ignore */ }
     podcastLlmPort = null;
   }
 }

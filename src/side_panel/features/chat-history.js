@@ -267,7 +267,7 @@ export async function exportChatAsMarkdown(chatData) {
             assistantIdx++;
             return;
           }
-        } catch(e) {}
+        } catch { /* not a valid outline JSON — fall through to raw content */ }
       }
       const raw = assistantIdx < assistantEntries.length
         ? assistantEntries[assistantIdx].content

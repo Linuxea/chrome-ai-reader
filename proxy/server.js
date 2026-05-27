@@ -252,7 +252,7 @@ async function handlePodcast(params, res) {
   res.on('close', () => {
     clientDisconnected = true;
     console.log('[Podcast] Client disconnected, closing WebSocket');
-    if (ws) try { ws.close(); } catch {}
+    if (ws) try { ws.close(); } catch { /* WS may already be closed */ }
   });
   // Prevent unhandled 'error' on res.write() after client disconnect
   res.on('error', () => {});
@@ -344,7 +344,7 @@ async function handlePodcast(params, res) {
       } else if (frame.eventCode === PodcastEvent.SessionFinished) {
         console.log(`[Podcast] SessionFinished, ${audioChunks} audio chunks sent`);
         sendSSE(res, 'done', {});
-        try { ws.send(buildFrame(PodcastEvent.FinishConnection, '', {})); } catch {}
+        try { ws.send(buildFrame(PodcastEvent.FinishConnection, '', {})); } catch { /* WS may already be closed */ }
         break;
       }
     }
