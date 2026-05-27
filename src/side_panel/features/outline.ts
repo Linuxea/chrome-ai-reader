@@ -1,4 +1,5 @@
 import { t } from '../../shared/i18n.js';
+import type { Result } from '../../shared/types';
 import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants';
 import { stripMarkdownFence } from '../../shared/json-repair';
 import { downloadFile } from '../../shared/download';
@@ -8,9 +9,9 @@ import { emit, EVENTS } from '../events';
 import { appendMessage, scrollToBottom, setButtonsDisabled } from '../ui/dom-helpers';
 import { stopTTS } from '../services/tts/index.js';
 
-let _extractPageContent: () => Promise<{ textContent: string }>;
+let _extractPageContent: () => Promise<Result<{ textContent: string }>>;
 
-export function initOutline(deps: { onExtractPageContent: () => Promise<{ textContent: string }> }): void {
+export function initOutline(deps: { onExtractPageContent: () => Promise<Result<{ textContent: string }>> }): void {
   _extractPageContent = deps.onExtractPageContent;
 }
 
@@ -184,12 +185,12 @@ export function generateOutline(): void {
   const pageContent = state.getPageContent();
 
   if (!pageContent) {
-    _extractPageContent().then(() => {
+    _extractPageContent().then((result) => {
       if (state.getIsGenerating()) return;
-      if (!state.getPageContent()) { appendMessage('error', t('outline.noContent')); return; }
+      if (!result.ok || !state.getPageContent()) { appendMessage('error', t('outline.noContent')); return; }
       if (state.getPageContent().trim().length < 200) { appendMessage('error', t('outline.tooShort')); return; }
       doGenerateOutline();
-    }).catch(() => { appendMessage('error', t('outline.noContent')); });
+    });
     return;
   }
 

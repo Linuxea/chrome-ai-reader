@@ -51,7 +51,7 @@ export async function handlePodcastClick(): Promise<void> {
 
   let textContent: string | undefined;
   if (hasSelection) { textContent = selectedText.trim(); }
-  else { try { const data = await extractPageContent(); textContent = data.textContent; } catch { textContent = state.getPageContent(); } }
+  else { const result = await extractPageContent(); textContent = result.ok ? result.value.textContent : state.getPageContent(); }
 
   const ocrResults = state.getOcrResults();
   if (ocrResults?.length) { const ocrText = ocrResults.map(r => r.text).filter(Boolean).join('\n\n'); if (ocrText) textContent = textContent ? textContent + '\n\n' + ocrText : ocrText; }

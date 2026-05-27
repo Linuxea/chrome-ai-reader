@@ -55,7 +55,8 @@ export async function sendToAI(
 
   try {
     if (!tabState.conversationHistory.length || !tabState.pageContent) {
-      await extractPageContent(startTabId);
+      const extractResult = await extractPageContent(startTabId);
+      if (!extractResult.ok) throw extractResult.error;
     }
 
     const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];

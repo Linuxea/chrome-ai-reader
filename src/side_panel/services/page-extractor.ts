@@ -1,4 +1,6 @@
 import { t } from '../../shared/i18n.js';
+import type { Result } from '../../shared/types';
+import { ok, err } from '../../shared/result.js';
 import * as state from '../state';
 
 export interface ExtractResult {
@@ -7,13 +9,17 @@ export interface ExtractResult {
   title: string;
 }
 
-export async function extractPageContent(expectTabId?: number | null): Promise<ExtractResult> {
+/**
+ * Extract page content via Chrome messaging. Returns Result instead of throwing,
+ * since extraction failure is an expected scenario (no tab, content script not loaded, etc.).
+ */
+export async function extractPageContent(expectTabId?: number | null): Promise<Result<ExtractResult>> {
   const tabId = expectTabId || state.getActiveTabId();
-  if (!tabId) throw new Error(t('error.noTab'));
+  if (!tabId) return err(new Error(t('error.noTab')));
 
   const response = await chrome.tabs.sendMessage(tabId, { action: 'extract' }) as { success?: boolean; error?: string; data?: ExtractResult };
   if (!response?.success) {
-    throw new Error(response?.error || t('error.extractFailed'));
+    return err(new Error(response?.error || t('error.extractFailed')));
   }
 
   const tabState = state.getStateForTab(tabId);
@@ -24,5 +30,5 @@ export async function extractPageContent(expectTabId?: number | null): Promise<E
     state.persistForTab(tabId);
   }
 
-  return response.data!;
+  return ok(response.data!);
 }

@@ -44,25 +44,33 @@ describe('extractPageContent', () => {
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(42, { action: 'extract' });
   });
 
-  it('throws when no tabId is available', async () => {
+  it('returns error result when no tabId is available', async () => {
     const { getActiveTabId } = await import('../../src/side_panel/state.js');
     getActiveTabId.mockReturnValue(null);
-    await expect(extractPageContent()).rejects.toThrow('[error.noTab]');
+    const result = await extractPageContent();
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toContain('[error.noTab]');
   });
 
-  it('throws when response indicates failure', async () => {
+  it('returns error result when response indicates failure', async () => {
     chrome.tabs.sendMessage.mockResolvedValue({ success: false, error: 'content script error' });
-    await expect(extractPageContent(42)).rejects.toThrow('content script error');
+    const result = await extractPageContent(42);
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toContain('content script error');
   });
 
-  it('throws with default message when response is failure without error', async () => {
+  it('returns error result with default message when response is failure without error', async () => {
     chrome.tabs.sendMessage.mockResolvedValue({ success: false });
-    await expect(extractPageContent(42)).rejects.toThrow('[error.extractFailed]');
+    const result = await extractPageContent(42);
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toContain('[error.extractFailed]');
   });
 
-  it('throws when response is null', async () => {
+  it('returns error result when response is null', async () => {
     chrome.tabs.sendMessage.mockResolvedValue(null);
-    await expect(extractPageContent(42)).rejects.toThrow('[error.extractFailed]');
+    const result = await extractPageContent(42);
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toContain('[error.extractFailed]');
   });
 
   it('writes page data to tabState and persists', async () => {
@@ -77,15 +85,17 @@ describe('extractPageContent', () => {
   });
 
   it('returns response data on success', async () => {
-    const data = await extractPageContent(42);
-    expect(data).toEqual(successResponse.data);
+    const result = await extractPageContent(42);
+    expect(result.ok).toBe(true);
+    expect(result.value).toEqual(successResponse.data);
   });
 
   it('skips state update when tabState is null (unknown tab)', async () => {
     const { getStateForTab, persistForTab } = await import('../../src/side_panel/state.js');
     getStateForTab.mockReturnValue(null);
-    const data = await extractPageContent(42);
-    expect(data).toEqual(successResponse.data);
+    const result = await extractPageContent(42);
+    expect(result.ok).toBe(true);
+    expect(result.value).toEqual(successResponse.data);
     expect(persistForTab).not.toHaveBeenCalled();
   });
 });

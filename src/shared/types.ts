@@ -51,3 +51,14 @@ export interface OcrResult {
   fileName: string;
   text: string;
 }
+
+/**
+ * Discriminated union for explicit error handling without exceptions.
+ * Use for "expected failure" scenarios: parsing, validation, external data fetch.
+ * Do NOT use for truly unexpected errors (DOM crashes, programming bugs).
+ *
+ * Helper functions ok()/err() are in result.js — import from there for value imports.
+ */
+export type Result<T, E = Error> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
