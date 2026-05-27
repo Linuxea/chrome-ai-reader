@@ -1,21 +1,17 @@
 // src/side_panel/state.js
+//
+// --- TypeScript Migration Boundary (Phase 5) ---
+// Public API (exports below) is stable. Internal implementation may change
+// during TypeScript migration as long as the getter/setter signatures are preserved.
+// Key interfaces to preserve:
+//   - subscribe(key, cb) / notify(key, value)
+//   - switchToTab(tabId) / initState()
+//   - defineTabField(name, default, opts) → getter/setter pairs
+//   - All named exports listed at the bottom of this file
+// --- End Migration Boundary ---
 
-/**
- * @typedef {Object} TabState
- * @property {string} pageContent - Extracted readable text of the current page
- * @property {string} pageTitle - Title of the current page
- * @property {string} pageExcerpt - Short excerpt / meta description
- * @property {Array<{role: string, content: string, type?: string}>} conversationHistory - Chat message history
- * @property {string|null} currentChatId - ID of the active chat session
- * @property {string} selectedText - Currently selected text on the page
- * @property {boolean} isGenerating - Whether an AI response is streaming
- * @property {boolean} isPodcastGenerating - Whether a podcast is being generated
- * @property {boolean} isChartGenerating - Whether a chart is being generated
- * @property {Array<Object>} detectedCharts - Charts detected on the page
- * @property {number} ocrRunning - OCR task counter (0 = idle)
- * @property {Array<{index: number, fileName: string, text: string}>} ocrResults - OCR results per image
- * @property {number} imageIndex - Current image index for OCR scanning
- */
+// Import centralized type definitions (side-effect import for JSDoc resolution)
+import '../shared/types.js';
 
 const listeners = new Map();
 
@@ -41,6 +37,7 @@ const _tabStates = new Map();
 let _activeState = null;
 let _activeTabId = null;
 
+/** @returns {TabState} */
 function createFreshTabState() {
   return {
     pageContent: '',
