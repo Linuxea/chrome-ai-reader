@@ -2,6 +2,32 @@
  * Reusable chrome API mock for Vitest tests.
  * Covers: chrome.storage.sync/session/local, chrome.tabs, chrome.runtime.
  */
+
+// Creates a programmable mock port for chrome.runtime.connect
+// Tests can call _simulateMessage / _simulateDisconnect to trigger listeners
+export function createMockPort(name) {
+  const listeners = {
+    onMessage: new Set(),
+    onDisconnect: new Set(),
+  };
+  return {
+    name,
+    postMessage: vi.fn(),
+    onMessage: {
+      addListener: vi.fn(fn => listeners.onMessage.add(fn)),
+      removeListener: vi.fn(fn => listeners.onMessage.delete(fn)),
+    },
+    onDisconnect: {
+      addListener: vi.fn(fn => listeners.onDisconnect.add(fn)),
+      removeListener: vi.fn(fn => listeners.onDisconnect.delete(fn)),
+    },
+    disconnect: vi.fn(),
+    _simulateMessage(msg) { listeners.onMessage.forEach(fn => fn(msg)); },
+    _simulateDisconnect() { listeners.onDisconnect.forEach(fn => fn()); },
+    _listeners: listeners,
+  };
+}
+
 export function createChromeMock(overrides = {}) {
   const store = {
     sync: {},
@@ -19,10 +45,15 @@ export function createChromeMock(overrides = {}) {
     return {
       get(keys, cb) {
         const result = {};
-        const keyList = Array.isArray(keys) ? keys : [keys];
-        keyList.forEach(k => {
-          if (store[storeKey][k] !== undefined) result[k] = store[storeKey][k];
-        });
+        // Handle null/undefined keys — return full store contents per Chrome API
+        if (keys == null) {
+          Object.assign(result, store[storeKey]);
+        } else {
+          const keyList = Array.isArray(keys) ? keys : [keys];
+          keyList.forEach(k => {
+            if (store[storeKey][k] !== undefined) result[k] = store[storeKey][k];
+          });
+        }
         cb?.(result);
       },
       set(items, cb) {
@@ -63,14 +94,15 @@ export function createChromeMock(overrides = {}) {
         addListener: vi.fn(),
         removeListener: vi.fn(),
       },
+      onActivated: {
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      },
     },
     runtime: {
-      connect: vi.fn(() => ({
-        postMessage: vi.fn(),
-        onMessage: { addListener: vi.fn() },
-        onDisconnect: { addListener: vi.fn() },
-        disconnect: vi.fn(),
-      })),
+      // Returns a programmable mock port — tests can use
+      // port._simulateMessage(msg) / port._simulateDisconnect()
+      connect: vi.fn(() => createMockPort()),
       sendMessage: vi.fn(() => Promise.resolve({ success: true })),
       onMessage: {
         addListener: vi.fn(),
