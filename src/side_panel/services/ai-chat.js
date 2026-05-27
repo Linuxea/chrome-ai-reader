@@ -3,6 +3,7 @@
 import { t } from '../../shared/i18n.js';
 import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants.js';
 import * as state from '../state.js';
+import { emit } from '../events.js';
 import {
   appendMessage, appendMessageWithQuote, addTypingIndicator,
   removeTypingIndicator, removeLastMessage, smartScrollToBottom,
@@ -11,17 +12,10 @@ import {
 import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay
-} from './tts.js';
+} from './tts/index.js';
 import { getOcrRunning, hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
 import { marked } from 'marked';
 
-let _onRemoveSuggestQuestions;
-let _onGenerateSuggestions;
-let _onRequestRerender;
-let _onGenerateOutline;
-let _onClearQuotePreview;
-let _onChartClick;
-let _onPodcastClick;
 let _chatArea;
 let _userInput;
 let _sendBtn;
@@ -36,20 +30,13 @@ let _executeQuickCommand;
 let _getCommandSelectedIndex;
 let _setCommandSelectedIndex;
 
-export function initAIChat({ chatArea, userInput, sendBtn, actionBtns, callbacks,
+export function initAIChat({ chatArea, userInput, sendBtn, actionBtns,
   isCommandPopupOpen, getFilteredCommands, renderCommandPopup, hideCommandPopup, executeQuickCommand,
   getCommandSelectedIndex, setCommandSelectedIndex }) {
   _chatArea = chatArea;
   _userInput = userInput;
   _sendBtn = sendBtn;
   _actionBtns = actionBtns;
-  _onRemoveSuggestQuestions = callbacks.onRemoveSuggestQuestions;
-  _onGenerateSuggestions = callbacks.onGenerateSuggestions;
-  _onRequestRerender = callbacks.onRequestRerender;
-  _onGenerateOutline = callbacks.onGenerateOutline;
-  _onClearQuotePreview = callbacks.onClearQuotePreview;
-  _onChartClick = callbacks.onChartClick;
-  _onPodcastClick = callbacks.onPodcastClick;
 
   // Command popup helpers (injected from features layer to avoid layer violation)
   _isCommandPopupOpen = isCommandPopupOpen;
@@ -138,17 +125,17 @@ export async function handleQuickAction(action) {
   if (state.getIsGenerating()) return;
 
   if (action === 'outline') {
-    _onGenerateOutline?.();
+    emit('generateOutline');
     return;
   }
 
   if (action === 'podcast') {
-    _onPodcastClick?.();
+    emit('podcastClick');
     return;
   }
 
   if (action === 'chart') {
-    _onChartClick?.();
+    emit('chartClick');
     return;
   }
 
@@ -187,7 +174,7 @@ export async function handleQuickAction(action) {
 }
 
 export async function sendToAI(text, displayText, retryQuote, ocrContext, imageUris) {
-  _onRemoveSuggestQuestions?.();
+  emit('removeSuggestQuestions');
 
   // 捕捉发起请求时的 tabId 和 state 引用 —— 全程直接操作该对象，
   // 避免切 tab 后 _activeState 指针变化导致数据写入错误的目标。
@@ -209,7 +196,7 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
     userMsgEl.dataset.rawText = text;
     userMsgEl.dataset.rawQuote = quoteForContext;
     userMsgEl.dataset.rawDisplay = displayText;
-    _onClearQuotePreview?.();
+    emit('clearQuotePreview');
   } else {
     const userMsgEl = appendMessage('user', displayText, imageUris);
     userMsgEl.dataset.rawText = text;
@@ -308,7 +295,7 @@ export async function retryMessage(wrapper, rawText, rawDisplay, rawQuote) {
   if (!tabState || tabState.isGenerating) return;
 
   if (isTTSPlaying()) stopTTS();
-  _onRemoveSuggestQuestions?.();
+  emit('removeSuggestQuestions');
 
   // Reset podcast/chart generating flags so their buttons aren't permanently disabled.
   if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;
@@ -422,14 +409,14 @@ async function callAI(messages, tabId) {
         if (!msgEl.isConnected) {
           // msgEl 已被 resetUIForTabSwitch 清出 DOM，
           // conversationHistory 已更新，触发全量重渲染
-          _onRequestRerender?.();
+          emit('requestRerender');
           setButtonsDisabled(false);
           // 重渲染后找到新的 AI message，补上 TTS 按钮和 suggest
           const newMsgEl = _chatArea.querySelector('.message-ai:last-of-type');
           if (newMsgEl) {
             addTTSButton(newMsgEl);
             initTTSAutoPlay(newMsgEl);
-            _onGenerateSuggestions?.(newMsgEl, tabState.conversationHistory);
+            emit('generateSuggestions', { msgEl: newMsgEl, history: tabState.conversationHistory });
           }
         } else {
           removeTypingIndicator(typingEl);
@@ -437,7 +424,7 @@ async function callAI(messages, tabId) {
           setButtonsDisabled(false);
           addTTSButton(msgEl);
           initTTSAutoPlay(msgEl);
-          _onGenerateSuggestions?.(msgEl, tabState.conversationHistory);
+          emit('generateSuggestions', { msgEl, history: tabState.conversationHistory });
         }
       }
     } else if (msg.type === 'error') {
@@ -453,7 +440,7 @@ async function callAI(messages, tabId) {
 
       if (isCurrentTab()) {
         if (!msgEl.isConnected) {
-          _onRequestRerender?.();
+          emit('requestRerender');
           setButtonsDisabled(false);
         } else {
           removeTypingIndicator(typingEl);

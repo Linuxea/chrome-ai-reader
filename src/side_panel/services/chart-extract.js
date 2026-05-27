@@ -1,4 +1,5 @@
 import { t } from '../../shared/i18n.js';
+import { stripMarkdownFence, extractJsonObject } from '../../shared/json-repair.js';
 import * as state from '../state.js';
 
 const CHART_EXTRACT_PROMPT = `你是一个专业的数据分析师。请分析这张图表截图。
@@ -113,11 +114,11 @@ export async function extractChartData(dataUri) {
   }
 
   const content = response.content || '{}';
-  const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  const cleaned = stripMarkdownFence(content);
+  const jsonMatch = extractJsonObject(cleaned);
   if (!jsonMatch) throw new Error(t('chart.noData'));
 
-  return JSON.parse(jsonMatch[0]);
+  return JSON.parse(jsonMatch);
 }
 
 export async function generateInsights(chartData) {
@@ -145,11 +146,11 @@ export async function generateInsights(chartData) {
   }
 
   const content = response.content || '{}';
-  const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  const cleaned = stripMarkdownFence(content);
+  const jsonMatch = extractJsonObject(cleaned);
   if (!jsonMatch) throw new Error(t('chart.analyzeFailed'));
 
-  return JSON.parse(jsonMatch[0]);
+  return JSON.parse(jsonMatch);
 }
 
 export function chartDataToCSV(chartData) {

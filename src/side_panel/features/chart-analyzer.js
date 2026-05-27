@@ -2,6 +2,7 @@
 
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants.js';
+import { downloadFile } from '../../shared/download.js';
 import * as state from '../state.js';
 import { appendMessage, scrollToBottom } from '../ui/dom-helpers.js';
 import {
@@ -362,18 +363,6 @@ function renderDataTable(container, chartData) {
     table.innerHTML = `<thead><tr>${headerCells.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody>`;
     container.appendChild(table);
   }
-}
-
-function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function resetState() {

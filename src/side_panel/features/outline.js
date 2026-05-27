@@ -2,16 +2,17 @@
 
 import { t } from '../../shared/i18n.js';
 import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants.js';
+import { stripMarkdownFence } from '../../shared/json-repair.js';
 import { marked } from 'marked';
 import * as state from '../state.js';
+import { emit } from '../events.js';
+import { appendMessage, scrollToBottom, setButtonsDisabled } from '../ui/dom-helpers.js';
+import { stopTTS } from '../services/tts/index.js';
 
-let _deps = {};
+let _extractPageContent;
 
 export function initOutline(deps) {
-  _deps = deps;
-  // deps: onExtractPageContent, onStopTTS, onAddTTSButton,
-  // onAppendMessage, onScrollToBottom, onSetButtonsDisabled,
-  // onRemoveSuggestQuestions, onSaveCurrentChat, chatArea
+  _extractPageContent = deps.onExtractPageContent;
 }
 
 // === 1. parseOutlineResponse(rawText) ===
@@ -23,25 +24,14 @@ function parseOutlineResponse(rawText) {
 
   // Try direct parse
   try {
-    var data = JSON.parse(rawText);
+    const data = JSON.parse(rawText);
     if (data && data.title && data.sections) return data;
   } catch (e) {}
 
   // Try parse on trimmed text (strip leading/trailing whitespace or markdown fences)
   try {
-    var trimmed = rawText.trim();
-    // Strip possible ```json ... ``` wrapper
-    if (trimmed.startsWith('```')) {
-      var firstNewline = trimmed.indexOf('\n');
-      if (firstNewline !== -1) {
-        trimmed = trimmed.slice(firstNewline + 1);
-      }
-      if (trimmed.endsWith('```')) {
-        trimmed = trimmed.slice(0, -3);
-      }
-      trimmed = trimmed.trim();
-    }
-    var data = JSON.parse(trimmed);
+    const trimmed = stripMarkdownFence(rawText);
+    const data = JSON.parse(trimmed);
     if (data && data.title && data.sections) return data;
   } catch (e) {}
 
@@ -53,7 +43,7 @@ function parseOutlineResponse(rawText) {
 
 export function outlineToMarkdown(data) {
   if (!data) return '';
-  var md = '# ' + data.title + '\n\n';
+  let md = '# ' + data.title + '\n\n';
   if (data.sections && data.sections.length > 0) {
     data.sections.forEach(function(section) {
       md += sectionToMarkdown(section, 2);
@@ -63,9 +53,9 @@ export function outlineToMarkdown(data) {
 }
 
 function sectionToMarkdown(section, level) {
-  var prefix = '';
-  for (var i = 0; i < level; i++) prefix += '#';
-  var md = prefix + ' ' + section.heading + '\n\n';
+  let prefix = '';
+  for (let i = 0; i < level; i++) prefix += '#';
+  let md = prefix + ' ' + section.heading + '\n\n';
 
   if (section.summary) {
     md += section.summary + '\n\n';
@@ -95,18 +85,18 @@ function sectionToMarkdown(section, level) {
 // Create DOM for one tree node.
 
 function renderOutlineNode(section) {
-  var node = document.createElement('div');
+  const node = document.createElement('div');
   node.className = 'outline-node';
 
   // Heading row with arrow
-  var heading = document.createElement('div');
+  const heading = document.createElement('div');
   heading.className = 'outline-heading';
 
-  var arrow = document.createElement('span');
+  const arrow = document.createElement('span');
   arrow.className = 'outline-arrow';
   arrow.textContent = '\u25B6'; // ▶
 
-  var headingText = document.createElement('span');
+  const headingText = document.createElement('span');
   headingText.className = 'outline-heading-text';
   headingText.textContent = section.heading;
 
@@ -121,17 +111,17 @@ function renderOutlineNode(section) {
   node.appendChild(heading);
 
   // Knowledge card
-  var card = document.createElement('div');
+  const card = document.createElement('div');
   card.className = 'outline-card';
 
   // Summary section
   if (section.summary) {
-    var summarySection = document.createElement('div');
+    const summarySection = document.createElement('div');
     summarySection.className = 'outline-card-section';
-    var summaryLabel = document.createElement('div');
+    const summaryLabel = document.createElement('div');
     summaryLabel.className = 'outline-card-label';
     summaryLabel.textContent = t('outline.label.summary');
-    var summaryText = document.createElement('div');
+    const summaryText = document.createElement('div');
     summaryText.className = 'outline-card-summary';
     summaryText.textContent = section.summary;
     summarySection.appendChild(summaryLabel);
@@ -141,15 +131,15 @@ function renderOutlineNode(section) {
 
   // Key data section
   if (section.data && section.data.length > 0) {
-    var dataSection = document.createElement('div');
+    const dataSection = document.createElement('div');
     dataSection.className = 'outline-card-section';
-    var dataLabel = document.createElement('div');
+    const dataLabel = document.createElement('div');
     dataLabel.className = 'outline-card-label';
     dataLabel.textContent = t('outline.label.data');
-    var dataList = document.createElement('ul');
+    const dataList = document.createElement('ul');
     dataList.className = 'outline-card-data';
     section.data.forEach(function(item) {
-      var li = document.createElement('li');
+      const li = document.createElement('li');
       li.textContent = item;
       dataList.appendChild(li);
     });
@@ -160,12 +150,12 @@ function renderOutlineNode(section) {
 
   // Quote section
   if (section.quote) {
-    var quoteSection = document.createElement('div');
+    const quoteSection = document.createElement('div');
     quoteSection.className = 'outline-card-section';
-    var quoteLabel = document.createElement('div');
+    const quoteLabel = document.createElement('div');
     quoteLabel.className = 'outline-card-label';
     quoteLabel.textContent = t('outline.label.quote');
-    var quoteBlock = document.createElement('blockquote');
+    const quoteBlock = document.createElement('blockquote');
     quoteBlock.className = 'outline-card-quote';
     quoteBlock.textContent = section.quote;
     quoteSection.appendChild(quoteLabel);
@@ -177,7 +167,7 @@ function renderOutlineNode(section) {
 
   // Children container (indented)
   if (section.children && section.children.length > 0) {
-    var childrenContainer = document.createElement('div');
+    const childrenContainer = document.createElement('div');
     childrenContainer.className = 'outline-children';
     section.children.forEach(function(child) {
       childrenContainer.appendChild(renderOutlineNode(child));
@@ -192,13 +182,13 @@ function renderOutlineNode(section) {
 // Create full outline container DOM.
 
 function renderOutline(data) {
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.className = 'outline-container';
 
   // Header with title
-  var header = document.createElement('div');
+  const header = document.createElement('div');
   header.className = 'outline-header';
-  var titleSpan = document.createElement('span');
+  const titleSpan = document.createElement('span');
   titleSpan.className = 'outline-title-text';
   titleSpan.textContent = t('outline.title') + ' ' + data.title;
   header.appendChild(titleSpan);
@@ -212,14 +202,14 @@ function renderOutline(data) {
   }
 
   // Footer with Copy and Export buttons
-  var footer = document.createElement('div');
+  const footer = document.createElement('div');
   footer.className = 'outline-footer';
 
-  var copyBtn = document.createElement('button');
+  const copyBtn = document.createElement('button');
   copyBtn.className = 'outline-action-btn';
   copyBtn.textContent = t('outline.copy');
   copyBtn.addEventListener('click', function() {
-    var md = outlineToMarkdown(data);
+    const md = outlineToMarkdown(data);
     navigator.clipboard.writeText(md).then(function() {
       copyBtn.textContent = t('outline.copySuccess');
       setTimeout(function() {
@@ -230,22 +220,16 @@ function renderOutline(data) {
     });
   });
 
-  var exportBtn = document.createElement('button');
+  const exportBtn = document.createElement('button');
   exportBtn.className = 'outline-action-btn';
   exportBtn.textContent = t('outline.export');
   exportBtn.addEventListener('click', function() {
-    var md = outlineToMarkdown(data);
-    var blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    var now = new Date();
-    var dateStr = now.getFullYear() + '-' +
+    const md = outlineToMarkdown(data);
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' +
       String(now.getMonth() + 1).padStart(2, '0') + '-' +
       String(now.getDate()).padStart(2, '0');
-    a.href = url;
-    a.download = t('outline.title') + '_' + dateStr + '.md';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadFile(md, t('outline.title') + '_' + dateStr + '.md', 'text/markdown;charset=utf-8');
   });
 
   footer.appendChild(copyBtn);
@@ -259,10 +243,10 @@ function renderOutline(data) {
 // Shimmer skeleton placeholder.
 
 function renderOutlineSkeleton() {
-  var skeleton = document.createElement('div');
+  const skeleton = document.createElement('div');
   skeleton.className = 'outline-skeleton';
-  for (var i = 0; i < 5; i++) {
-    var line = document.createElement('div');
+  for (let i = 0; i < 5; i++) {
+    const line = document.createElement('div');
     line.className = 'outline-skeleton-line';
     skeleton.appendChild(line);
   }
@@ -278,26 +262,26 @@ export function generateOutline() {
   const pageContent = state.getPageContent();
 
   if (!pageContent) {
-    _deps.onExtractPageContent().then(function() {
+    _extractPageContent().then(function() {
       // Re-check isGenerating — user may have started another operation during the async extract
       if (state.getIsGenerating()) return;
       if (!state.getPageContent()) {
-        _deps.onAppendMessage('error', t('outline.noContent'));
+        appendMessage('error', t('outline.noContent'));
         return;
       }
       if (state.getPageContent().trim().length < 200) {
-        _deps.onAppendMessage('error', t('outline.tooShort'));
+        appendMessage('error', t('outline.tooShort'));
         return;
       }
       doGenerateOutline();
     }).catch(function() {
-      _deps.onAppendMessage('error', t('outline.noContent'));
+      appendMessage('error', t('outline.noContent'));
     });
     return;
   }
 
   if (pageContent.trim().length < 200) {
-    _deps.onAppendMessage('error', t('outline.tooShort'));
+    appendMessage('error', t('outline.tooShort'));
     return;
   }
 
@@ -309,26 +293,27 @@ export function generateOutline() {
 
 function doGenerateOutline() {
   state.setIsGenerating(true);
-  _deps.onSetButtonsDisabled(true);
+  setButtonsDisabled(true);
 
-  if (_deps.onStopTTS) _deps.onStopTTS();
-  _deps.onRemoveSuggestQuestions();
+  stopTTS();
+  emit('removeSuggestQuestions');
 
   // Remove welcome message
-  var welcome = _deps.chatArea.querySelector('.welcome-msg');
+  const chatArea = document.getElementById('chatArea');
+  const welcome = chatArea.querySelector('.welcome-msg');
   if (welcome) welcome.remove();
 
   // Create AI bubble with skeleton
-  var msgEl = _deps.onAppendMessage('ai', '');
+  const msgEl = appendMessage('ai', '');
   msgEl.appendChild(renderOutlineSkeleton());
-  _deps.onScrollToBottom();
+  scrollToBottom();
 
   // Build messages — standalone request, no conversation history
-  var messages = [];
-  var context = safeTruncate(state.getPageContent(), TRUNCATE_LIMITS.CONTEXT);
+  const messages = [];
+  const context = safeTruncate(state.getPageContent(), TRUNCATE_LIMITS.CONTEXT);
   messages.push({ role: 'system', content: t('prompt.outline') });
 
-  var customSystemPrompt = state.getCustomSystemPrompt();
+  const customSystemPrompt = state.getCustomSystemPrompt();
   if (customSystemPrompt) {
     messages.push({ role: 'system', content: customSystemPrompt });
   }
@@ -336,7 +321,7 @@ function doGenerateOutline() {
   messages.push({ role: 'user', content: context });
 
   // Connect to ai-chat port with response_format for JSON output
-  var port = chrome.runtime.connect({ name: 'ai-chat' });
+  const port = chrome.runtime.connect({ name: 'ai-chat' });
 
   port.postMessage({
     type: 'chat',
@@ -352,11 +337,11 @@ function doGenerateOutline() {
         msgEl.innerHTML = escapeHtml(t('error.apiFailed'));
       }
       state.setIsGenerating(false);
-      _deps.onSetButtonsDisabled(false);
+      setButtonsDisabled(false);
     }
   });
 
-  var fullText = '';
+  let fullText = '';
 
   port.onMessage.addListener(function(msg) {
     if (msg.type === 'thinking') {
@@ -369,9 +354,9 @@ function doGenerateOutline() {
       // Clear skeleton
       msgEl.innerHTML = '';
 
-      var data = parseOutlineResponse(fullText);
+      const data = parseOutlineResponse(fullText);
       if (data) {
-        var outlineEl = renderOutline(data);
+        const outlineEl = renderOutline(data);
         msgEl.appendChild(outlineEl);
         msgEl.dataset.type = 'outline';
         msgEl.dataset.json = fullText;
@@ -384,17 +369,17 @@ function doGenerateOutline() {
       }
 
       state.setIsGenerating(false);
-      _deps.onSetButtonsDisabled(false);
-      _deps.onAddTTSButton(msgEl);
-      _deps.onSaveCurrentChat();
-      _deps.onScrollToBottom();
+      setButtonsDisabled(false);
+      emit('addTTSButton', { msgEl });
+      emit('saveCurrentChat');
+      scrollToBottom();
     } else if (msg.type === 'error') {
       port.disconnect();
-      var errorText = msg.errorKey ? t(msg.errorKey) : (msg.error || '');
+      const errorText = msg.errorKey ? t(msg.errorKey) : (msg.error || '');
       msgEl.className = 'message message-error';
       msgEl.innerHTML = escapeHtml(errorText);
       state.setIsGenerating(false);
-      _deps.onSetButtonsDisabled(false);
+      setButtonsDisabled(false);
     }
   });
 }
@@ -403,7 +388,7 @@ function doGenerateOutline() {
 // For chat history restore.
 
 export function renderOutlineFromJSON(jsonString) {
-  var data = parseOutlineResponse(jsonString);
+  const data = parseOutlineResponse(jsonString);
   if (!data) return null;
   return renderOutline(data);
 }

@@ -3,17 +3,16 @@
 import { escapeHtml } from '../../shared/constants.js';
 import { t } from '../../shared/i18n.js';
 import { marked } from 'marked';
+import { emit } from '../events.js';
 
 let _chatArea;
 let _actionBtns;
 let _sendBtn;
-let _callbacks = {};
 
-export function initDOMHelpers({ chatArea, actionBtns, sendBtn, callbacks }) {
+export function initDOMHelpers({ chatArea, actionBtns, sendBtn }) {
   _chatArea = chatArea;
   _actionBtns = actionBtns;
   _sendBtn = sendBtn;
-  if (callbacks) _callbacks = callbacks;
 }
 
 export function appendMessage(role, content, imageUris) {
@@ -99,9 +98,7 @@ function addUserActions(wrapper, msgEl) {
     const rawText = msgEl.dataset.rawText;
     const rawQuote = msgEl.dataset.rawQuote || '';
     const rawDisplay = msgEl.dataset.rawDisplay || rawText;
-    if (_callbacks.onRetry) {
-      _callbacks.onRetry(wrapper, rawText, rawDisplay, rawQuote);
-    }
+    emit('retry', { wrapper, rawText, rawDisplay, rawQuote });
   });
 
   actions.appendChild(retryBtn);

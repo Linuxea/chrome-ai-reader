@@ -3,6 +3,7 @@
 import { t, loadLanguage, setLanguage, applyTranslations, getCurrentLang } from '../shared/i18n.js';
 import { escapeHtml } from '../shared/constants.js';
 import { applyTheme, getThemeState } from '../shared/theme.js';
+import { downloadFile } from '../shared/download.js';
 
 const languageSelect = document.getElementById('languageSelect');
 
@@ -417,13 +418,7 @@ exportBtn.addEventListener('click', () => {
       if (commands && commands.length > 0) exportData.quickCommands = commands;
 
       const json = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ai-reader-settings-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadFile(json, `ai-reader-settings-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
       showStatus(t('status.exported'), 'success');
     });
   });

@@ -3,10 +3,11 @@
 import { loadLanguage, t } from '../shared/i18n.js';
 import { initState } from './state.js';
 import * as state from './state.js';
-import { initDOMHelpers, setButtonsDisabled, appendMessage, scrollToBottom } from './ui/dom-helpers.js';
+import { on } from './events.js';
+import { initDOMHelpers, setButtonsDisabled, appendMessage } from './ui/dom-helpers.js';
 import { initTheme } from './ui/theme.js';
 import { initModelStatus } from './ui/model-status.js';
-import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts.js';
+import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
 import { initOCR, clearImagePreviews } from './services/ocr.js';
 import { initAIChat, sendToAI, sendMessage, retryMessage, extractPageContent } from './services/ai-chat.js';
 import { initChatHistory, saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from './features/chat-history.js';
@@ -14,7 +15,7 @@ import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandP
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions.js';
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
-import { initPodcast, handlePodcastClick } from './features/podcast.js';
+import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initChartAnalyzer, handleChartClick } from './features/chart-analyzer.js';
 import { marked } from 'marked';
 
@@ -48,7 +49,6 @@ async function init() {
     chatArea: els.chatArea,
     actionBtns: els.actionBtns,
     sendBtn: els.sendBtn,
-    callbacks: { onRetry: retryMessage },
   });
   initTheme();
   initModelStatus();
@@ -78,14 +78,6 @@ async function init() {
   });
   initOutline({
     onExtractPageContent: extractPageContent,
-    onStopTTS: stopTTS,
-    onAddTTSButton: addTTSButton,
-    onAppendMessage: appendMessage,
-    onScrollToBottom: scrollToBottom,
-    onSetButtonsDisabled: setButtonsDisabled,
-    onRemoveSuggestQuestions: removeSuggestQuestions,
-    onSaveCurrentChat: saveCurrentChat,
-    chatArea: els.chatArea,
   });
   initImageInput({
     userInput: els.userInput,
@@ -96,25 +88,27 @@ async function init() {
   });
   initChartAnalyzer({ chatArea: els.chatArea });
 
-  // 5. AI chat (last — injects feature callbacks to avoid layer violation)
+  // 4b. Event subscriptions (replaces callback injection)
+  on('retry', ({ wrapper, rawText, rawDisplay, rawQuote }) => retryMessage(wrapper, rawText, rawDisplay, rawQuote));
+  on('removeSuggestQuestions', () => removeSuggestQuestions());
+  on('requestRerender', () => resetUIForTabSwitch());
+  on('generateSuggestions', ({ msgEl, history }) => {
+    generateSuggestions(msgEl, history);
+    saveCurrentChat();
+  });
+  on('generateOutline', () => generateOutline());
+  on('clearQuotePreview', () => updateQuotePreview(''));
+  on('chartClick', () => handleChartClick());
+  on('podcastClick', () => handlePodcastClick());
+  on('addTTSButton', ({ msgEl }) => addTTSButton(msgEl));
+  on('saveCurrentChat', () => saveCurrentChat());
+
+  // 5. AI chat (last — command popup helpers still injected for synchronous queries)
   initAIChat({
     chatArea: els.chatArea,
     userInput: els.userInput,
     sendBtn: els.sendBtn,
     actionBtns: els.actionBtns,
-      callbacks: {
-        onRetry: retryMessage,
-        onRemoveSuggestQuestions: removeSuggestQuestions,
-        onRequestRerender: () => resetUIForTabSwitch(),
-        onGenerateSuggestions: (msgEl, history) => {
-        generateSuggestions(msgEl, history);
-        saveCurrentChat();
-      },
-      onGenerateOutline: generateOutline,
-      onClearQuotePreview: () => updateQuotePreview(''),
-      onChartClick: handleChartClick,
-      onPodcastClick: handlePodcastClick,
-    },
     isCommandPopupOpen,
     getFilteredCommands,
     renderCommandPopup,

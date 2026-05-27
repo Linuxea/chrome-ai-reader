@@ -2,6 +2,8 @@
 
 import { t, getCurrentLang } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants.js';
+import { formatDate } from '../../shared/format.js';
+import { downloadFile } from '../../shared/download.js';
 import * as state from '../state.js';
 import { scrollToBottom } from '../ui/dom-helpers.js';
 import { marked } from 'marked';
@@ -221,22 +223,6 @@ export async function renderHistoryList() {
   });
 }
 
-function formatDate(timestamp) {
-  const d = new Date(timestamp);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const isYesterday = d.toDateString() === yesterday.toDateString();
-
-  const locale = getCurrentLang() === 'en' ? 'en-US' : 'zh-CN';
-  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-
-  if (isToday) return t('chat.today') + ' ' + time;
-  if (isYesterday) return t('chat.yesterday') + ' ' + time;
-  return d.toLocaleDateString(locale, { month: 'numeric', day: 'numeric' }) + ' ' + time;
-}
-
 function sanitizeFilename(title) {
   return title.replace(/[/\\:*?"<>|\n\r]/g, '_').slice(0, 30);
 }
@@ -291,15 +277,9 @@ export async function exportChatAsMarkdown(chatData) {
     }
   });
 
-  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const title = sanitizeFilename(chatData.title || t('chat.newChat'));
   const dateStr = now.getFullYear() + '-' +
     String(now.getMonth() + 1).padStart(2, '0') + '-' +
     String(now.getDate()).padStart(2, '0');
-  a.href = url;
-  a.download = `${t('app.fullName')}_${dateStr}_${title}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(md, `${t('app.fullName')}_${dateStr}_${title}.md`, 'text/markdown;charset=utf-8');
 }

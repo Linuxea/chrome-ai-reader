@@ -4,13 +4,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
-    "build": "vite build && node build-extension.js"
+    "dev": "concurrently \"vite build --watch\" \"node scripts/watch-iife.js\"",
+    "build": "vite build && node build-extension.js",
+    "lint": "eslint src/ proxy/",
+    "format": "prettier --write 'src/**/*.js' 'proxy/**/*.js'",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-node-resolve": "^16.0.3",
-    "vite": "^6.0.0"
+    "concurrently": "^9.2.1",
+    "eslint": "^10.4.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",

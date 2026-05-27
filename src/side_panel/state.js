@@ -1,6 +1,30 @@
 // src/side_panel/state.js
+
+/**
+ * @typedef {Object} TabState
+ * @property {string} pageContent - Extracted readable text of the current page
+ * @property {string} pageTitle - Title of the current page
+ * @property {string} pageExcerpt - Short excerpt / meta description
+ * @property {Array<{role: string, content: string, type?: string}>} conversationHistory - Chat message history
+ * @property {string|null} currentChatId - ID of the active chat session
+ * @property {string} selectedText - Currently selected text on the page
+ * @property {boolean} isGenerating - Whether an AI response is streaming
+ * @property {boolean} isPodcastGenerating - Whether a podcast is being generated
+ * @property {boolean} isChartGenerating - Whether a chart is being generated
+ * @property {Array<Object>} detectedCharts - Charts detected on the page
+ * @property {number} ocrRunning - OCR task counter (0 = idle)
+ * @property {Array<{index: number, fileName: string, text: string}>} ocrResults - OCR results per image
+ * @property {number} imageIndex - Current image index for OCR scanning
+ */
+
 const listeners = new Map();
 
+/**
+ * Subscribe to state changes for a given key.
+ * @param {string} key - State field name to observe
+ * @param {(value: any) => void} callback - Called with the new value on change
+ * @returns {() => void} Unsubscribe function
+ */
 export function subscribe(key, callback) {
   if (!listeners.has(key)) listeners.set(key, new Set());
   listeners.get(key).add(callback);
@@ -35,11 +59,21 @@ function createFreshTabState() {
   };
 }
 
+/**
+ * Persist the active tab's state to chrome.storage.session.
+ * Called internally after every state mutation.
+ */
 function persistTabState() {
   if (!_activeTabId || !_activeState) return;
   chrome.storage.session.set({ [`tabState_${_activeTabId}`]: _activeState });
 }
 
+/**
+ * Switch the active tab context. Persists the outgoing tab state first,
+ * then loads or creates state for the new tab.
+ * @param {number} newTabId - Chrome tab ID to switch to
+ * @returns {Promise<void>}
+ */
 export async function switchToTab(newTabId) {
   if (!newTabId || newTabId === _activeTabId) return;
 
@@ -57,6 +91,11 @@ export async function switchToTab(newTabId) {
   notify('tabSwitched');
 }
 
+/**
+ * Initialize state on side-panel load: restore system prompt, active tab state,
+ * quick commands, and suggest-questions preference.
+ * @returns {Promise<void>}
+ */
 export async function initState() {
   const data = await chrome.storage.sync.get(['systemPrompt']);
   if (data.systemPrompt) _customSystemPrompt = data.systemPrompt;
@@ -105,56 +144,91 @@ export function getActiveTabId() { return _activeTabId; }
 
 // 获取指定 tab 的 state 对象引用 —— 异步操作中用它绕过 _activeState，
 // 避免切 tab 后数据写入错误的目标。
+/**
+ * Get the state object for a specific tab (bypasses _activeState).
+ * Use in async operations to avoid writing to the wrong tab after a tab switch.
+ * @param {number} tabId - Chrome tab ID
+ * @returns {TabState|null}
+ */
 export function getStateForTab(tabId) {
   return _tabStates.get(tabId) || null;
 }
 
 // 将指定 tab 的 state 持久化到 chrome.storage.session
+/**
+ * Persist a specific tab's state to chrome.storage.session.
+ * @param {number} tabId - Chrome tab ID
+ * @returns {void}
+ */
 export function persistForTab(tabId) {
   const ts = _tabStates.get(tabId);
   if (ts) chrome.storage.session.set({ [`tabState_${tabId}`]: ts });
 }
 
-// --- Per-tab state fields (now read/write through _activeState) ---
+// --- Per-tab state fields (DRY via factory) ---
+// defineTabField generates a getter/setter pair for each per-tab field.
+// Getters return the current active state's field value (or a default).
+// Setters mutate the active state, persist to session storage, and
+// optionally notify subscribers via the key-based listener system.
 
-export function getPageContent() { return _activeState?.pageContent || ''; }
-export function setPageContent(v) { if (_activeState) { _activeState.pageContent = v; persistTabState(); } }
+const _generated = {};
 
-export function getPageExcerpt() { return _activeState?.pageExcerpt || ''; }
-export function setPageExcerpt(v) { if (_activeState) { _activeState.pageExcerpt = v; persistTabState(); } }
+/**
+ * Generate getter/setter pair for a per-tab state field.
+ * Reduces repetitive boilerplate: each field needs the same null-guard + persist pattern.
+ * @param {string} name - Field name on the TabState object
+ * @param {*} defaultValue - Default value when active state is null
+ * @param {Object} [options]
+ * @param {string}  [options.getterName] - Custom getter name (default: get<Name>)
+ * @param {string}  [options.setterName] - Custom setter name (default: set<Name>)
+ * @param {boolean} [options.notify]     - If true, setter publishes to listeners
+ */
+function defineTabField(name, defaultValue, options = {}) {
+  const getterName = options.getterName || `get${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+  const setterName = options.setterName || `set${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+  const shouldNotify = options.notify || false;
 
-export function getPageTitle() { return _activeState?.pageTitle || ''; }
-export function setPageTitle(v) { if (_activeState) { _activeState.pageTitle = v; persistTabState(); } }
+  _generated[getterName] = () => _activeState?.[name] ?? defaultValue;
+  _generated[setterName] = (v) => {
+    if (!_activeState) return;
+    _activeState[name] = v;
+    persistTabState();
+    if (shouldNotify) notify(name, v);
+  };
+}
 
-export function getConversationHistory() { return _activeState?.conversationHistory || []; }
-export function setConversationHistory(v) { if (_activeState) { _activeState.conversationHistory = v; persistTabState(); } }
-export function pushConversation(msg) { if (_activeState) { _activeState.conversationHistory.push(msg); persistTabState(); } }
-export function spliceConversation(...args) { if (_activeState) { _activeState.conversationHistory.splice(...args); persistTabState(); } }
-export function clearConversation() { if (_activeState) { _activeState.conversationHistory = []; persistTabState(); } }
+defineTabField('pageContent', '');
+defineTabField('pageExcerpt', '');
+defineTabField('pageTitle', '');
+defineTabField('isGenerating', false, { notify: true });
+defineTabField('currentChatId', null);
+defineTabField('selectedText', '');
+defineTabField('ocrRunning', 0);
+defineTabField('ocrResults', []);
+defineTabField('imageIndex', 0);
+defineTabField('isPodcastGenerating', false);
+defineTabField('isChartGenerating', false);
+defineTabField('detectedCharts', []);
 
-export function getIsGenerating() { return _activeState?.isGenerating || false; }
-export function setIsGenerating(v) { if (_activeState) { _activeState.isGenerating = v; persistTabState(); notify('isGenerating', v); } }
+// conversationHistory has extra mutation helpers beyond simple get/set
+defineTabField('conversationHistory', []);
+_generated.pushConversation = (msg) => { if (_activeState) { _activeState.conversationHistory.push(msg); persistTabState(); } };
+_generated.spliceConversation = (...args) => { if (_activeState) { _activeState.conversationHistory.splice(...args); persistTabState(); } };
+_generated.clearConversation = () => { if (_activeState) { _activeState.conversationHistory = []; persistTabState(); } };
 
-export function getCurrentChatId() { return _activeState?.currentChatId || null; }
-export function setCurrentChatId(v) { if (_activeState) { _activeState.currentChatId = v; persistTabState(); } }
-
-export function getSelectedText() { return _activeState?.selectedText || ''; }
-export function setSelectedText(v) { if (_activeState) { _activeState.selectedText = v; persistTabState(); } }
-
-export function getOcrRunning() { return _activeState?.ocrRunning || 0; }
-export function setOcrRunning(v) { if (_activeState) { _activeState.ocrRunning = v; persistTabState(); } }
-
-export function getOcrResults() { return _activeState?.ocrResults || []; }
-export function setOcrResults(v) { if (_activeState) { _activeState.ocrResults = v; persistTabState(); } }
-
-export function getImageIndex() { return _activeState?.imageIndex || 0; }
-export function setImageIndex(v) { if (_activeState) { _activeState.imageIndex = v; persistTabState(); } }
-
-export function getIsPodcastGenerating() { return _activeState?.isPodcastGenerating || false; }
-export function setIsPodcastGenerating(v) { if (_activeState) { _activeState.isPodcastGenerating = v; persistTabState(); } }
-
-export function getIsChartGenerating() { return _activeState?.isChartGenerating || false; }
-export function setIsChartGenerating(v) { if (_activeState) { _activeState.isChartGenerating = v; persistTabState(); } }
-
-export function getDetectedCharts() { return _activeState?.detectedCharts || []; }
-export function setDetectedCharts(v) { if (_activeState) { _activeState.detectedCharts = v; persistTabState(); } }
+export const {
+  getPageContent, setPageContent,
+  getPageExcerpt, setPageExcerpt,
+  getPageTitle, setPageTitle,
+  getIsGenerating, setIsGenerating,
+  getCurrentChatId, setCurrentChatId,
+  getSelectedText, setSelectedText,
+  getOcrRunning, setOcrRunning,
+  getOcrResults, setOcrResults,
+  getImageIndex, setImageIndex,
+  getIsPodcastGenerating, setIsPodcastGenerating,
+  getIsChartGenerating, setIsChartGenerating,
+  getDetectedCharts, setDetectedCharts,
+  getConversationHistory, setConversationHistory,
+  pushConversation, spliceConversation, clearConversation,
+} = _generated;
