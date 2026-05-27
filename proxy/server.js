@@ -39,6 +39,8 @@ const PodcastEvent = {
 
 // --- Binary Frame Encoding/Decoding ---
 
+module.exports = { buildFrame, parseFrame, MsgType, PodcastEvent };
+
 function buildFrame(eventType, sessionId, payloadObj) {
   const payloadBytes = new TextEncoder().encode(JSON.stringify(payloadObj));
   const hasSessionId = eventType !== PodcastEvent.StartConnection &&
@@ -422,8 +424,10 @@ const server = http.createServer(async (req, res) => {
   res.end();
 });
 
-server.listen(PORT, () => {
-  console.log(`[Podcast Proxy] Listening on http://localhost:${PORT}`);
-  console.log(`[Podcast Proxy] POST /podcast — start podcast synthesis`);
-  console.log(`[Podcast Proxy] GET  /health — health check`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`[Podcast Proxy] Listening on http://localhost:${PORT}`);
+    console.log(`[Podcast Proxy] POST /podcast — start podcast synthesis`);
+    console.log(`[Podcast Proxy] GET  /health — health check`);
+  });
+}

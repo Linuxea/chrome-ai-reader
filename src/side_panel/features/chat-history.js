@@ -223,11 +223,11 @@ export async function renderHistoryList() {
   });
 }
 
-function sanitizeFilename(title) {
+export function sanitizeFilename(title) {
   return title.replace(/[/\\:*?"<>|\n\r]/g, '_').slice(0, 30);
 }
 
-function stripHtml(html) {
+export function stripHtml(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
   return tmp.textContent;

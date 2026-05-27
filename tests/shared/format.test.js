@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { formatDuration } from '../../src/shared/format.js';
+import { vi, describe, it, expect } from 'vitest';
+
+vi.mock('../../src/shared/i18n.js', () => ({
+  t: (key) => `[${key}]`,
+  getCurrentLang: vi.fn(() => 'zh'),
+}));
+
+import { formatDuration, formatDate } from '../../src/shared/format.js';
 
 describe('formatDuration', () => {
   it('formats 0 seconds', () => {
@@ -40,5 +46,41 @@ describe('formatDuration', () => {
 
   it('floors fractional seconds', () => {
     expect(formatDuration(65.9)).toBe('1:05');
+  });
+});
+
+describe('formatDate', () => {
+  it('returns today prefix for today\'s timestamp', () => {
+    const now = new Date();
+    const result = formatDate(now.getTime());
+    expect(result).toMatch(/^\[chat\.today\] \d{2}:\d{2}$/);
+  });
+
+  it('returns yesterday prefix for yesterday\'s timestamp', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const result = formatDate(yesterday.getTime());
+    expect(result).toMatch(/^\[chat\.yesterday\] \d{2}:\d{2}$/);
+  });
+
+  it('returns date+time for older timestamps', () => {
+    const old = new Date('2024-01-15T10:30:00');
+    const result = formatDate(old.getTime());
+    // zh-CN locale: "1/15 10:30" format
+    expect(result).toContain('10:30');
+    expect(result).not.toContain('[chat.today]');
+    expect(result).not.toContain('[chat.yesterday]');
+  });
+
+  it('accepts Date object as input', () => {
+    const now = new Date();
+    const result = formatDate(now);
+    expect(result).toMatch(/^\[chat\.today\] \d{2}:\d{2}$/);
+  });
+
+  it('accepts string timestamp as input', () => {
+    const now = new Date();
+    const result = formatDate(now.toISOString());
+    expect(result).toMatch(/^\[chat\.today\] \d{2}:\d{2}$/);
   });
 });

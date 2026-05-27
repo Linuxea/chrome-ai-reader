@@ -24,7 +24,7 @@ export function cleanupScriptPort() {
   }
 }
 
-function parsePodcastScript(fullScript) {
+export function parsePodcastScript(fullScript) {
   let jsonStr = stripMarkdownFence(fullScript);
   const jsonMatch = extractJsonObject(jsonStr, 'rounds');
   if (!jsonMatch) throw new Error('No JSON found in script');
@@ -44,7 +44,7 @@ function parsePodcastScript(fullScript) {
   }
 }
 
-function validateAndMapRounds(parsed) {
+export function validateAndMapRounds(parsed) {
   if (!parsed.rounds || !Array.isArray(parsed.rounds) || parsed.rounds.length === 0) {
     throw new Error('Empty rounds array');
   }
@@ -59,7 +59,7 @@ function validateAndMapRounds(parsed) {
   });
 }
 
-function extractRoundsFallback(jsonStr) {
+export function extractRoundsFallback(jsonStr) {
   const rounds = [];
   const speakerRe = /"speaker"\s*:\s*"(A|B)"/g;
   let m;
@@ -84,7 +84,7 @@ function extractRoundsFallback(jsonStr) {
   return rounds;
 }
 
-function extractPodcastTitle(rounds) {
+export function extractPodcastTitle(rounds) {
   if (!rounds || rounds.length === 0) return '';
   const firstTexts = rounds.slice(0, 3).map(r => (r.text || '').trim()).filter(Boolean).join(' ');
   let title = firstTexts

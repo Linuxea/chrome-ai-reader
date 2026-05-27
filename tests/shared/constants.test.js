@@ -5,7 +5,7 @@ vi.mock('../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
 }));
 
-import { safeTruncate } from '../../src/shared/constants.js';
+import { safeTruncate, escapeHtml } from '../../src/shared/constants.js';
 
 describe('safeTruncate', () => {
   it('returns text unchanged when within limit', () => {
@@ -65,5 +65,40 @@ describe('safeTruncate', () => {
     const text = '😀'.repeat(20); // 20 emoji
     const result = safeTruncate(text, 10);
     expect(result).toBe('😀'.repeat(10) + '[ai.truncated]');
+  });
+});
+
+describe('escapeHtml', () => {
+  it('escapes & to &amp;', () => {
+    expect(escapeHtml('a & b')).toBe('a &amp; b');
+  });
+
+  it('escapes < to &lt;', () => {
+    expect(escapeHtml('a < b')).toBe('a &lt; b');
+  });
+
+  it('escapes > to &gt;', () => {
+    expect(escapeHtml('a > b')).toBe('a &gt; b');
+  });
+
+  it('escapes multiple special characters together', () => {
+    // div.textContent/innerHTML escapes &, <, > but not " in text content
+    expect(escapeHtml('<a>&b</a>')).toBe('&lt;a&gt;&amp;b&lt;/a&gt;');
+  });
+
+  it('leaves plain text unchanged', () => {
+    expect(escapeHtml('hello world')).toBe('hello world');
+  });
+
+  it('returns null as-is', () => {
+    expect(escapeHtml(null)).toBeNull();
+  });
+
+  it('returns undefined as-is', () => {
+    expect(escapeHtml(undefined)).toBeUndefined();
+  });
+
+  it('returns empty string as-is', () => {
+    expect(escapeHtml('')).toBe('');
   });
 });

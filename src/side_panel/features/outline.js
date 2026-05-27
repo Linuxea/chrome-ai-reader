@@ -19,7 +19,7 @@ export function initOutline(deps) {
 // Parse AI JSON response into outline data object.
 // Returns the parsed object on success, null on failure.
 
-function parseOutlineResponse(rawText) {
+export function parseOutlineResponse(rawText) {
   if (!rawText) return null;
 
   // Try direct parse
@@ -52,7 +52,7 @@ export function outlineToMarkdown(data) {
   return md.trim();
 }
 
-function sectionToMarkdown(section, level) {
+export function sectionToMarkdown(section, level) {
   let prefix = '';
   for (let i = 0; i < level; i++) prefix += '#';
   let md = prefix + ' ' + section.heading + '\n\n';
