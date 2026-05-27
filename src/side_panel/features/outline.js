@@ -5,7 +5,7 @@ import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constant
 import { stripMarkdownFence } from '../../shared/json-repair.js';
 import { marked } from 'marked';
 import * as state from '../state.js';
-import { emit } from '../events.js';
+import { emit, EVENTS } from '../events.js';
 import { appendMessage, scrollToBottom, setButtonsDisabled } from '../ui/dom-helpers.js';
 import { stopTTS } from '../services/tts/index.js';
 
@@ -296,7 +296,7 @@ function doGenerateOutline() {
   setButtonsDisabled(true);
 
   stopTTS();
-  emit('removeSuggestQuestions');
+  emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
 
   // Remove welcome message
   const chatArea = document.getElementById('chatArea');
@@ -370,8 +370,8 @@ function doGenerateOutline() {
 
       state.setIsGenerating(false);
       setButtonsDisabled(false);
-      emit('addTTSButton', { msgEl });
-      emit('saveCurrentChat');
+      emit(EVENTS.ADD_TTS_BUTTON, { msgEl });
+      emit(EVENTS.SAVE_CURRENT_CHAT);
       scrollToBottom();
     } else if (msg.type === 'error') {
       port.disconnect();

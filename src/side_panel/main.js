@@ -3,7 +3,7 @@
 import { loadLanguage } from '../shared/i18n.js';
 import { initState } from './state.js';
 import * as state from './state.js';
-import { on } from './events.js';
+import { on, EVENTS } from './events.js';
 import { initDOMHelpers } from './ui/dom-helpers.js';
 import { initTheme } from './ui/theme.js';
 import { initModelStatus } from './ui/model-status.js';
@@ -94,19 +94,19 @@ async function init() {
   initChartAnalyzer({ chatArea: els.chatArea });
 
   // 4b. Event subscriptions (replaces callback injection)
-  on('retry', ({ wrapper, rawText, rawDisplay, rawQuote }) => retryMessage(wrapper, rawText, rawDisplay, rawQuote));
-  on('removeSuggestQuestions', () => removeSuggestQuestions());
-  on('requestRerender', () => resetUIForTabSwitch(els, deps));
-  on('generateSuggestions', ({ msgEl, history }) => {
+  on(EVENTS.RETRY, ({ wrapper, rawText, rawDisplay, rawQuote }) => retryMessage(wrapper, rawText, rawDisplay, rawQuote));
+  on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());
+  on(EVENTS.REQUEST_RERENDER, () => resetUIForTabSwitch(els, deps));
+  on(EVENTS.GENERATE_SUGGESTIONS, ({ msgEl, history }) => {
     generateSuggestions(msgEl, history);
     saveCurrentChat();
   });
-  on('generateOutline', () => generateOutline());
-  on('clearQuotePreview', () => updateQuotePreview(els, ''));
-  on('chartClick', () => handleChartClick());
-  on('podcastClick', () => handlePodcastClick());
-  on('addTTSButton', ({ msgEl }) => addTTSButton(msgEl));
-  on('saveCurrentChat', () => saveCurrentChat());
+  on(EVENTS.GENERATE_OUTLINE, () => generateOutline());
+  on(EVENTS.CLEAR_QUOTE_PREVIEW, () => updateQuotePreview(els, ''));
+  on(EVENTS.CHART_CLICK, () => handleChartClick());
+  on(EVENTS.PODCAST_CLICK, () => handlePodcastClick());
+  on(EVENTS.ADD_TTS_BUTTON, ({ msgEl }) => addTTSButton(msgEl));
+  on(EVENTS.SAVE_CURRENT_CHAT, () => saveCurrentChat());
 
   // 5. AI chat (last — command popup helpers still injected for synchronous queries)
   initAIChat({

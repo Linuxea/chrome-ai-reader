@@ -2,7 +2,7 @@
 
 import { t } from '../../shared/i18n.js';
 import * as state from '../state.js';
-import { emit } from '../events.js';
+import { emit, EVENTS } from '../events.js';
 import { appendMessage } from '../ui/dom-helpers.js';
 import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
 
@@ -17,17 +17,17 @@ export async function handleQuickAction(action) {
   if (state.getIsGenerating()) return;
 
   if (action === 'outline') {
-    emit('generateOutline');
+    emit(EVENTS.GENERATE_OUTLINE);
     return;
   }
 
   if (action === 'podcast') {
-    emit('podcastClick');
+    emit(EVENTS.PODCAST_CLICK);
     return;
   }
 
   if (action === 'chart') {
-    emit('chartClick');
+    emit(EVENTS.CHART_CLICK);
     return;
   }
 

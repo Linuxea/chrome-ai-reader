@@ -3,7 +3,7 @@
 import { escapeHtml } from '../../shared/constants.js';
 import { t } from '../../shared/i18n.js';
 import { marked } from 'marked';
-import { emit } from '../events.js';
+import { emit, EVENTS } from '../events.js';
 
 let _chatArea;
 let _actionBtns;
@@ -98,7 +98,7 @@ function addUserActions(wrapper, msgEl) {
     const rawText = msgEl.dataset.rawText;
     const rawQuote = msgEl.dataset.rawQuote || '';
     const rawDisplay = msgEl.dataset.rawDisplay || rawText;
-    emit('retry', { wrapper, rawText, rawDisplay, rawQuote });
+    emit(EVENTS.RETRY, { wrapper, rawText, rawDisplay, rawQuote });
   });
 
   actions.appendChild(retryBtn);

@@ -3,7 +3,7 @@
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants.js';
 import * as state from '../state.js';
-import { emit } from '../events.js';
+import { emit, EVENTS } from '../events.js';
 import {
   appendMessage, addTypingIndicator,
   removeTypingIndicator, smartScrollToBottom,
@@ -107,14 +107,14 @@ export async function callAI(messages, tabId) {
         if (!msgEl.isConnected) {
           // msgEl 已被 resetUIForTabSwitch 清出 DOM，
           // conversationHistory 已更新，触发全量重渲染
-          emit('requestRerender');
+          emit(EVENTS.REQUEST_RERENDER);
           setButtonsDisabled(false);
           // 重渲染后找到新的 AI message，补上 TTS 按钮和 suggest
           const newMsgEl = _chatArea.querySelector('.message-ai:last-of-type');
           if (newMsgEl) {
             addTTSButton(newMsgEl);
             initTTSAutoPlay(newMsgEl);
-            emit('generateSuggestions', { msgEl: newMsgEl, history: tabState.conversationHistory });
+            emit(EVENTS.GENERATE_SUGGESTIONS, { msgEl: newMsgEl, history: tabState.conversationHistory });
           }
         } else {
           removeTypingIndicator(typingEl);
@@ -122,7 +122,7 @@ export async function callAI(messages, tabId) {
           setButtonsDisabled(false);
           addTTSButton(msgEl);
           initTTSAutoPlay(msgEl);
-          emit('generateSuggestions', { msgEl, history: tabState.conversationHistory });
+          emit(EVENTS.GENERATE_SUGGESTIONS, { msgEl, history: tabState.conversationHistory });
         }
       }
     } else if (msg.type === 'error') {
@@ -138,7 +138,7 @@ export async function callAI(messages, tabId) {
 
       if (isCurrentTab()) {
         if (!msgEl.isConnected) {
-          emit('requestRerender');
+          emit(EVENTS.REQUEST_RERENDER);
           setButtonsDisabled(false);
         } else {
           removeTypingIndicator(typingEl);

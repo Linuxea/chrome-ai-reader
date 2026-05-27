@@ -3,7 +3,7 @@
 import { t } from '../../shared/i18n.js';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants.js';
 import * as state from '../state.js';
-import { emit } from '../events.js';
+import { emit, EVENTS } from '../events.js';
 import {
   appendMessage, appendMessageWithQuote,
   removeLastMessage, setButtonsDisabled
@@ -24,7 +24,7 @@ export function initMessageSender({ chatArea, userInput }) {
 }
 
 export async function sendToAI(text, displayText, retryQuote, ocrContext, imageUris) {
-  emit('removeSuggestQuestions');
+  emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
 
   // 捕捉发起请求时的 tabId 和 state 引用 —— 全程直接操作该对象，
   // 避免切 tab 后 _activeState 指针变化导致数据写入错误的目标。
@@ -46,7 +46,7 @@ export async function sendToAI(text, displayText, retryQuote, ocrContext, imageU
     userMsgEl.dataset.rawText = text;
     userMsgEl.dataset.rawQuote = quoteForContext;
     userMsgEl.dataset.rawDisplay = displayText;
-    emit('clearQuotePreview');
+    emit(EVENTS.CLEAR_QUOTE_PREVIEW);
   } else {
     const userMsgEl = appendMessage('user', displayText, imageUris);
     userMsgEl.dataset.rawText = text;
@@ -145,7 +145,7 @@ export async function retryMessage(wrapper, rawText, rawDisplay, rawQuote) {
   if (!tabState || tabState.isGenerating) return;
 
   if (isTTSPlaying()) stopTTS();
-  emit('removeSuggestQuestions');
+  emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
 
   // Reset podcast/chart generating flags so their buttons aren't permanently disabled.
   if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;

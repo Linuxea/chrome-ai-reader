@@ -1,5 +1,22 @@
 // events.js — Lightweight synchronous event bus to decouple layers
 
+/**
+ * Centralized event name constants — replaces magic strings scattered across modules.
+ * Every emit() / on() call must reference these keys instead of inline string literals.
+ */
+export const EVENTS = {
+  RETRY: 'retry',
+  REMOVE_SUGGEST_QUESTIONS: 'removeSuggestQuestions',
+  REQUEST_RERENDER: 'requestRerender',
+  GENERATE_SUGGESTIONS: 'generateSuggestions',
+  GENERATE_OUTLINE: 'generateOutline',
+  CLEAR_QUOTE_PREVIEW: 'clearQuotePreview',
+  CHART_CLICK: 'chartClick',
+  PODCAST_CLICK: 'podcastClick',
+  ADD_TTS_BUTTON: 'addTTSButton',
+  SAVE_CURRENT_CHAT: 'saveCurrentChat',
+};
+
 const handlers = new Map();
 
 /**
