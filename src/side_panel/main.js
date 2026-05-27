@@ -1,22 +1,24 @@
-// main.js — ES Module entry point for side_panel
+// main.js — ES Module entry point for side_panel（仅初始化编排）
 
-import { loadLanguage, t } from '../shared/i18n.js';
+import { loadLanguage } from '../shared/i18n.js';
 import { initState } from './state.js';
 import * as state from './state.js';
 import { on } from './events.js';
-import { initDOMHelpers, setButtonsDisabled, appendMessage } from './ui/dom-helpers.js';
+import { initDOMHelpers } from './ui/dom-helpers.js';
 import { initTheme } from './ui/theme.js';
 import { initModelStatus } from './ui/model-status.js';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
 import { initOCR, clearImagePreviews } from './services/ocr.js';
 import { initAIChat, sendToAI, sendMessage, retryMessage, extractPageContent } from './services/ai-chat.js';
-import { initChatHistory, saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from './features/chat-history.js';
-import { initQuickCommands, isCommandPopupOpen, updateCommandPopup, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands.js';
+import { initChatHistory } from './features/chat-history.js';
+import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands.js';
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions.js';
 import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline.js';
 import { initImageInput } from './features/image-input.js';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initChartAnalyzer, handleChartClick } from './features/chart-analyzer.js';
+import { bindGlobalEvents, updateQuotePreview } from './ui/global-events.js';
+import { handleLoadChat, resetUIForTabSwitch } from './ui/tab-switch-handler.js';
 import { marked } from 'marked';
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -40,6 +42,9 @@ const els = {
   commandPopup: document.getElementById('commandPopup'),
 };
 
+// 传递给子模块的共享依赖，避免循环引用
+const deps = { isTTSPlaying, stopTTS, removeSuggestQuestions, clearImagePreviews };
+
 async function init() {
   // 1. Async inits (parallel)
   await Promise.all([loadLanguage(), initState()]);
@@ -62,7 +67,7 @@ async function init() {
     chatArea: els.chatArea,
     historyPanel: els.historyPanel,
     historyList: els.historyList,
-    onLoadChat: handleLoadChat,
+    onLoadChat: (chatData) => handleLoadChat(els, deps, chatData),
     onRenderOutline: renderOutlineFromJSON,
     onOutlineToMarkdown: outlineToMarkdown,
   });
@@ -91,13 +96,13 @@ async function init() {
   // 4b. Event subscriptions (replaces callback injection)
   on('retry', ({ wrapper, rawText, rawDisplay, rawQuote }) => retryMessage(wrapper, rawText, rawDisplay, rawQuote));
   on('removeSuggestQuestions', () => removeSuggestQuestions());
-  on('requestRerender', () => resetUIForTabSwitch());
+  on('requestRerender', () => resetUIForTabSwitch(els, deps));
   on('generateSuggestions', ({ msgEl, history }) => {
     generateSuggestions(msgEl, history);
     saveCurrentChat();
   });
   on('generateOutline', () => generateOutline());
-  on('clearQuotePreview', () => updateQuotePreview(''));
+  on('clearQuotePreview', () => updateQuotePreview(els, ''));
   on('chartClick', () => handleChartClick());
   on('podcastClick', () => handlePodcastClick());
   on('addTTSButton', ({ msgEl }) => addTTSButton(msgEl));
@@ -119,144 +124,11 @@ async function init() {
   });
 
   // 6. Global event bindings
-  bindGlobalEvents();
+  bindGlobalEvents(els, deps);
 
   // 7. Render persisted conversation on initial load (side panel reopen, etc.)
   if (state.getConversationHistory().length > 0) {
-    resetUIForTabSwitch();
-  }
-}
-
-function cleanupActiveFeatures() {
-  if (isTTSPlaying()) stopTTS();
-  const existingPodcast = els.chatArea.querySelector('.podcast-card');
-  if (existingPodcast) existingPodcast.remove();
-  if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
-  const existingChart = els.chatArea.querySelector('.chart-card');
-  if (existingChart) existingChart.remove();
-  if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
-}
-
-function handleLoadChat(chatData) {
-  cleanupActiveFeatures();
-  removeSuggestQuestions();
-
-  state.setCurrentChatId(chatData.id);
-  state.setPageTitle(chatData.pageTitle || '');
-  state.setPageContent(chatData.pageContent || '');
-  state.setPageExcerpt(chatData.pageExcerpt || '');
-  state.setConversationHistory(chatData.messages || []);
-  updateQuotePreview('');
-  clearImagePreviews();
-}
-
-function resetUIForTabSwitch() {
-  removeSuggestQuestions();
-  clearImagePreviews();
-  updateQuotePreview('');
-
-  const history = state.getConversationHistory();
-  els.chatArea.innerHTML = '';
-
-  if (history.length > 0) {
-    for (const msg of history) {
-      if (msg.role === 'user') {
-        appendMessage('user', msg.content);
-      } else if (msg.role === 'assistant') {
-        appendMessage('ai', msg.content);
-      }
-    }
-  } else {
-    els.chatArea.innerHTML = `<div class="welcome-msg"><p>${t('sidebar.welcome')}</p></div>`;
-  }
-}
-
-function bindGlobalEvents() {
-  els.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
-
-  els.newChatBtn.addEventListener('click', () => {
-    if (state.getIsGenerating()) return;
-    cleanupActiveFeatures();
-    saveCurrentChat();
-    removeSuggestQuestions();
-    state.setPageContent('');
-    state.setPageExcerpt('');
-    state.setPageTitle('');
-    state.clearConversation();
-    state.setCurrentChatId(null);
-    updateQuotePreview('');
-    clearImagePreviews();
-    els.chatArea.innerHTML = `<div class="welcome-msg"><p>${t('sidebar.welcome')}</p></div>`;
-  });
-
-  els.exportBtn.addEventListener('click', () => {
-    const messages = getDisplayMessages();
-    if (messages.length === 0) return;
-    exportChatAsMarkdown({
-      title: generateTitle(messages),
-      messages,
-      conversationHistory: state.getConversationHistory(),
-      pageTitle: state.getPageTitle(),
-    });
-  });
-
-  els.historyBtn.addEventListener('click', () => {
-    renderHistoryList();
-    els.historyPanel.classList.remove('hidden');
-  });
-  els.historyBackBtn.addEventListener('click', () => {
-    els.historyPanel.classList.add('hidden');
-  });
-
-  els.quoteClose.addEventListener('click', () => updateQuotePreview(''));
-
-  chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    if (activeInfo.tabId === state.getActiveTabId()) return;
-
-    // Cancel active generations
-    state.setIsGenerating(false);
-    cleanupActiveFeatures();
-
-    await state.switchToTab(activeInfo.tabId);
-    setButtonsDisabled(false);
-    resetUIForTabSwitch();
-  });
-
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.action === 'selectionChanged') {
-      // Only process forwarded messages which include tabId from the service worker.
-      // Direct messages from content scripts lack tabId, breaking the tab filter below.
-      if (!msg.forwarded) return;
-      const tabId = state.getActiveTabId();
-      if (tabId && msg.tabId && msg.tabId !== tabId) return;
-      updateQuotePreview(msg.text);
-    }
-  });
-
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes.systemPrompt) {
-      state.setCustomSystemPrompt(changes.systemPrompt.newValue || '');
-    }
-  });
-
-  els.userInput.addEventListener('input', () => {
-    els.userInput.style.height = 'auto';
-    els.userInput.style.height = Math.min(els.userInput.scrollHeight, 120) + 'px';
-    const value = els.userInput.value;
-    if (value.startsWith('/')) updateCommandPopup(value);
-    else if (isCommandPopupOpen()) hideCommandPopup();
-  });
-}
-
-function updateQuotePreview(text) {
-  state.setSelectedText(text);
-  if (text) {
-    const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
-    els.quoteText.textContent = truncated;
-    els.quotePreview.classList.remove('hidden');
-  } else {
-    els.quoteText.textContent = '';
-    els.quotePreview.classList.add('hidden');
+    resetUIForTabSwitch(els, deps);
   }
 }
 
