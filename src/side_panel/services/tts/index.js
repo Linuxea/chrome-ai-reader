@@ -121,7 +121,7 @@ export function addTTSButton(msgEl) {
 /**
  * AI done 且 ttsAutoPlayEnabled 时调用，启动流式自动播放
  */
-export function initTTSAutoPlay(msgEl) {
+export function initTTSAutoPlay() {
   if (!_isTTSAutoPlay()) return;
   if (!_isTTSPlaying()) return;
 

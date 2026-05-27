@@ -7,7 +7,6 @@ let _fullStopFn = null;
 
 let ttsPort = null;
 let ttsPlaying = false;
-let ttsDone = false;
 let ttsMediaSource = null;
 let ttsSourceBuffer = null;
 let ttsAudioEl = null;
@@ -38,7 +37,6 @@ export function isTTSPlaying() { return ttsPlaying; }
 
 export function stopTTSPlayback() {
   ttsPlaying = false;
-  ttsDone = true;
   ttsSentenceQueue = [];
   ttsTextBuffer = '';
   ttsSentenceCount = 0;
@@ -64,7 +62,6 @@ export function stopTTSPlayback() {
 
 export function initTTSPlayback() {
   ttsPlaying = true;
-  ttsDone = false;
   ttsSentenceQueue = [];
   ttsTextBuffer = '';
   ttsSentenceCount = 0;
@@ -153,7 +150,6 @@ function ttsFlush() {
       if (ttsSentenceQueue.length > 0) {
         ttsFlush();
       } else {
-        ttsDone = true;
         const finish = () => {
           if (ttsSourceBuffer && !ttsBufferAppending) {
             try { ttsMediaSource.endOfStream(); } catch { /* cleanup — safe to ignore */ }

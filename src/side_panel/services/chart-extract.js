@@ -55,7 +55,7 @@ export async function detectCharts() {
     response = await chrome.tabs.sendMessage(tabId, { action: 'detectCharts' });
   } catch (e) {
     console.error('[AI Reader] detectCharts sendMessage failed:', e.message);
-    throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')');
+    throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')', { cause: e });
   }
   if (!response?.success) {
     throw new Error(response?.error || t('chart.extractFailed'));
@@ -82,7 +82,7 @@ export async function captureChart(chartInfo) {
     });
   } catch (e) {
     console.error('[AI Reader] captureChart sendMessage failed (content script not injected?):', e.message);
-    throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')');
+    throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + e.message + ')', { cause: e });
   }
   console.log('[AI Reader] captureChart response:', response?.success, response?.error || '');
   if (!response?.success) {

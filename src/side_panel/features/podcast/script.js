@@ -88,14 +88,14 @@ export function extractPodcastTitle(rounds) {
   if (!rounds || rounds.length === 0) return '';
   const firstTexts = rounds.slice(0, 3).map(r => (r.text || '').trim()).filter(Boolean).join(' ');
   let title = firstTexts
-    .replace(/[，。！？、；："\'「」『』【】（）《》—…\s]+/g, ' ')
+    .replace(/[，。！？、；："'「」『』【】（）《》—…\s]+/g, ' ')
     .trim()
     .slice(0, 60);
   if (title.length > 30) {
     const lastPunct = title.lastIndexOf(' ', 30);
     title = title.slice(0, lastPunct > 0 ? lastPunct : 30);
   }
-  return title.replace(/[\/\\:*?"<>|]/g, '_').trim();
+  return title.replace(/[/\\:*?"<>|]/g, '_').trim();
 }
 
 function generatePodcastMetadata(card, fullScript) {
@@ -121,7 +121,7 @@ function generatePodcastMetadata(card, fullScript) {
         if (!jsonMatch) return;
         const data = JSON.parse(jsonMatch);
         if (data.title) {
-          setPodcastTitle(data.title.replace(/[\/\\:*?"<>|]/g, '_').trim());
+          setPodcastTitle(data.title.replace(/[/\\:*?"<>|]/g, '_').trim());
           const infoEl = card.querySelector('.podcast-info');
           const titleEl = card.querySelector('.podcast-info-title');
           const descEl = card.querySelector('.podcast-info-desc');

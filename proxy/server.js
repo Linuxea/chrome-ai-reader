@@ -203,25 +203,28 @@ function createMessageQueue(ws) {
   }
 
   function waitForEvent(eventCode, timeout = 30000) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        while (true) {
-          const frame = await waitForMessage(timeout);
-          if (frame.msgType === MsgType.Error) {
-            const errMsg = frame.payload instanceof Uint8Array
-              ? new TextDecoder().decode(frame.payload)
-              : JSON.stringify(frame.payload);
-            reject(new Error(errMsg));
-            return;
+    // Avoid async promise executor: use a recursive async loop outside the executor
+    return new Promise((resolve, reject) => {
+      (async () => {
+        try {
+          while (true) {
+            const frame = await waitForMessage(timeout);
+            if (frame.msgType === MsgType.Error) {
+              const errMsg = frame.payload instanceof Uint8Array
+                ? new TextDecoder().decode(frame.payload)
+                : JSON.stringify(frame.payload);
+              reject(new Error(errMsg));
+              return;
+            }
+            if (frame.eventCode === eventCode) {
+              resolve(frame);
+              return;
+            }
           }
-          if (frame.eventCode === eventCode) {
-            resolve(frame);
-            return;
-          }
+        } catch (e) {
+          reject(e);
         }
-      } catch (e) {
-        reject(e);
-      }
+      })();
     });
   }
 

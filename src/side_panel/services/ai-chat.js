@@ -13,7 +13,7 @@ import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay
 } from './tts/index.js';
-import { getOcrRunning, hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
+import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
 import { marked } from 'marked';
 
 let _chatArea;
