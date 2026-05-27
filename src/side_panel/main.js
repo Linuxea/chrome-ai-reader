@@ -127,8 +127,7 @@ async function init() {
   }
 }
 
-function handleLoadChat(chatData) {
-  // Clean up active resources from previous chat (same pattern as newChatBtn handler)
+function cleanupActiveFeatures() {
   if (isTTSPlaying()) stopTTS();
   const existingPodcast = els.chatArea.querySelector('.podcast-card');
   if (existingPodcast) existingPodcast.remove();
@@ -136,6 +135,10 @@ function handleLoadChat(chatData) {
   const existingChart = els.chatArea.querySelector('.chart-card');
   if (existingChart) existingChart.remove();
   if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
+}
+
+function handleLoadChat(chatData) {
+  cleanupActiveFeatures();
   removeSuggestQuestions();
 
   state.setCurrentChatId(chatData.id);
@@ -173,15 +176,7 @@ function bindGlobalEvents() {
 
   els.newChatBtn.addEventListener('click', () => {
     if (state.getIsGenerating()) return;
-    if (isTTSPlaying()) stopTTS();
-    // Clean up any active podcast card
-    const existingPodcast = els.chatArea.querySelector('.podcast-card');
-    if (existingPodcast) existingPodcast.remove();
-    if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
-    // Clean up any active chart card
-    const existingChart = els.chatArea.querySelector('.chart-card');
-    if (existingChart) existingChart.remove();
-    if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
+    cleanupActiveFeatures();
     saveCurrentChat();
     removeSuggestQuestions();
     state.setPageContent('');
@@ -220,9 +215,7 @@ function bindGlobalEvents() {
 
     // Cancel active generations
     state.setIsGenerating(false);
-    state.setIsPodcastGenerating(false);
-    state.setIsChartGenerating(false);
-    if (isTTSPlaying()) stopTTS();
+    cleanupActiveFeatures();
 
     await state.switchToTab(activeInfo.tabId);
     setButtonsDisabled(false);
