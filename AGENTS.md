@@ -3,40 +3,62 @@
 ## Build & Run
 
 ```bash
-npm run dev    # vite build --watch (development)
+npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
+npm run test   # vitest run (422 tests)
+npm run lint   # eslint src/ proxy/
+npx tsc --noEmit  # TypeScript type check (strict:true)
 ```
 
-**`npm run dev` only watches Vite builds** (side panel + options). Content script and service worker (IIFE bundles) are NOT rebuilt on watch — run `npm run build` manually after editing `src/content/` or `src/background/`.
-
-No tests, no linter, no typecheck configured.
+**`npm run dev` watches Vite + IIFE builds** via `concurrently`. All source changes (side panel, options, content script, background) are rebuilt on save.
 
 ## Build Architecture (non-obvious)
 
 Two-phase build — Chrome cannot use ES modules for content scripts or service workers:
 
-1. **Vite** (`vite.config.js`) — bundles `src/side_panel/index.html` and `src/options/index.html` as entry points. Output: `dist/` with chunked JS in `dist/assets/`.
-2. **Rollup IIFE** (`build-extension.js`) — bundles `src/content/index.js` → `dist/content.js` and `src/background/service-worker.js` → `dist/background.js` as self-contained IIFE scripts.
+1. **Vite** (`vite.config.js`) — bundles `src/side_panel/index.html` and `src/options/index.html` as entry points. Output: `dist/` with chunked JS in `dist/assets/`. Native TypeScript support via esbuild.
+2. **Rollup IIFE** (`build-extension.js`) — bundles `src/content/index.ts` → `dist/content.js` and `src/background/service-worker.ts` → `dist/background.js` as self-contained IIFE scripts. Uses `rollup-plugin-esbuild` for TypeScript.
 3. **Static copy** — `public/` copied verbatim to `dist/` (manifest, icons).
 
 Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
+## TypeScript
+
+- **strict: true** — all `.ts` files are strict-mode TypeScript
+- `tsconfig.json` — `noEmit: true`, `allowJs: true` (JS/TS coexist)
+- Only `src/shared/i18n.js` remains as JS (506-line string map)
+- Type definitions: `src/shared/types.ts` (TabState, ChatMessage, ChartInfo, OcrResult)
+- Error handling: `src/shared/result.ts` (Result<T,E>, ok(), err())
+
 ## Source Layout (`src/`)
 
-5-layer dependency hierarchy in the side panel. Modules export `init*()` functions called bottom-up from `src/side_panel/main.js`:
+5-layer dependency hierarchy in the side panel. Modules export `init*()` functions called bottom-up from `src/side_panel/main.ts`:
 
 | Layer | Directory | Depends on |
 |-------|-----------|------------|
 | Shared | `src/shared/` | nothing |
-| State | `src/side_panel/state.js` | shared |
+| State | `src/side_panel/state.ts` | shared |
 | UI | `src/side_panel/ui/` | shared + state |
 | Services | `src/side_panel/services/` | shared + state + UI |
 | Features | `src/side_panel/features/` | services + UI + state |
 
+**Key sub-modules (services):**
+- `page-extractor.ts` — page content extraction (returns `Result<ExtractResult>`)
+- `message-sender.ts` — message assembly and sending
+- `stream-handler.ts` — SSE streaming + thinking block rendering
+- `quick-action-handler.ts` — quick action dispatch
+- `ai-chat.ts` — facade re-exporting sub-modules
+
 **Other entry points:**
-- `src/content/index.js` — content script (IIFE-bundled)
-- `src/background/service-worker.js` — background worker (IIFE-bundled)
-- `src/options/index.js` — settings page (bundled by Vite)
+- `src/content/index.ts` — content script (IIFE-bundled)
+- `src/background/service-worker.ts` — background worker (IIFE-bundled)
+- `src/options/index.ts` — settings page (bundled by Vite, split into sections/)
+
+## Event System
+
+- `src/side_panel/events.ts` — lightweight synchronous event bus
+- `EVENTS` constant enum — all event names are typed constants, no string magic keys
+- Events: RETRY, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, GENERATE_OUTLINE, CLEAR_QUOTE_PREVIEW, CHART_CLICK, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT
 
 ## Chrome Extension Messaging
 
@@ -51,6 +73,13 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 ## i18n
 
 Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `data-i18n` / `data-i18n-html` / `data-i18n-placeholder` / `data-i18n-title` attributes. Default prompts for built-in quick actions are always Chinese regardless of UI language.
+
+## Testing
+
+- **Vitest** with jsdom environment, 422 tests across 26 files
+- Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
+- Coverage: ~30% overall, core modules 80%+ (dom-helpers 98%, theme 100%, sw-openai 91%, page-extractor 88%)
+- Run `npm run test:coverage` for detailed coverage report
 
 ## Key Gotchas
 
