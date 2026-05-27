@@ -784,12 +784,12 @@ export function <span class="fstat-no" title="function not covered" >cleanupPodc
 <span class="cstat-no" title="statement not covered" >    podcastAudioEl = null;</span>
   }
 <span class="cstat-no" title="statement not covered" >  if (podcastMediaSource) {</span>
-<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >if (podcastMediaSource.readyState === 'open') <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span></span>} catch {}</span>
+<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >if (podcastMediaSource.readyState === 'open') <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span></span>} catch { /* cleanup — safe to ignore */ }</span>
 <span class="cstat-no" title="statement not covered" >    podcastMediaSource = null;</span>
 <span class="cstat-no" title="statement not covered" >    podcastSourceBuffer = null;</span>
   }
 <span class="cstat-no" title="statement not covered" >  if (podcastPort) {</span>
-<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >podcastPort.disconnect(); </span>} catch {}</span>
+<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >podcastPort.disconnect(); </span>} catch { /* cleanup — safe to ignore */ }</span>
 <span class="cstat-no" title="statement not covered" >    podcastPort = null;</span>
   }
 <span class="cstat-no" title="statement not covered" >  podcastChunkQueue = [];</span>
@@ -806,7 +806,7 @@ function <span class="fstat-no" title="function not covered" >initPodcastPlaybac
 <span class="cstat-no" title="statement not covered" >    podcastAudioEl = null;</span>
   }
 <span class="cstat-no" title="statement not covered" >  if (podcastMediaSource) {</span>
-<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >if (podcastMediaSource.readyState === 'open') <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span></span>} catch {}</span>
+<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >if (podcastMediaSource.readyState === 'open') <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span></span>} catch { /* cleanup — safe to ignore */ }</span>
 <span class="cstat-no" title="statement not covered" >    podcastMediaSource = null;</span>
 <span class="cstat-no" title="statement not covered" >    podcastSourceBuffer = null;</span>
   }
@@ -996,7 +996,7 @@ function <span class="fstat-no" title="function not covered" >replayAudio(</span
 &nbsp;
 function <span class="fstat-no" title="function not covered" >finishPodcastAudio(</span>card) {
 <span class="cstat-no" title="statement not covered" >  if (podcastMediaSource &amp;&amp; podcastMediaSource.readyState === 'open') {</span>
-<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span>} catch {}</span>
+<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span>} catch { /* cleanup — safe to ignore */ }</span>
   }
 <span class="cstat-no" title="statement not covered" >  if (podcastAudioEl &amp;&amp; podcastAudioEl.ended) {</span>
 <span class="cstat-no" title="statement not covered" >    _showStatus(card, 'done');</span>
@@ -1061,7 +1061,7 @@ async function <span class="fstat-no" title="function not covered" >generatePodc
 <span class="cstat-no" title="statement not covered" >    if (_isCancelled()) <span class="cstat-no" title="statement not covered" >return;</span></span>
 <span class="cstat-no" title="statement not covered" >    if (state.getIsPodcastGenerating()) {</span>
 <span class="cstat-no" title="statement not covered" >      if (podcastAudioEl &amp;&amp; podcastMediaSource &amp;&amp; podcastMediaSource.readyState === 'open') {</span>
-<span class="cstat-no" title="statement not covered" >        try { <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span>} catch {}</span>
+<span class="cstat-no" title="statement not covered" >        try { <span class="cstat-no" title="statement not covered" >podcastMediaSource.endOfStream(); </span>} catch { /* cleanup — safe to ignore */ }</span>
 <span class="cstat-no" title="statement not covered" >        _resetPodcastState();</span>
       } else {
 <span class="cstat-no" title="statement not covered" >        _showStatus(card, 'error', t('podcast.audioError'));</span>
@@ -1087,7 +1087,7 @@ export {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-27T15:51:10.382Z
+                at 2026-05-27T17:18:10.081Z
             </div>
         <script src="../../../../prettify.js"></script>
         <script>

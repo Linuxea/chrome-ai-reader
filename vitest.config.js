@@ -11,9 +11,6 @@ export default defineConfig({
       exclude: [
         'src/libs/**',
         'src/side_panel/main.js',
-        'src/side_panel/ui/**',
-        'src/content/**',
-        'src/background/**',
       ],
     },
   },

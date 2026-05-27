@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">32.72% </span>
+                <span class="strong">32.57% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>72/220</span>
+                <span class='fraction'>72/221</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">9.52% </span>
+                <span class="strong">9.09% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>2/21</span>
+                <span class='fraction'>2/22</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">33.33% </span>
+                <span class="strong">33.17% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>70/210</span>
+                <span class='fraction'>70/211</span>
             </div>
         
             
@@ -496,7 +496,10 @@
 <a name='L431'></a><a href='#L431'>431</a>
 <a name='L432'></a><a href='#L432'>432</a>
 <a name='L433'></a><a href='#L433'>433</a>
-<a name='L434'></a><a href='#L434'>434</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -701,6 +704,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -719,6 +724,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1134,25 +1140,28 @@ function <span class="fstat-no" title="function not covered" >createMessageQueue
   }
 &nbsp;
   function <span class="fstat-no" title="function not covered" >waitForEvent(</span>eventCode, timeout = <span class="branch-0 cbranch-no" title="branch not covered" >30000)</span> {
-<span class="cstat-no" title="statement not covered" >    return new Promise(<span class="fstat-no" title="function not covered" >async </span>(resolve, reject) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >      try {</span>
-<span class="cstat-no" title="statement not covered" >        while (true) {</span>
-          const frame = <span class="cstat-no" title="statement not covered" >await waitForMessage(timeout);</span>
-<span class="cstat-no" title="statement not covered" >          if (frame.msgType === MsgType.Error) {</span>
-            const errMsg = <span class="cstat-no" title="statement not covered" >frame.payload instanceof Uint8Array</span>
-              ? new TextDecoder().decode(frame.payload)
-              : JSON.stringify(frame.payload);
-<span class="cstat-no" title="statement not covered" >            reject(new Error(errMsg));</span>
-<span class="cstat-no" title="statement not covered" >            return;</span>
+    // Avoid async promise executor: use a recursive async loop outside the executor
+<span class="cstat-no" title="statement not covered" >    return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >      (<span class="fstat-no" title="function not covered" >async </span>() =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >        try {</span>
+<span class="cstat-no" title="statement not covered" >          while (true) {</span>
+            const frame = <span class="cstat-no" title="statement not covered" >await waitForMessage(timeout);</span>
+<span class="cstat-no" title="statement not covered" >            if (frame.msgType === MsgType.Error) {</span>
+              const errMsg = <span class="cstat-no" title="statement not covered" >frame.payload instanceof Uint8Array</span>
+                ? new TextDecoder().decode(frame.payload)
+                : JSON.stringify(frame.payload);
+<span class="cstat-no" title="statement not covered" >              reject(new Error(errMsg));</span>
+<span class="cstat-no" title="statement not covered" >              return;</span>
+            }
+<span class="cstat-no" title="statement not covered" >            if (frame.eventCode === eventCode) {</span>
+<span class="cstat-no" title="statement not covered" >              resolve(frame);</span>
+<span class="cstat-no" title="statement not covered" >              return;</span>
+            }
           }
-<span class="cstat-no" title="statement not covered" >          if (frame.eventCode === eventCode) {</span>
-<span class="cstat-no" title="statement not covered" >            resolve(frame);</span>
-<span class="cstat-no" title="statement not covered" >            return;</span>
-          }
+        } catch (e) {
+<span class="cstat-no" title="statement not covered" >          reject(e);</span>
         }
-      } catch (e) {
-<span class="cstat-no" title="statement not covered" >        reject(e);</span>
-      }
+      })();
     });
   }
 &nbsp;
@@ -1183,7 +1192,7 @@ async function <span class="fstat-no" title="function not covered" >handlePodcas
 <span class="cstat-no" title="statement not covered" >  res.on('close', <span class="fstat-no" title="function not covered" >()</span> =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >    clientDisconnected = true;</span>
 <span class="cstat-no" title="statement not covered" >    console.log('[Podcast] Client disconnected, closing WebSocket');</span>
-<span class="cstat-no" title="statement not covered" >    if (ws) <span class="cstat-no" title="statement not covered" >try { <span class="cstat-no" title="statement not covered" >ws.close(); </span>} catch {}</span></span>
+<span class="cstat-no" title="statement not covered" >    if (ws) <span class="cstat-no" title="statement not covered" >try { <span class="cstat-no" title="statement not covered" >ws.close(); </span>} catch { /* WS may already be closed */ }</span></span>
   });
   // Prevent unhandled 'error' on res.write() after client disconnect
 <span class="cstat-no" title="statement not covered" >  res.on('error', <span class="fstat-no" title="function not covered" >()</span> =&gt; {});</span>
@@ -1275,7 +1284,7 @@ async function <span class="fstat-no" title="function not covered" >handlePodcas
       } else <span class="cstat-no" title="statement not covered" >if (frame.eventCode === PodcastEvent.SessionFinished) {</span>
 <span class="cstat-no" title="statement not covered" >        console.log(`[Podcast] SessionFinished, ${audioChunks} audio chunks sent`);</span>
 <span class="cstat-no" title="statement not covered" >        sendSSE(res, 'done', {});</span>
-<span class="cstat-no" title="statement not covered" >        try { <span class="cstat-no" title="statement not covered" >ws.send(buildFrame(PodcastEvent.FinishConnection, '', {})); </span>} catch {}</span>
+<span class="cstat-no" title="statement not covered" >        try { <span class="cstat-no" title="statement not covered" >ws.send(buildFrame(PodcastEvent.FinishConnection, '', {})); </span>} catch { /* WS may already be closed */ }</span>
 <span class="cstat-no" title="statement not covered" >        break;</span>
       }
     }
@@ -1369,7 +1378,7 @@ const server = http.createServer(<span class="fstat-no" title="function not cove
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-27T15:51:10.382Z
+                at 2026-05-27T17:18:10.081Z
             </div>
         <script src="../prettify.js"></script>
         <script>
