@@ -4,7 +4,7 @@ import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants.js';
 import { downloadFile } from '../../shared/download.js';
 import * as state from '../state.js';
-import { appendMessage, scrollToBottom } from '../ui/dom-helpers.js';
+import { scrollToBottom } from '../ui/dom-helpers.js';
 import {
   detectCharts,
   captureChart,
@@ -18,7 +18,7 @@ const TYPE_ICONS = { canvas: '\u{1F5A5}\uFE0F', svg: '\u{1F4D0}', image: '\u{1F4
 
 let _chatArea;
 let _chartBtn;
-let _currentCard = null;
+
 
 export function initChartAnalyzer({ chatArea }) {
   _chatArea = chatArea;

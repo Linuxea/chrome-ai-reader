@@ -1,6 +1,6 @@
 // options.js -- 设置页逻辑
 
-import { t, loadLanguage, setLanguage, applyTranslations, getCurrentLang } from '../shared/i18n.js';
+import { t, loadLanguage, setLanguage } from '../shared/i18n.js';
 import { escapeHtml } from '../shared/constants.js';
 import { applyTheme, getThemeState } from '../shared/theme.js';
 import { downloadFile } from '../shared/download.js';

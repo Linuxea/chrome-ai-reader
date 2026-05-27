@@ -34,7 +34,7 @@ export function extractJsonObject(text, requiredKey) {
  * @returns {string} Repaired JSON string safe to parse
  */
 export function repairLLMJson(jsonStr) {
-  let result = jsonStr.replace(/,\s*([}\]])/g, '$1');
+  const result = jsonStr.replace(/,\s*([}\]])/g, '$1');
   let inString = false, escaped = false, output = '';
   for (let i = 0; i < result.length; i++) {
     const ch = result[i];

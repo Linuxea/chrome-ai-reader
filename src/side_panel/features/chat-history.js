@@ -1,6 +1,6 @@
 // features/chat-history.js — 聊天历史管理与导出
 
-import { t, getCurrentLang } from '../../shared/i18n.js';
+import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants.js';
 import { formatDate } from '../../shared/format.js';
 import { downloadFile } from '../../shared/download.js';

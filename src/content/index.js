@@ -54,7 +54,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         const canvasPromises = [];
         let filteredCanvasIndex = 0;
-        document.querySelectorAll('canvas').forEach((canvas, i) => {
+        document.querySelectorAll('canvas').forEach((canvas, _i) => {
           if (canvas.width > 80 && canvas.height > 40) {
             let thumb = '';
             try { thumb = canvas.toDataURL('image/png'); } catch { /* tainted canvas — cross-origin restriction */ }
