@@ -2,4 +2,5 @@
 .superpowers/
 node_modules/
 dist/
+coverage/
 .claude/scheduled_tasks.lock
