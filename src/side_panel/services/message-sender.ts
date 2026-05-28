@@ -1,5 +1,6 @@
 import { t } from '../../shared/i18n.js';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
+import { toErrorMessage } from '../../shared/utils';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
@@ -95,10 +96,10 @@ export async function sendToAI(
 
     await callAI(messages, startTabId);
   } catch (e: unknown) {
-    const err = e as Error;
+    const errMsg = toErrorMessage(e);
     if (state.getActiveTabId() === startTabId) {
       removeLastMessage();
-      appendMessage('error', err.message);
+      appendMessage('error', errMsg);
       state.setIsGenerating(false);
       setButtonsDisabled(false);
     }
