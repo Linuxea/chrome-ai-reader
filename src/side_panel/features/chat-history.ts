@@ -1,6 +1,6 @@
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
-import { formatDate } from '../../shared/format';
+import { formatDate, formatDateTime, formatDateOnly } from '../../shared/format';
 import { downloadFile } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
@@ -272,11 +272,7 @@ export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[
   });
 
   const now = new Date();
-  const exportTime = now.getFullYear() + '-' +
-    String(now.getMonth() + 1).padStart(2, '0') + '-' +
-    String(now.getDate()).padStart(2, '0') + ' ' +
-    String(now.getHours()).padStart(2, '0') + ':' +
-    String(now.getMinutes()).padStart(2, '0');
+  const exportTime = formatDateTime(now);
 
   let md = '# ' + t('chat.exportTitle') + '\n\n';
   if (pTitle) md += `> ${t('chat.exportPage')}${pTitle}\n`;
@@ -309,8 +305,6 @@ export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[
   });
 
   const title = sanitizeFilename(chatData.title || t('chat.newChat'));
-  const dateStr = now.getFullYear() + '-' +
-    String(now.getMonth() + 1).padStart(2, '0') + '-' +
-    String(now.getDate()).padStart(2, '0');
+  const dateStr = formatDateOnly(now);
   downloadFile(md, `${t('app.fullName')}_${dateStr}_${title}.md`, 'text/markdown;charset=utf-8');
 }
