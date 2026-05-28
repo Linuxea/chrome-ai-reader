@@ -76,7 +76,6 @@ export async function captureChart(chartInfo: ChartInfo): Promise<string> {
   const tabId = state.getActiveTabId();
   if (!tabId) throw new Error(t('error.noTab'));
 
-  console.log('[AI Reader] captureChart sending to tab', tabId, chartInfo);
   let response: { success?: boolean; error?: string; dataUri?: string };
   try {
     response = await chrome.tabs.sendMessage(tabId, {
@@ -94,7 +93,6 @@ export async function captureChart(chartInfo: ChartInfo): Promise<string> {
     console.error('[AI Reader] captureChart sendMessage failed (content script not injected?):', err.message);
     throw new Error(t('chart.extractFailed') + ' (content script unreachable: ' + err.message + ')', { cause: e });
   }
-  console.log('[AI Reader] captureChart response:', response?.success, response?.error || '');
   if (!response?.success) {
     throw new Error(response?.error || t('chart.extractFailed'));
   }

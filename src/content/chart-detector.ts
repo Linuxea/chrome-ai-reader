@@ -24,7 +24,6 @@ async function captureViaScreenshot({ pageX, pageY, pageW, pageH }: Rect, logTag
     window.scrollTo({ top: Math.max(0, pageY + pageH / 2 - window.innerHeight / 2), left: Math.max(0, pageX + pageW / 2 - window.innerWidth / 2), behavior: 'instant' });
     await new Promise(r => setTimeout(r, 150));
   }
-  console.log(logTag, 'sending captureChartScreenshot:', { pageX, pageY, pageW, pageH });
   let resp: { success?: boolean; error?: string; dataUri?: string } | null = null;
   try { resp = await chrome.runtime.sendMessage({ action: 'captureChartScreenshot', scrollX: window.scrollX, scrollY: window.scrollY, pageX, pageY, pageW, pageH, devicePixelRatio: window.devicePixelRatio || 1 }); } catch (e: unknown) { console.error(logTag, 'captureChartScreenshot error:', (e as Error).message); return null; }
   if (!resp?.success) return null;
