@@ -1,5 +1,6 @@
 import { t } from '../../../shared/i18n.js';
 import { CSS } from '../../../shared/css-selectors';
+import { createTTSButtons } from '../../ui/tts-buttons';
 import { splitToSegments } from './utils';
 import {
   initPlayer, setFullStopFn, setTTSAutoPlay,
@@ -64,48 +65,10 @@ function handleTTSButtonClick(msgEl: HTMLElement): void {
 }
 
 export function addTTSButton(msgEl: HTMLElement): void {
-  const prevTts = _chatArea.querySelector(CSS.TTS_BTN);
-  if (prevTts) prevTts.remove();
-  const prevDownload = _chatArea.querySelector(CSS.TTS_DOWNLOAD_BTN);
-  if (prevDownload) prevDownload.remove();
-  const prevCopy = _chatArea.querySelector(CSS.AI_ACTION_BTN);
-  if (prevCopy) prevCopy.remove();
-
-  const copyBtn = document.createElement('button');
-  copyBtn.className = CSS.AI_ACTION_BTN.replace('.', '');
-  copyBtn.title = t('action.copy');
-  copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-
-  copyBtn.addEventListener('click', () => {
-    const contentEl = msgEl.querySelector('.thinking-response-content');
-    const text = contentEl ? contentEl.textContent : msgEl.textContent;
-    if (text && text.trim()) {
-      navigator.clipboard.writeText(text.trim()).then(() => {
-        copyBtn.title = t('action.copied');
-        setTimeout(() => { copyBtn.title = t('action.copy'); }, 1500);
-      });
-    }
+  createTTSButtons(msgEl, {
+    onToggleTTS: handleTTSButtonClick,
+    onDownload: handleTTSDownloadClick,
   });
-
-  msgEl.appendChild(copyBtn);
-
-  const btn = document.createElement('button');
-  btn.className = 'tts-btn';
-  btn.title = t('action.tts');
-  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
-
-  btn.addEventListener('click', () => handleTTSButtonClick(msgEl));
-
-  msgEl.appendChild(btn);
-
-  const dlBtn = document.createElement('button');
-  dlBtn.className = 'tts-download-btn';
-  dlBtn.title = t('action.ttsDownload');
-  dlBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
-
-  dlBtn.addEventListener('click', () => handleTTSDownloadClick(msgEl));
-
-  msgEl.appendChild(dlBtn);
 }
 
 export function initTTSAutoPlay(): void {
