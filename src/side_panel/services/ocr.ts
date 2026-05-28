@@ -1,5 +1,6 @@
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
+import { CSS } from '../../shared/css-selectors';
 import * as state from '../state';
 
 let _imageUploadBtn: HTMLElement;
@@ -69,7 +70,7 @@ export async function runOCR(index: number, fileName: string, dataUri: string): 
   ocrRunning++;
   state.setOcrRunning(ocrRunning);
   const item = _imagePreviewBar.querySelector(`[data-index="${index}"]`) as HTMLElement | null;
-  const statusEl = item?.querySelector('.image-status') as HTMLElement | null;
+  const statusEl = item?.querySelector(CSS.IMAGE_STATUS) as HTMLElement | null;
 
   function setError(msg: string): void {
     if (statusEl) statusEl.className = 'image-status error';
@@ -129,11 +130,11 @@ function extractOcrText(data: OcrData | undefined | null): string {
 }
 
 export function collectImageDataUris(): string[] {
-  const items = _imagePreviewBar.querySelectorAll('.image-preview-item:not(.error)');
+  const items = _imagePreviewBar.querySelectorAll(`${CSS.IMAGE_PREVIEW_ITEM}:not(.error)`);
   const uris: { index: number; uri: string }[] = [];
   items.forEach(item => {
     const el = item as HTMLElement;
-    const img = el.querySelector('.image-thumb') as HTMLImageElement | null;
+    const img = el.querySelector(CSS.IMAGE_THUMB) as HTMLImageElement | null;
     if (img && img.src) uris.push({ index: parseInt(el.dataset.index!), uri: img.src });
   });
   uris.sort((a, b) => a.index - b.index);
@@ -158,7 +159,7 @@ export function buildOcrContext(): string {
 }
 
 export function hasImageErrors(): boolean {
-  return _imagePreviewBar.querySelectorAll('.image-preview-item.error').length > 0;
+  return _imagePreviewBar.querySelectorAll(CSS.IMAGE_PREVIEW_ERROR).length > 0;
 }
 
 export function getOcrRunning(): number {
@@ -172,7 +173,7 @@ export function getOcrRunning(): number {
 export function validateImageState(): string | null {
   if (state.getOcrRunning() > 0) return t('error.ocrRunning');
   if (hasImageErrors()) {
-    const firstError = document.querySelector('.image-preview-item.error');
+    const firstError = document.querySelector(CSS.IMAGE_PREVIEW_ERROR);
     const reason = firstError?.getAttribute('title') || '';
     return t('error.ocrPartialFail') + (reason ? `：${reason}` : '');
   }

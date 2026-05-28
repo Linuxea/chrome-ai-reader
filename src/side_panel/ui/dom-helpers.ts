@@ -1,5 +1,6 @@
 import { escapeHtml } from '../../shared/constants';
 import { t } from '../../shared/i18n.js';
+import { CSS } from '../../shared/css-selectors';
 import { marked } from 'marked';
 import { emit, EVENTS } from '../events';
 
@@ -20,7 +21,7 @@ export function initDOMHelpers({ chatArea, actionBtns, sendBtn }: DOMHelperDeps)
 }
 
 export function appendMessage(role: string, content: string, imageUris?: string[]): HTMLDivElement {
-  const welcome = _chatArea.querySelector('.welcome-msg');
+  const welcome = _chatArea.querySelector(CSS.WELCOME_MSG);
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
@@ -49,7 +50,7 @@ export function appendMessage(role: string, content: string, imageUris?: string[
 }
 
 export function appendMessageWithQuote(quoteStr: string, userText: string, imageUris?: string[]): HTMLDivElement {
-  const welcome = _chatArea.querySelector('.welcome-msg');
+  const welcome = _chatArea.querySelector(CSS.WELCOME_MSG);
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
@@ -111,7 +112,7 @@ function addUserActions(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void {
 }
 
 export function removeLastMessage(): void {
-  const messages = _chatArea.querySelectorAll('.message');
+  const messages = _chatArea.querySelectorAll(CSS.MESSAGE);
   if (messages.length > 0) {
     const last = messages[messages.length - 1];
     const group = last.closest('.user-msg-group');
@@ -124,7 +125,7 @@ export function removeLastMessage(): void {
 }
 
 export function updateLastMessage(role: string, content: string): void {
-  const messages = _chatArea.querySelectorAll('.message');
+  const messages = _chatArea.querySelectorAll(CSS.MESSAGE);
   if (messages.length > 0) {
     const last = messages[messages.length - 1];
     last.className = `message message-${role}`;
