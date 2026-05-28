@@ -7,7 +7,7 @@ import {
   removeLastMessage, setButtonsDisabled,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
-import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
+import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
 import { extractPageContent } from './page-extractor';
 import { callAI } from './stream-handler';
 
@@ -116,15 +116,9 @@ export async function sendMessage(): Promise<void> {
   const text = _userInput.value.trim();
   if (!text || state.getIsGenerating()) return;
 
-  if (state.getOcrRunning() > 0) {
-    appendMessage('error', t('error.ocrRunning'));
-    return;
-  }
-
-  if (hasImageErrors()) {
-    const firstError = document.querySelector('.image-preview-item.error');
-    const reason = firstError?.getAttribute('title') || '';
-    appendMessage('error', t('error.ocrPartialFail') + (reason ? `：${reason}` : ''));
+  const imageError = validateImageState();
+  if (imageError) {
+    appendMessage('error', imageError);
     return;
   }
 

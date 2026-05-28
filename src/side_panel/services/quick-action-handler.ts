@@ -2,7 +2,7 @@ import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import { appendMessage } from '../ui/dom-helpers';
-import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews } from './ocr.js';
+import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
 
 type SendToAIFn = (text: string, displayText: string, retryQuote?: string, ocrContext?: string, imageUris?: string[]) => Promise<void>;
 
@@ -30,15 +30,9 @@ export async function handleQuickAction(action: string): Promise<void> {
     return;
   }
 
-  if (state.getOcrRunning() > 0) {
-    appendMessage('error', t('error.ocrRunning'));
-    return;
-  }
-
-  if (hasImageErrors()) {
-    const firstError = document.querySelector('.image-preview-item.error');
-    const reason = firstError?.getAttribute('title') || '';
-    appendMessage('error', t('error.ocrPartialFail') + (reason ? `：${reason}` : ''));
+  const imageError = validateImageState();
+  if (imageError) {
+    appendMessage('error', imageError);
     return;
   }
 

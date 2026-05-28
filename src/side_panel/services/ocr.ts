@@ -164,3 +164,17 @@ export function hasImageErrors(): boolean {
 export function getOcrRunning(): number {
   return state.getOcrRunning();
 }
+
+/**
+ * Validate that OCR state allows sending a message.
+ * Returns null if OK, or an error message string if validation fails.
+ */
+export function validateImageState(): string | null {
+  if (state.getOcrRunning() > 0) return t('error.ocrRunning');
+  if (hasImageErrors()) {
+    const firstError = document.querySelector('.image-preview-item.error');
+    const reason = firstError?.getAttribute('title') || '';
+    return t('error.ocrPartialFail') + (reason ? `：${reason}` : '');
+  }
+  return null;
+}

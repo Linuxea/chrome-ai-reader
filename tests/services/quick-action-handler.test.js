@@ -22,6 +22,7 @@ vi.mock('../../src/side_panel/services/ocr.js', () => ({
   buildOcrContext: vi.fn(() => ''),
   collectImageDataUris: vi.fn(() => []),
   clearImagePreviews: vi.fn(),
+  validateImageState: vi.fn(() => null),
 }));
 
 vi.mock('../../src/side_panel/state.js', () => ({
@@ -52,6 +53,7 @@ describe('handleQuickAction', () => {
     ocrMock.hasImageErrors.mockReturnValue(false);
     ocrMock.buildOcrContext.mockReturnValue('');
     ocrMock.collectImageDataUris.mockReturnValue([]);
+    ocrMock.validateImageState.mockReturnValue(null);
     initQuickActionHandler({ sendToAI });
   });
 
@@ -80,7 +82,7 @@ describe('handleQuickAction', () => {
   });
 
   it('shows error when OCR is running', async () => {
-    stateMock.getOcrRunning.mockReturnValue(1);
+    ocrMock.validateImageState.mockReturnValue('[error.ocrRunning]');
     await handleQuickAction('summarize');
     expect(domHelpersMock.appendMessage).toHaveBeenCalledWith('error', '[error.ocrRunning]');
     expect(sendToAI).not.toHaveBeenCalled();
@@ -88,7 +90,7 @@ describe('handleQuickAction', () => {
 
   it('shows error when image has errors (OCR partial fail)', async () => {
     document.body.innerHTML = '<div class="image-preview-item error" title="bad image"></div>';
-    ocrMock.hasImageErrors.mockReturnValue(true);
+    ocrMock.validateImageState.mockReturnValue('[error.ocrPartialFail]：bad image');
     await handleQuickAction('summarize');
     expect(domHelpersMock.appendMessage).toHaveBeenCalledWith('error', '[error.ocrPartialFail]：bad image');
     expect(sendToAI).not.toHaveBeenCalled();
@@ -97,7 +99,7 @@ describe('handleQuickAction', () => {
 
   it('shows error without reason when error element has no title', async () => {
     document.body.innerHTML = '<div class="image-preview-item error"></div>';
-    ocrMock.hasImageErrors.mockReturnValue(true);
+    ocrMock.validateImageState.mockReturnValue('[error.ocrPartialFail]');
     await handleQuickAction('summarize');
     expect(domHelpersMock.appendMessage).toHaveBeenCalledWith('error', '[error.ocrPartialFail]');
     document.body.innerHTML = '';
