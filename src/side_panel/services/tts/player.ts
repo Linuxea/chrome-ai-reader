@@ -1,4 +1,5 @@
 import { stripMarkdown, SENTENCE_ENDS } from './utils';
+import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
 
 let _chatArea: HTMLElement;
 let _fullStopFn: (() => void) | null = null;
@@ -48,14 +49,12 @@ export function stopTTSPlayback(): void {
     ttsAudioEl = null;
   }
   if (ttsMediaSource) {
-    try { if (ttsMediaSource.readyState === 'open') ttsMediaSource.endOfStream(); } catch { /* cleanup */ }
+    safeEndOfStream(ttsMediaSource);
     ttsMediaSource = null;
     ttsSourceBuffer = null;
   }
-  if (ttsPort) {
-    try { ttsPort.disconnect(); } catch { /* cleanup */ }
-    ttsPort = null;
-  }
+  safePortDisconnect(ttsPort);
+  ttsPort = null;
 }
 
 export function initTTSPlayback(): void {
@@ -121,7 +120,7 @@ function ttsFlush(): void {
   ttsSending = true;
   const sentence = ttsSentenceQueue.shift()!;
 
-  if (ttsPort) { try { ttsPort.disconnect(); } catch { /* cleanup */ } }
+  safePortDisconnect(ttsPort);
 
   ttsPort = chrome.runtime.connect({ name: 'tts' });
 
@@ -142,7 +141,7 @@ function ttsFlush(): void {
 
     } else if (msg.type === 'done') {
       ttsSending = false;
-      try { ttsPort?.disconnect(); } catch { /* cleanup */ }
+      safePortDisconnect(ttsPort);
       ttsPort = null;
 
       if (ttsSentenceQueue.length > 0) {
@@ -150,7 +149,7 @@ function ttsFlush(): void {
       } else {
         const finish = () => {
           if (ttsSourceBuffer && !ttsBufferAppending) {
-            try { ttsMediaSource?.endOfStream(); } catch { /* cleanup */ }
+            safeEndOfStream(ttsMediaSource);
           }
         };
         if (ttsBufferAppending) {
@@ -227,7 +226,7 @@ export function ttsFlushRemaining(): void {
   if (ttsSentenceQueue.length === 0 && !ttsSending) {
     const finish = () => {
       if (ttsSourceBuffer && !ttsBufferAppending) {
-        try { ttsMediaSource?.endOfStream(); } catch { /* cleanup */ }
+        safeEndOfStream(ttsMediaSource);
       }
     };
     if (ttsBufferAppending) {

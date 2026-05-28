@@ -1,6 +1,7 @@
 import { t } from '../../../shared/i18n.js';
 import { downloadFile } from '../../../shared/download';
 import { formatDuration } from '../../../shared/format';
+import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
 import * as state from '../../state';
 import { MAX_CHUNK_QUEUE_SIZE } from './constants';
 import { updateTranscriptHighlight } from './ui';
@@ -29,14 +30,15 @@ export function resetRoundTimings(): void { _roundTimings = []; }
 
 export function cleanupPodcastAudio(): void {
   if (podcastAudioEl) { podcastAudioEl.pause(); podcastAudioEl.src = ''; podcastAudioEl = null; }
-  if (podcastMediaSource) { try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch { /* cleanup */ } podcastMediaSource = null; podcastSourceBuffer = null; }
-  if (podcastPort) { try { podcastPort.disconnect(); } catch { /* cleanup */ } podcastPort = null; }
+  if (podcastMediaSource) { safeEndOfStream(podcastMediaSource); podcastMediaSource = null; podcastSourceBuffer = null; }
+  safePortDisconnect(podcastPort);
+  podcastPort = null;
   podcastChunkQueue = []; podcastAudioChunks = []; podcastBufferAppending = false; _podcastTitle = ''; _roundTimings = [];
 }
 
 function initPodcastPlayback(card: HTMLElement): void {
   if (podcastAudioEl) { podcastAudioEl.pause(); podcastAudioEl.src = ''; podcastAudioEl = null; }
-  if (podcastMediaSource) { try { if (podcastMediaSource.readyState === 'open') podcastMediaSource.endOfStream(); } catch { /* cleanup */ } podcastMediaSource = null; podcastSourceBuffer = null; }
+  if (podcastMediaSource) { safeEndOfStream(podcastMediaSource); podcastMediaSource = null; podcastSourceBuffer = null; }
   podcastChunkQueue = []; podcastBufferAppending = false;
   const ms = new MediaSource(); podcastMediaSource = ms;
   const audio = new Audio(); audio.src = URL.createObjectURL(ms); podcastAudioEl = audio;
@@ -142,7 +144,7 @@ export function replayAudio(currentCard: HTMLElement | null): void {
 }
 
 function finishPodcastAudio(card: HTMLElement): void {
-  if (podcastMediaSource && podcastMediaSource.readyState === 'open') { try { podcastMediaSource.endOfStream(); } catch { /* cleanup */ } }
+  safeEndOfStream(podcastMediaSource);
   if (podcastAudioEl && podcastAudioEl.ended) _showStatus!(card, 'done');
   _resetPodcastState!();
 }
@@ -171,7 +173,7 @@ export async function generatePodcastAudio(card: HTMLElement, nlpTexts: NlpRound
   podcastPort.onDisconnect.addListener(() => {
     if (_isCancelled?.()) return;
     if (state.getIsPodcastGenerating()) {
-      if (podcastAudioEl && podcastMediaSource && podcastMediaSource.readyState === 'open') { try { podcastMediaSource.endOfStream(); } catch { /* cleanup */ } _resetPodcastState!(); }
+      if (podcastAudioEl && podcastMediaSource) { safeEndOfStream(podcastMediaSource); _resetPodcastState!(); }
       else { _showStatus!(card, 'error', t('podcast.audioError')); _resetPodcastState!(); }
     }
   });
