@@ -5,7 +5,7 @@ vi.mock('../../src/shared/i18n.js', () => ({
   getCurrentLang: vi.fn(() => 'zh'),
 }));
 
-import { formatDuration, formatDate } from '../../src/shared/format.js';
+import { formatDuration, formatDate, formatDateTime, formatDateOnly } from '../../src/shared/format.js';
 
 describe('formatDuration', () => {
   it('formats 0 seconds', () => {
@@ -82,5 +82,33 @@ describe('formatDate', () => {
     const now = new Date();
     const result = formatDate(now.toISOString());
     expect(result).toMatch(/^\[chat\.today\] \d{2}:\d{2}$/);
+  });
+});
+
+describe('formatDateTime', () => {
+  it('formats date as YYYY-MM-DD HH:MM', () => {
+    const date = new Date(2026, 0, 15, 10, 30); // Jan 15, 2026 10:30
+    const result = formatDateTime(date);
+    expect(result).toBe('2026-01-15 10:30');
+  });
+
+  it('pads single-digit months and days', () => {
+    const date = new Date(2026, 2, 5, 8, 5); // Mar 5, 2026 08:05
+    const result = formatDateTime(date);
+    expect(result).toBe('2026-03-05 08:05');
+  });
+});
+
+describe('formatDateOnly', () => {
+  it('formats date as YYYY-MM-DD', () => {
+    const date = new Date(2026, 0, 15);
+    const result = formatDateOnly(date);
+    expect(result).toBe('2026-01-15');
+  });
+
+  it('pads single-digit months and days', () => {
+    const date = new Date(2026, 2, 5);
+    const result = formatDateOnly(date);
+    expect(result).toBe('2026-03-05');
   });
 });
