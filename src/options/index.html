@@ -134,6 +134,44 @@
         </div>
       </details>
 
+      <!-- 知识关联 -->
+      <details class="config-details">
+        <summary class="config-summary" data-i18n="settings.embedding">知识关联</summary>
+        <div class="config-fields">
+          <label class="toggle-row">
+            <span data-i18n="settings.embedding.toggle">启用知识关联</span>
+            <input type="checkbox" id="embeddingEnabled" checked>
+          </label>
+          <div class="form-group">
+            <label for="embeddingApiKey" data-i18n="settings.embedding.apiKey">Embedding API Key</label>
+            <input type="password" id="embeddingApiKey" data-i18n-placeholder="settings.embedding.apiKey.ph" placeholder="留空则复用大模型 API Key" autocomplete="off">
+            <p class="hint" data-i18n="settings.embedding.apiKey.hint">用于生成页面内容向量。留空则自动使用上方大模型配置的 API Key。</p>
+          </div>
+          <div class="form-group">
+            <label for="embeddingApiBase" data-i18n="settings.embedding.apiBase">Embedding API 地址</label>
+            <input type="text" id="embeddingApiBase" data-i18n-placeholder="settings.embedding.apiBase.ph" placeholder="https://ark.cn-beijing.volces.com/api/coding/v3">
+            <p class="hint" data-i18n="settings.embedding.apiBase.hint">留空则复用大模型 API 地址。</p>
+          </div>
+          <div class="form-group">
+            <label for="embeddingModel" data-i18n="settings.embedding.model">Embedding 模型</label>
+            <input type="text" id="embeddingModel" data-i18n-placeholder="settings.embedding.model.ph" placeholder="doubao-embedding-vision">
+            <p class="hint" data-i18n="settings.embedding.model.hint">支持 OpenAI 兼容的 embeddings 接口的模型。</p>
+          </div>
+          <div class="form-group">
+            <label for="embeddingThreshold" data-i18n="settings.embedding.threshold">相似度阈值</label>
+            <div class="range-row">
+              <input type="range" id="embeddingThreshold" min="50" max="95" value="70" step="5">
+              <span id="embeddingThresholdValue">70%</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="embeddingMaxPages" data-i18n="settings.embedding.maxPages">最大存储页数</label>
+            <input type="number" id="embeddingMaxPages" min="10" max="500" value="200">
+          </div>
+          <button id="clearEmbeddingBtn" class="danger-btn" type="button" data-i18n="settings.embedding.clearAll">清除所有页面记录</button>
+        </div>
+      </details>
+
       <!-- 推荐追问 -->
       <details class="config-details">
         <summary class="config-summary" data-i18n="settings.suggest">推荐追问</summary>
