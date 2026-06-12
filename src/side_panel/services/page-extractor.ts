@@ -2,6 +2,7 @@ import { t } from '../../shared/i18n.js';
 import type { Result } from '../../shared/types';
 import { ok, err } from '../../shared/result.js';
 import * as state from '../state';
+import { requestEmbedding } from '../features/related-pages';
 
 export interface ExtractResult {
   textContent: string;
@@ -28,6 +29,16 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
     tabState.pageExcerpt = response.data.excerpt;
     tabState.pageTitle = response.data.title;
     state.persistForTab(tabId);
+  }
+
+  // Trigger embedding in background after a delay (avoid rapid tab switches wasting calls)
+  if (response.data) {
+    setTimeout(async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0]?.url) {
+        requestEmbedding(response.data!.excerpt, tabs[0].url, response.data!.title);
+      }
+    }, 3000);
   }
 
   return ok(response.data!);
