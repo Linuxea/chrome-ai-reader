@@ -62,3 +62,17 @@ export interface OcrResult {
 export type Result<T, E = Error> =
   | { ok: true; value: T }
   | { ok: false; error: E };
+
+export interface PageRecord {
+  id: string;
+  url: string;
+  title: string;
+  excerpt: string;
+  embedding: number[];
+  timestamp: number;
+}
+
+export interface PageRelation {
+  record: PageRecord;
+  similarity: number;
+}

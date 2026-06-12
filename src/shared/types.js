@@ -40,3 +40,23 @@
  * @property {Array<{index: number, fileName: string, text: string}>} ocrResults - OCR results per image
  * @property {number} imageIndex - Current image index for OCR scanning
  */
+
+/**
+ * A stored page record with its embedding vector.
+ *
+ * @typedef {Object} PageRecord
+ * @property {string} id - Unique identifier (crypto.randomUUID)
+ * @property {string} url - Page URL
+ * @property {string} title - Page title
+ * @property {string} excerpt - Short excerpt (max 200 chars)
+ * @property {number[]} embedding - Embedding vector
+ * @property {number} timestamp - Reading time (Date.now())
+ */
+
+/**
+ * A page record paired with its similarity score.
+ *
+ * @typedef {Object} PageRelation
+ * @property {PageRecord} record - The related page record
+ * @property {number} similarity - Cosine similarity (0-1)
+ */
