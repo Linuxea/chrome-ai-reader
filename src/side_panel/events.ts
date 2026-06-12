@@ -7,9 +7,7 @@ export const EVENTS = {
   REMOVE_SUGGEST_QUESTIONS: 'removeSuggestQuestions',
   REQUEST_RERENDER: 'requestRerender',
   GENERATE_SUGGESTIONS: 'generateSuggestions',
-  GENERATE_OUTLINE: 'generateOutline',
   CLEAR_QUOTE_PREVIEW: 'clearQuotePreview',
-  CHART_CLICK: 'chartClick',
   PODCAST_CLICK: 'podcastClick',
   ADD_TTS_BUTTON: 'addTTSButton',
   SAVE_CURRENT_CHAT: 'saveCurrentChat',
@@ -25,9 +23,7 @@ interface EventMap {
   [EVENTS.REMOVE_SUGGEST_QUESTIONS]: () => void;
   [EVENTS.REQUEST_RERENDER]: () => void;
   [EVENTS.GENERATE_SUGGESTIONS]: (args: { msgEl: HTMLElement; history: ChatMessage[] }) => void;
-  [EVENTS.GENERATE_OUTLINE]: () => void;
   [EVENTS.CLEAR_QUOTE_PREVIEW]: () => void;
-  [EVENTS.CHART_CLICK]: () => void;
   [EVENTS.PODCAST_CLICK]: () => void;
   [EVENTS.ADD_TTS_BUTTON]: (args: { msgEl: HTMLElement }) => void;
   [EVENTS.SAVE_CURRENT_CHAT]: () => void;

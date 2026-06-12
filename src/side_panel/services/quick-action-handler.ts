@@ -15,18 +15,8 @@ export function initQuickActionHandler({ sendToAI }: { sendToAI: SendToAIFn }): 
 export async function handleQuickAction(action: string): Promise<void> {
   if (state.getIsGenerating()) return;
 
-  if (action === 'outline') {
-    emit(EVENTS.GENERATE_OUTLINE);
-    return;
-  }
-
   if (action === 'podcast') {
     emit(EVENTS.PODCAST_CLICK);
-    return;
-  }
-
-  if (action === 'chart') {
-    emit(EVENTS.CHART_CLICK);
     return;
   }
 

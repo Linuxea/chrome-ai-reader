@@ -287,13 +287,11 @@ describe('dom-helpers', () => {
       expect(sendBtn.disabled).toBe(false);
     });
 
-    it('skips chart and podcast action buttons', () => {
-      actionBtns[0].dataset.action = 'chart';
-      actionBtns[1].dataset.action = 'podcast';
+    it('skips podcast action button', () => {
+      actionBtns[0].dataset.action = 'podcast';
       setButtonsDisabled(true);
       expect(actionBtns[0].disabled).toBe(false);
-      expect(actionBtns[1].disabled).toBe(false);
-      expect(actionBtns[2].disabled).toBe(true);
+      expect(actionBtns[1].disabled).toBe(true);
     });
   });
 

@@ -7,9 +7,7 @@ vi.mock('../../src/shared/i18n.js', () => ({
 vi.mock('../../src/side_panel/events.js', () => ({
   emit: vi.fn(),
   EVENTS: {
-    GENERATE_OUTLINE: 'generateOutline',
     PODCAST_CLICK: 'podcastClick',
-    CHART_CLICK: 'chartClick',
   },
 }));
 
@@ -63,21 +61,9 @@ describe('handleQuickAction', () => {
     expect(sendToAI).not.toHaveBeenCalled();
   });
 
-  it('emits GENERATE_OUTLINE for outline action', async () => {
-    await handleQuickAction('outline');
-    expect(eventsMock.emit).toHaveBeenCalledWith('generateOutline');
-    expect(sendToAI).not.toHaveBeenCalled();
-  });
-
   it('emits PODCAST_CLICK for podcast action', async () => {
     await handleQuickAction('podcast');
     expect(eventsMock.emit).toHaveBeenCalledWith('podcastClick');
-    expect(sendToAI).not.toHaveBeenCalled();
-  });
-
-  it('emits CHART_CLICK for chart action', async () => {
-    await handleQuickAction('chart');
-    expect(eventsMock.emit).toHaveBeenCalledWith('chartClick');
     expect(sendToAI).not.toHaveBeenCalled();
   });
 

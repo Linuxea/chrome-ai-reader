@@ -166,7 +166,7 @@ export function smartScrollToBottom(): void {
 export function setButtonsDisabled(disabled: boolean): void {
   _actionBtns.forEach(btn => {
     const action = btn.dataset.action;
-    if (action === 'chart' || action === 'podcast') return;
+    if (action === 'podcast') return;
     btn.disabled = disabled;
   });
   _sendBtn.disabled = disabled;

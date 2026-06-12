@@ -11,10 +11,9 @@ import { initAIChat, sendToAI, sendMessage, retryMessage, extractPageContent } f
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
 import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands';
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions';
-import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown } from './features/outline';
+import { renderOutlineFromJSON, outlineToMarkdown } from './features/outline';
 import { initImageInput } from './features/image-input';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
-import { initChartAnalyzer, handleChartClick } from './features/chart-analyzer';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
 import type { UIElements } from './ui/global-events';
@@ -66,19 +65,15 @@ async function init(): Promise<void> {
   });
   initQuickCommands({ userInput: els.userInput, commandPopup, onSendToAI: sendToAI });
   initSuggestQuestions({ chatArea: els.chatArea, userInput: els.userInput, onSend: sendMessage });
-  initOutline({ onExtractPageContent: extractPageContent });
   initImageInput({ userInput: els.userInput, imagePreviewBar });
   initPodcast({ chatArea: els.chatArea });
-  initChartAnalyzer({ chatArea: els.chatArea });
   initRelatedPages({ chatArea: els.chatArea });
 
   on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });
   on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());
   on(EVENTS.REQUEST_RERENDER, () => resetUIForTabSwitch(els, deps));
   on(EVENTS.GENERATE_SUGGESTIONS, (args) => { const { msgEl, history } = args as { msgEl: HTMLElement; history: ChatMessage[] }; generateSuggestions(msgEl, history); saveCurrentChat(); });
-  on(EVENTS.GENERATE_OUTLINE, () => generateOutline());
   on(EVENTS.CLEAR_QUOTE_PREVIEW, () => updateQuotePreview(els, ''));
-  on(EVENTS.CHART_CLICK, () => handleChartClick());
   on(EVENTS.PODCAST_CLICK, () => handlePodcastClick());
   on(EVENTS.ADD_TTS_BUTTON, (args) => { addTTSButton((args as { msgEl: HTMLElement }).msgEl); });
   on(EVENTS.SAVE_CURRENT_CHAT, () => saveCurrentChat());

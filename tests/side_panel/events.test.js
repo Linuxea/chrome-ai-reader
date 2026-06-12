@@ -32,12 +32,12 @@ describe('events', () => {
         'REMOVE_SUGGEST_QUESTIONS',
         'REQUEST_RERENDER',
         'GENERATE_SUGGESTIONS',
-        'GENERATE_OUTLINE',
         'CLEAR_QUOTE_PREVIEW',
-        'CHART_CLICK',
         'PODCAST_CLICK',
         'ADD_TTS_BUTTON',
         'SAVE_CURRENT_CHAT',
+        'RENDER_HISTORY_LIST',
+        'SHOW_RELATED_PAGES',
       ];
       expectedKeys.forEach(key => {
         expect(EVENTS).toHaveProperty(key);
@@ -46,7 +46,7 @@ describe('events', () => {
 
     it('EVENTS object is frozen or sealed to prevent accidental mutation', () => {
       // EVENTS is a plain const object — verify no extra keys sneaked in
-      expect(Object.keys(EVENTS).length).toBe(12);
+      expect(Object.keys(EVENTS).length).toBe(10);
     });
   });
 
