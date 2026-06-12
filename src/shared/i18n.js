@@ -246,6 +246,7 @@ const TRANSLATIONS = {
     'related.daysAgo': '{n}天前',
     'related.hoursAgo': '{n}小时前',
     'related.justNow': '刚刚',
+    'related.minutesAgo': '{n}分钟前',
     'related.weekAgo': '1周前',
     'related.weeksAgo': '{n}周前',
   },
@@ -497,6 +498,7 @@ const TRANSLATIONS = {
     'related.daysAgo': '{n} days ago',
     'related.hoursAgo': '{n} hours ago',
     'related.justNow': 'Just now',
+    'related.minutesAgo': '{n} minutes ago',
     'related.weekAgo': '1 week ago',
     'related.weeksAgo': '{n} weeks ago',
   }

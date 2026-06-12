@@ -11,6 +11,7 @@
 
 import type { PageRecord, PageRelation } from '../../shared/types';
 import { t } from '../../shared/i18n.js';
+import { escapeHtml } from '../../shared/constants';
 import { emit, EVENTS } from '../events';
 
 const STORAGE_KEY = 'pageRecords';
@@ -27,12 +28,21 @@ let hasNewRelations = false;
 // --- Storage ---
 
 async function getPageRecords(): Promise<PageRecord[]> {
-  const data = await chrome.storage.local.get(STORAGE_KEY);
-  return (data[STORAGE_KEY] as PageRecord[]) || [];
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEY);
+    return (data[STORAGE_KEY] as PageRecord[]) || [];
+  } catch (e) {
+    console.error('Failed to get page records:', e);
+    return [];
+  }
 }
 
 async function savePageRecords(records: PageRecord[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: records });
+  try {
+    await chrome.storage.local.set({ [STORAGE_KEY]: records });
+  } catch (e) {
+    console.error('Failed to save page records:', e);
+  }
 }
 
 // --- Cosine Similarity ---
@@ -64,6 +74,8 @@ export async function requestEmbedding(text: string, url: string, title: string)
 
   const { embeddingEnabled } = await chrome.storage.sync.get('embeddingEnabled');
   if (embeddingEnabled === false) return;
+
+  if (await isEmbeddingPaused()) return;
 
   const port = chrome.runtime.connect({ name: 'embedding' });
 
@@ -168,7 +180,8 @@ function formatTimeAgo(timestamp: number): string {
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
 
-  if (minutes < 60) return t('related.justNow');
+  if (minutes < 1) return t('related.justNow');
+  if (minutes < 60) return t('related.minutesAgo', { n: minutes });
   if (hours < 24) return t('related.hoursAgo', { n: hours });
   if (days === 1) return t('related.daysAgo', { n: 1 });
   if (days < 7) return t('related.daysAgo', { n: days });
@@ -220,12 +233,6 @@ export async function renderRelatedPages(currentUrl: string): Promise<void> {
       if (url) chrome.tabs.create({ url });
     });
   });
-}
-
-function escapeHtml(str: string): string {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 // --- Clear All ---

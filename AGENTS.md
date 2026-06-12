@@ -5,8 +5,11 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (422 tests)
+npm run test   # vitest run (444 tests across 29 files)
+npm run test:watch  # vitest (watch mode)
+npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint src/ proxy/
+npm run format # prettier --write 'src/**/*.js' 'proxy/**/*.js'
 npx tsc --noEmit  # TypeScript type check (strict:true)
 ```
 
@@ -26,7 +29,7 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
 - **strict: true** — all `.ts` files are strict-mode TypeScript
 - `tsconfig.json` — `noEmit: true`, `allowJs: true` (JS/TS coexist)
-- Only `src/shared/i18n.js` remains as JS (506-line string map)
+- Only `src/shared/i18n.js` and `src/shared/types.js` remain as JS (JSDoc typedefs for legacy consumers; TS types are in `types.ts`)
 - Type definitions: `src/shared/types.ts` (TabState, ChatMessage, ChartInfo, OcrResult)
 - Error handling: `src/shared/result.ts` (Result<T,E>, ok(), err())
 
@@ -58,7 +61,7 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
 - `src/side_panel/events.ts` — lightweight synchronous event bus
 - `EVENTS` constant enum — all event names are typed constants, no string magic keys
-- Events: RETRY, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, GENERATE_OUTLINE, CLEAR_QUOTE_PREVIEW, CHART_CLICK, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT
+- Events: RETRY, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, GENERATE_OUTLINE, CLEAR_QUOTE_PREVIEW, CHART_CLICK, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST
 
 ## Chrome Extension Messaging
 
@@ -76,7 +79,7 @@ Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `
 
 ## Testing
 
-- **Vitest** with jsdom environment, 422 tests across 26 files
+- **Vitest** with jsdom environment, 444 tests across 29 files
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Coverage: ~30% overall, core modules 80%+ (dom-helpers 98%, theme 100%, sw-openai 91%, page-extractor 88%)
 - Run `npm run test:coverage` for detailed coverage report
@@ -86,7 +89,8 @@ Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `
 - `dist/` is the loadable extension — do not reference `public/manifest.json` paths directly when reasoning about the running extension
 - Content script and service worker must be IIFE — they cannot use `import` at runtime
 - `Readability` is imported from `@mozilla/readability` npm package, not a local file
-- `src/libs/marked.min.js` is dead code — all imports use `marked` from npm
 - `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`, runs on `localhost:3456`)
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
 - TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure
+- `vitest.config.js` coverage `include` pattern is `src/**/*.js` — most source files are now `.ts`, so coverage numbers may undercount; update pattern when adding TS test files
+- `scripts/watch-iife.js` does NOT include the esbuild plugin (unlike `build-extension.js`) — TypeScript in content/background is only transpiled during production build, not in dev watch mode
