@@ -136,6 +136,8 @@ const TRANSLATIONS = {
     'error.noTab': '无法获取当前标签页',
     'error.ocrRunning': 'OCR 识别中，请稍候...',
     'error.ocrPartialFail': '部分图片 OCR 失败，请移除后重试',
+    'error.noEmbeddingApiKey': '未配置 Embedding API Key',
+    'error.emptyEmbedding': 'Embedding 返回空向量',
 
     'status.loading': '加载中...',
     'status.modelsLoaded': '已获取 {n} 个模型',
@@ -385,6 +387,8 @@ const TRANSLATIONS = {
     'error.noTab': 'Cannot access current tab',
     'error.ocrRunning': 'OCR in progress, please wait...',
     'error.ocrPartialFail': 'Some images failed OCR. Please remove them and try again',
+    'error.noEmbeddingApiKey': 'No Embedding API key configured',
+    'error.emptyEmbedding': 'Empty embedding returned',
 
     'status.loading': 'Loading...',
     'status.modelsLoaded': '{n} models loaded',

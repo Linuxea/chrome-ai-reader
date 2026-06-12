@@ -80,16 +80,20 @@ export async function callEmbedding(text: string, port: chrome.runtime.Port): Pr
   ]) as { embeddingApiKey?: string; embeddingApiBase?: string; embeddingModel?: string; apiKey?: string; apiBase?: string };
 
   const key = embeddingApiKey || apiKey;
-  if (!key) { safePostMessage(port, { type: 'error', error: 'No API key configured for embedding' }); return; }
+  if (!key) { safePostMessage(port, { type: 'error', errorKey: 'error.noEmbeddingApiKey' }); return; }
 
   const baseUrl = embeddingApiBase || apiBase || 'https://ark.cn-beijing.volces.com/api/coding/v3';
   const model = embeddingModel || 'doubao-embedding-vision';
+
+  const controller = new AbortController();
+  port.onDisconnect.addListener(() => controller.abort());
 
   try {
     const response = await fetch(`${baseUrl}/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
       body: JSON.stringify({ model, input: text }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -100,7 +104,7 @@ export async function callEmbedding(text: string, port: chrome.runtime.Port): Pr
     const data = await response.json() as { data?: { embedding: number[] }[] };
     const embedding = data.data?.[0]?.embedding;
     if (!embedding || embedding.length === 0) {
-      safePostMessage(port, { type: 'error', error: 'Empty embedding returned' });
+      safePostMessage(port, { type: 'error', errorKey: 'error.emptyEmbedding' });
       return;
     }
     safePostMessage(port, { type: 'embedding', embedding });
