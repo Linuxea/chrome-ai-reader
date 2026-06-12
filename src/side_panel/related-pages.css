@@ -1,0 +1,109 @@
+/* Related Reading Panel */
+
+.related-panel {
+  border-top: 1px solid var(--border);
+  background: var(--card-bg);
+  flex-shrink: 0;
+}
+
+.related-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  cursor: default;
+  user-select: none;
+}
+
+.related-header-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.related-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e74c3c;
+  flex-shrink: 0;
+}
+
+.related-badge.hidden {
+  display: none;
+}
+
+.related-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.related-toggle:hover {
+  background: var(--hover-bg);
+}
+
+.related-list {
+  max-height: 240px;
+  overflow-y: auto;
+  transition: max-height 0.2s ease;
+}
+
+.related-list.collapsed {
+  max-height: 0;
+  overflow: hidden;
+}
+
+.related-empty {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.related-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.related-item:hover {
+  background: var(--hover-bg);
+}
+
+.related-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.related-item-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+.related-similarity {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.related-item-excerpt {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
