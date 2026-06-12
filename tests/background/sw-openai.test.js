@@ -21,7 +21,7 @@ vi.mock('../../src/background/sw-utils.js', () => ({
   safePostMessage: vi.fn(),
 }));
 
-import { callOpenAI, callSuggestQuestions } from '../../src/background/sw-openai.js';
+import { callOpenAI, callSuggestQuestions, callEmbedding } from '../../src/background/sw-openai.js';
 import { safePostMessage } from '../../src/background/sw-utils.js';
 
 function createMockPort() {
@@ -302,6 +302,96 @@ describe('background/sw-openai', () => {
       const callArgs = fetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
       expect(body.temperature).toBe(0.8);
+    });
+  });
+
+  describe('callEmbedding', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      port = createMockPort();
+      store.sync = {
+        apiKey: 'sk-test',
+        apiBase: 'https://api.test.com',
+        embeddingApiKey: '',
+        embeddingApiBase: '',
+        embeddingModel: '',
+      };
+    });
+
+    it('sends embedding request and returns vector', async () => {
+      const mockEmbedding = [0.1, 0.2, 0.3];
+      globalThis.fetch = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: [{ embedding: mockEmbedding }] }),
+        })
+      );
+
+      await callEmbedding('test text', port);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://api.test.com/embeddings',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: 'Bearer sk-test' }),
+          body: expect.stringContaining('test text'),
+        })
+      );
+      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'embedding', embedding: mockEmbedding });
+    });
+
+    it('uses embedding-specific config when provided', async () => {
+      store.sync.embeddingApiKey = 'emb-key';
+      store.sync.embeddingApiBase = 'https://emb.test.com';
+      store.sync.embeddingModel = 'custom-emb';
+
+      globalThis.fetch = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: [{ embedding: [0.5] }] }),
+        })
+      );
+
+      await callEmbedding('test', port);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://emb.test.com/embeddings',
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer emb-key' }),
+          body: expect.stringContaining('custom-emb'),
+        })
+      );
+    });
+
+    it('sends error when no API key configured', async () => {
+      store.sync.apiKey = '';
+      await callEmbedding('test', port);
+      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.noEmbeddingApiKey' });
+    });
+
+    it('sends error on API failure', async () => {
+      globalThis.fetch = vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ error: { message: 'Unauthorized' } }),
+        })
+      );
+
+      await callEmbedding('test', port);
+      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', error: 'Unauthorized' });
+    });
+
+    it('sends error on empty embedding', async () => {
+      globalThis.fetch = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: [{ embedding: [] }] }),
+        })
+      );
+
+      await callEmbedding('test', port);
+      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.emptyEmbedding' });
     });
   });
 });
