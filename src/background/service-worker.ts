@@ -1,4 +1,4 @@
-import { callOpenAI, callSuggestQuestions } from './sw-openai';
+import { callOpenAI, callSuggestQuestions, callEmbedding } from './sw-openai';
 import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
 import { handleChartVision, handleChartAnalysis, handleChartScreenshot } from './sw-chart';
@@ -31,6 +31,10 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   } else if (port.name === 'podcast-audio') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
       if (msg.type === 'generate') await callPodcast(msg.nlpTexts as { speaker: string; text: string }[], msg.audioConfig as { format: string; sample_rate: number; speech_rate: number }, port);
+    });
+  } else if (port.name === 'embedding') {
+    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
+      if (msg.type === 'embed') await callEmbedding(msg.text as string, port);
     });
   }
 });
