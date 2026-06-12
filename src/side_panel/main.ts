@@ -15,6 +15,7 @@ import { initOutline, generateOutline, renderOutlineFromJSON, outlineToMarkdown 
 import { initImageInput } from './features/image-input';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initChartAnalyzer, handleChartClick } from './features/chart-analyzer';
+import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
 import type { UIElements } from './ui/global-events';
 import { handleLoadChat, resetUIForTabSwitch } from './ui/tab-switch-handler';
@@ -69,6 +70,7 @@ async function init(): Promise<void> {
   initImageInput({ userInput: els.userInput, imagePreviewBar });
   initPodcast({ chatArea: els.chatArea });
   initChartAnalyzer({ chatArea: els.chatArea });
+  initRelatedPages({ chatArea: els.chatArea });
 
   on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });
   on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());
@@ -80,6 +82,11 @@ async function init(): Promise<void> {
   on(EVENTS.PODCAST_CLICK, () => handlePodcastClick());
   on(EVENTS.ADD_TTS_BUTTON, (args) => { addTTSButton((args as { msgEl: HTMLElement }).msgEl); });
   on(EVENTS.SAVE_CURRENT_CHAT, () => saveCurrentChat());
+  on(EVENTS.SHOW_RELATED_PAGES, () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.url) renderRelatedPages(tabs[0].url);
+    });
+  });
 
   initAIChat({
     chatArea: els.chatArea,
@@ -100,6 +107,11 @@ async function init(): Promise<void> {
   if (state.getConversationHistory().length > 0) {
     resetUIForTabSwitch(els, deps);
   }
+
+  // Show related pages for current tab on init
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]?.url) renderRelatedPages(tabs[0].url);
+  });
 }
 
 init();
