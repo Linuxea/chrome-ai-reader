@@ -14,6 +14,7 @@ export const EVENTS = {
   ADD_TTS_BUTTON: 'addTTSButton',
   SAVE_CURRENT_CHAT: 'saveCurrentChat',
   RENDER_HISTORY_LIST: 'renderHistoryList',
+  SHOW_RELATED_PAGES: 'showRelatedPages',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -31,6 +32,7 @@ interface EventMap {
   [EVENTS.ADD_TTS_BUTTON]: (args: { msgEl: HTMLElement }) => void;
   [EVENTS.SAVE_CURRENT_CHAT]: () => void;
   [EVENTS.RENDER_HISTORY_LIST]: () => void;
+  [EVENTS.SHOW_RELATED_PAGES]: () => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();
