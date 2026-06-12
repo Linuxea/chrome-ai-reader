@@ -4,6 +4,7 @@ import { setButtonsDisabled } from './dom-helpers';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
 import { clearImagePreviews } from '../services/ocr.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
+import { emit, EVENTS } from '../events';
 import { resetUIForTabSwitch, cleanupActiveFeatures } from './tab-switch-handler.js';
 
 export interface UIElements {
@@ -85,6 +86,7 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     await state.switchToTab(activeInfo.tabId);
     setButtonsDisabled(false);
     resetUIForTabSwitch(els, deps);
+    emit(EVENTS.SHOW_RELATED_PAGES);
   });
 
   chrome.runtime.onMessage.addListener((msg: { action?: string; forwarded?: boolean; tabId?: number; text?: string }) => {

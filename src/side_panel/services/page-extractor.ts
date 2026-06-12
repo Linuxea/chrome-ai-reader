@@ -33,11 +33,11 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
 
   // Trigger embedding in background after a delay (avoid rapid tab switches wasting calls)
   if (response.data) {
-    setTimeout(async () => {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs[0]?.url) {
-        requestEmbedding(response.data!.excerpt, tabs[0].url, response.data!.title);
-      }
+    // Capture URL now to avoid race condition if user switches tabs during the delay
+    const tab = await chrome.tabs.get(tabId);
+    const url = tab.url;
+    setTimeout(() => {
+      if (url) requestEmbedding(response.data!.excerpt, url, response.data!.title);
     }, 3000);
   }
 

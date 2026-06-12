@@ -4,6 +4,10 @@ vi.mock('../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
 }));
 
+vi.mock('../../src/side_panel/features/related-pages.js', () => ({
+  requestEmbedding: vi.fn(),
+}));
+
 vi.mock('../../src/side_panel/state.js', () => ({
   getActiveTabId: vi.fn(() => 42),
   getStateForTab: vi.fn(() => ({ pageContent: '', pageExcerpt: '', pageTitle: '' })),
@@ -13,7 +17,7 @@ vi.mock('../../src/side_panel/state.js', () => ({
 // Chrome mock via vi.hoisted so it's available at import time
 vi.hoisted(() => {
   globalThis.chrome = {
-    tabs: { sendMessage: vi.fn(() => Promise.resolve({ success: true })) },
+    tabs: { sendMessage: vi.fn(() => Promise.resolve({ success: true })), get: vi.fn(() => Promise.resolve({ url: 'https://example.com' })) },
   };
 });
 
