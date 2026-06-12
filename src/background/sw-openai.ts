@@ -73,3 +73,38 @@ export async function callSuggestQuestions(messages: ChatMessage[], port: chrome
     safePostMessage(port, { type: 'done' });
   } catch (e: unknown) { safePostMessage(port, { type: 'error', error: (e as Error).message }); }
 }
+
+export async function callEmbedding(text: string, port: chrome.runtime.Port): Promise<void> {
+  const { embeddingApiKey, embeddingApiBase, embeddingModel, apiKey, apiBase } = await chrome.storage.sync.get([
+    'embeddingApiKey', 'embeddingApiBase', 'embeddingModel', 'apiKey', 'apiBase',
+  ]) as { embeddingApiKey?: string; embeddingApiBase?: string; embeddingModel?: string; apiKey?: string; apiBase?: string };
+
+  const key = embeddingApiKey || apiKey;
+  if (!key) { safePostMessage(port, { type: 'error', error: 'No API key configured for embedding' }); return; }
+
+  const baseUrl = embeddingApiBase || apiBase || 'https://ark.cn-beijing.volces.com/api/coding/v3';
+  const model = embeddingModel || 'doubao-embedding-vision';
+
+  try {
+    const response = await fetch(`${baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({ model, input: text }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error((errorData as Record<string, { message?: string }>).error?.message || `Embedding API request failed (${response.status})`);
+    }
+
+    const data = await response.json() as { data?: { embedding: number[] }[] };
+    const embedding = data.data?.[0]?.embedding;
+    if (!embedding || embedding.length === 0) {
+      safePostMessage(port, { type: 'error', error: 'Empty embedding returned' });
+      return;
+    }
+    safePostMessage(port, { type: 'embedding', embedding });
+  } catch (e: unknown) {
+    safePostMessage(port, { type: 'error', error: (e as Error).message });
+  }
+}
