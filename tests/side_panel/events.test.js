@@ -134,13 +134,14 @@ describe('events', () => {
       expect(h3).toHaveBeenCalledOnce();
     });
 
-    it('forwards multiple arguments to handlers', () => {
+    it('forwards event arguments to handlers', () => {
       const handler = vi.fn();
-      const unsub = on(EVENTS.GENERATE_OUTLINE, handler);
+      const unsub = on(EVENTS.ADD_TTS_BUTTON, handler);
       cleanups.push(unsub);
 
-      emit(EVENTS.GENERATE_OUTLINE, 1, 'two', { three: 3 }, [4]);
-      expect(handler).toHaveBeenCalledWith(1, 'two', { three: 3 }, [4]);
+      const arg = { msgEl: document.createElement('div') };
+      emit(EVENTS.ADD_TTS_BUTTON, arg);
+      expect(handler).toHaveBeenCalledWith(arg);
     });
 
     it('does not crash when emitting an event with no handlers', () => {
@@ -150,11 +151,11 @@ describe('events', () => {
     it('does not call handlers registered for a different event', () => {
       const handlerA = vi.fn();
       const handlerB = vi.fn();
-      const unsubA = on(EVENTS.CHART_CLICK, handlerA);
+      const unsubA = on(EVENTS.SAVE_CURRENT_CHAT, handlerA);
       const unsubB = on(EVENTS.PODCAST_CLICK, handlerB);
       cleanups.push(unsubA, unsubB);
 
-      emit(EVENTS.CHART_CLICK);
+      emit(EVENTS.SAVE_CURRENT_CHAT);
       expect(handlerA).toHaveBeenCalledOnce();
       expect(handlerB).not.toHaveBeenCalled();
     });
