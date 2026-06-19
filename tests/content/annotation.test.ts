@@ -60,3 +60,68 @@ describe('content/annotation collectChunks', () => {
     expect(collectChunks(document)).toEqual([]);
   });
 });
+
+import { findAndWrap } from '../../src/content/annotation.js';
+
+describe('content/annotation findAndWrap', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('wraps an exact quote in a single text node', () => {
+    const p = document.createElement('p');
+    p.textContent = 'The model improved performance by thirty percent overall.';
+    document.body.appendChild(p);
+
+    const found = findAndWrap(p, 'thirty percent');
+    expect(found).toBe(true);
+
+    const mark = p.querySelector('mark.anno-mark');
+    expect(mark).toBeTruthy();
+    expect(mark!.textContent).toBe('thirty percent');
+  });
+
+  it('wraps a quote spanning two adjacent text nodes', () => {
+    const p = document.createElement('p');
+    p.appendChild(document.createTextNode('The model improved perfor'));
+    p.appendChild(document.createTextNode('mance by a lot.'));
+    document.body.appendChild(p);
+
+    const found = findAndWrap(p, 'performance');
+    expect(found).toBe(true);
+    expect(p.querySelector('mark.anno-mark')!.textContent).toBe('performance');
+  });
+
+  it('trims whitespace around the quote when locating', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Some sentence.   performance is great here.';
+    document.body.appendChild(p);
+
+    expect(findAndWrap(p, 'performance is great')).toBe(true);
+    expect(p.querySelector('mark.anno-mark')!.textContent).toBe('performance is great');
+  });
+
+  it('returns false and wraps nothing when quote not present', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Nothing relevant here at all in this text.';
+    document.body.appendChild(p);
+
+    expect(findAndWrap(p, 'absent phrase')).toBe(false);
+    expect(p.querySelector('mark.anno-mark')).toBeNull();
+  });
+
+  it('returns false for empty quote', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Some real content text to test against here.';
+    expect(findAndWrap(p, '')).toBe(false);
+  });
+
+  it('only wraps the first occurrence', () => {
+    const p = document.createElement('p');
+    p.textContent = 'great great great text that repeats the word great.';
+    document.body.appendChild(p);
+
+    expect(findAndWrap(p, 'great')).toBe(true);
+    expect(p.querySelectorAll('mark.anno-mark')).toHaveLength(1);
+  });
+});
