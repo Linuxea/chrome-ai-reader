@@ -125,3 +125,93 @@ describe('content/annotation findAndWrap', () => {
     expect(p.querySelectorAll('mark.anno-mark')).toHaveLength(1);
   });
 });
+
+import { createIconFor, getBubbleHost, type IconHandle } from '../../src/content/annotation.js';
+
+describe('content/annotation bubbles', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    // reset bubble host singleton between tests
+    getBubbleHost(true);
+  });
+
+  it('creates a clickable icon button with the perspective class', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Some content paragraph that is long enough to be a chunk here.';
+    document.body.appendChild(p);
+
+    const handle = createIconFor(p, {
+      id: 'a1',
+      perspective: 'critique',
+      quote: 'Some content',
+      comment: 'This is the critique comment.',
+    });
+
+    expect(handle.button.classList.contains('anno-icon')).toBe(true);
+    expect(handle.button.classList.contains('anno-icon-critique')).toBe(true);
+  });
+
+  it('opens a bubble on icon click and closes on a second outside click', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Some content paragraph that is long enough to be a chunk here.';
+    document.body.appendChild(p);
+
+    createIconFor(p, {
+      id: 'a1',
+      perspective: 'flaw',
+      quote: 'Some content',
+      comment: 'A logic flaw comment here.',
+    });
+
+    const icon = p.parentElement!.querySelector<HTMLButtonElement>('.anno-icon')!;
+
+    // jsdom: click the icon
+    icon.click();
+
+    const host = getBubbleHost();
+    const root = host.shadowRoot!;
+    const bubble = root.querySelector('.anno-bubble') as HTMLElement | null;
+    expect(bubble).toBeTruthy();
+    expect(bubble!.querySelector('.anno-comment')!.textContent).toContain('A logic flaw comment');
+
+    // click elsewhere closes it
+    document.body.click();
+    expect(root.querySelector('.anno-bubble')).toBeNull();
+  });
+
+  it('only one bubble open at a time', () => {
+    const p1 = document.createElement('p');
+    p1.textContent = 'First content paragraph long enough to be a chunk ok.';
+    const p2 = document.createElement('p');
+    p2.textContent = 'Second content paragraph long enough to be a chunk ok.';
+    document.body.appendChild(p1);
+    document.body.appendChild(p2);
+
+    const h1 = createIconFor(p1, { id: 'a1', perspective: 'critique', quote: 'First', comment: 'c1' });
+    const h2 = createIconFor(p2, { id: 'a2', perspective: 'counterpoint', quote: 'Second', comment: 'c2' });
+
+    h1.button.click();
+    const root = getBubbleHost().shadowRoot!;
+    expect(root.querySelectorAll('.anno-bubble')).toHaveLength(1);
+
+    h2.button.click();
+    expect(root.querySelectorAll('.anno-bubble')).toHaveLength(1);
+    expect(root.querySelector('.anno-comment')!.textContent).toContain('c2');
+  });
+
+  it('invokes the follow-up callback when the follow-up button is clicked', () => {
+    const onFollowUp = vi.fn();
+    const p = document.createElement('p');
+    p.textContent = 'Some content paragraph that is long enough to be a chunk here.';
+    document.body.appendChild(p);
+
+    createIconFor(p, { id: 'a1', perspective: 'flaw', quote: 'Some', comment: 'comment body' }, onFollowUp);
+    const icon = p.parentElement!.querySelector<HTMLButtonElement>('.anno-icon')!;
+    icon.click();
+
+    const root = getBubbleHost().shadowRoot!;
+    const followBtn = root.querySelector<HTMLButtonElement>('.anno-followup')!;
+    followBtn.click();
+    expect(onFollowUp).toHaveBeenCalledWith('comment body');
+  });
+});
