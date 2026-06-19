@@ -283,3 +283,97 @@ function openBubble(anchor: HTMLElement, annotation: Annotation, onFollowUp?: (c
   // stopPropagation, so opening the bubble won't immediately trigger onDocClick.
   document.addEventListener('click', onDocClick);
 }
+
+// --- Orchestration: start/clear annotation flow ---
+
+/** Active annotation state, reset between runs. */
+let _running = false;
+
+export function resetAnnotationState(): void {
+  _running = false;
+}
+
+/** Report an event back to the side panel via runtime messaging. */
+function reportToPanel(msg: { action: string; [k: string]: unknown }): void {
+  try { chrome.runtime.sendMessage(msg); } catch { /* context invalidated */ }
+}
+
+/**
+ * Begin annotating the page: collect chunks, request annotations per chunk
+ * (serially), highlight + insert icons progressively, and report progress.
+ * Reports annotationProgress / annotationDone / annotationFailed to the panel.
+ */
+export async function handleStartAnnotation(): Promise<void> {
+  if (_running) return;
+  _running = true;
+
+  const chunks = collectChunks(document);
+  const fullArticle = buildFullArticle(chunks);
+  reportToPanel({ action: 'annotationProgress', done: 0, total: chunks.length });
+
+  let produced = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    if (!_running) break;
+    const result = await requestChunk(fullArticle, i, chunks[i].text);
+    if (result === 'failed') {
+      reportToPanel({ action: 'annotationFailed', chunkIndex: i });
+    } else if (result && result.length > 0) {
+      for (const ann of result) {
+        findAndWrap(chunks[i].node, ann.quote);
+        // Even if the quote didn't match, attach the icon to the paragraph so the
+        // annotation is still reachable (degraded, per spec §6.1).
+        createIconFor(chunks[i].node, ann, (comment) =>
+          reportToPanel({ action: 'annotationFollowUp', text: comment }),
+        );
+        produced += 1;
+      }
+    }
+    reportToPanel({ action: 'annotationProgress', done: i + 1, total: chunks.length });
+  }
+
+  reportToPanel({ action: 'annotationDone', count: produced });
+  _running = false;
+}
+
+/**
+ * Request annotations for one chunk via the background 'annotation' port.
+ * Returns the parsed Annotation[] on success, or 'failed' on error/disconnect.
+ */
+function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string): Promise<Annotation[] | 'failed'> {
+  return new Promise((resolve) => {
+    const port = chrome.runtime.connect({ name: 'annotation' });
+    const cleanup = () => { port.onMessage.removeListener(onMessage); port.onDisconnect.removeListener(onDisconnect); };
+    const onMessage = (msg: Record<string, unknown>) => {
+      if (msg.type === 'annotated') {
+        cleanup();
+        port.disconnect();
+        resolve((msg.annotations as Annotation[]) || []);
+      } else if (msg.type === 'error') {
+        cleanup();
+        port.disconnect();
+        resolve('failed');
+      }
+    };
+    const onDisconnect = () => { cleanup(); resolve('failed'); };
+    port.onMessage.addListener(onMessage);
+    port.onDisconnect.addListener(onDisconnect);
+    port.postMessage({ type: 'annotate', fullArticle, chunkIndex, chunkText });
+  });
+}
+
+/** Remove every annotation artifact from the page (marks, icons, bubbles). */
+export function handleClearAnnotation(): void {
+  _running = false;
+  // Unwrap marks: replace each <mark.anno-mark> with its children.
+  document.querySelectorAll('mark.anno-mark').forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+    parent.normalize();
+  });
+  document.querySelectorAll('.anno-icon').forEach((icon) => icon.remove());
+  const host = getBubbleHost();
+  const layer = host.shadowRoot?.querySelector('.anno-bubble-layer');
+  if (layer) layer.innerHTML = '';
+}

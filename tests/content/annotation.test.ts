@@ -215,3 +215,116 @@ describe('content/annotation bubbles', () => {
     expect(onFollowUp).toHaveBeenCalledWith('comment body');
   });
 });
+
+import { handleStartAnnotation, handleClearAnnotation, resetAnnotationState } from '../../src/content/annotation.js';
+
+// --- chrome runtime mock for content orchestration ---
+let postedRuntime: { action: string; [k: string]: unknown }[] = [];
+const portListeners: ((msg: Record<string, unknown>) => void)[] = [];
+function makePort() {
+  return {
+    postMessage: vi.fn(),
+    disconnect: vi.fn(),
+    onMessage: {
+      addListener: (cb: (m: Record<string, unknown>) => void) => portListeners.push(cb),
+      removeListener: (cb: (m: Record<string, unknown>) => void) => {
+        const idx = portListeners.indexOf(cb);
+        if (idx >= 0) portListeners.splice(idx, 1);
+      },
+    },
+    onDisconnect: { addListener: vi.fn(), removeListener: vi.fn() },
+  };
+}
+vi.stubGlobal('chrome', {
+  runtime: {
+    connect: vi.fn(() => makePort()),
+    sendMessage: vi.fn((msg: Record<string, unknown>) => { postedRuntime.push(msg as { action: string }); }),
+    id: 'test-ext',
+  },
+});
+
+async function flushPorts(chunkIndex: number, annotations: Annotation[]): Promise<void> {
+  for (const cb of portListeners) {
+    cb({ type: 'annotated', chunkIndex, annotations });
+  }
+}
+
+describe('content/annotation orchestration', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    postedRuntime = [];
+    portListeners.length = 0;
+    resetAnnotationState();
+    getBubbleHost(true);
+    (chrome.runtime.connect as ReturnType<typeof vi.fn>).mockClear();
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it('collects chunks, requests each via port, and reports progress + done', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>First paragraph with enough text to qualify as a content chunk one.</p>
+        <p>Second paragraph with enough text to qualify as a content chunk two.</p>
+      </article>
+    `;
+
+    const promise = handleStartAnnotation();
+    // simulate background responses for both chunks
+    await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'First paragraph', comment: 'c1' }]);
+    await flushPorts(1, []);
+    await promise;
+
+    // progress + done reported to side panel
+    const actions = postedRuntime.map((m) => m.action);
+    expect(actions).toContain('annotationProgress');
+    expect(actions).toContain('annotationDone');
+    const done = postedRuntime.find((m) => m.action === 'annotationDone') as { count: number };
+    expect(done.count).toBe(1); // only one annotation produced
+  });
+
+  it('highlights a matching quote and inserts an icon', async () => {
+    document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
+    const promise = handleStartAnnotation();
+    await flushPorts(0, [{ id: 'a1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
+    await promise;
+    // allow microtasks
+    await new Promise((r) => setTimeout(r, 0));
+
+    const p = document.querySelector('p')!;
+    expect(p.querySelector('mark.anno-mark')).toBeTruthy();
+    expect(document.querySelector('.anno-icon')).toBeTruthy();
+  });
+
+  it('degrades gracefully when quote not found (no mark, but still no crash)', async () => {
+    document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
+    const promise = handleStartAnnotation();
+    await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'a quote that does not exist', comment: 'c' }]);
+    await promise;
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(document.querySelector('mark.anno-mark')).toBeNull();
+  });
+
+  it('clears all annotations on handleClearAnnotation', async () => {
+    document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
+    const promise = handleStartAnnotation();
+    await flushPorts(0, [{ id: 'a1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
+    await promise;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.querySelector('.anno-icon')).toBeTruthy();
+
+    handleClearAnnotation();
+    expect(document.querySelector('mark.anno-mark')).toBeNull();
+    expect(document.querySelector('.anno-icon')).toBeNull();
+    expect(getBubbleHost().shadowRoot!.querySelector('.anno-bubble')).toBeNull();
+  });
+
+  it('reports failure to side panel when a chunk errors', async () => {
+    document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
+    const promise = handleStartAnnotation();
+    for (const cb of portListeners) cb({ type: 'error', error: 'boom' });
+    await promise;
+    const actions = postedRuntime.map((m) => m.action);
+    expect(actions).toContain('annotationFailed');
+  });
+});
