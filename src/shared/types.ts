@@ -76,3 +76,30 @@ export interface PageRelation {
   record: PageRecord;
   similarity: number;
 }
+
+/**
+ * Deep annotation (深度批阅) — AI-generated deep-perspective annotations
+ * attached to sentences in the page. See
+ * docs/superpowers/specs/2026-06-20-deep-annotation-design.md
+ */
+
+/** Three deep-perspective categories. */
+export type AnnotationPerspective = 'critique' | 'counterpoint' | 'flaw';
+//                         批判质疑       反方观点        逻辑漏洞
+
+/** A single annotation on a quoted sentence. */
+export interface Annotation {
+  /** Generated client-side via crypto.randomUUID(). */
+  id: string;
+  perspective: AnnotationPerspective;
+  /** Original-sentence quote returned by the model; used for DOM matching. */
+  quote: string;
+  /** Annotation body, 1-2 sentences. */
+  comment: string;
+}
+
+/** Result of annotating one chunk. `annotations` may be empty (no worthy points). */
+export interface AnnotationResult {
+  chunkIndex: number;
+  annotations: Annotation[];
+}
