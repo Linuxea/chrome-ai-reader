@@ -327,4 +327,23 @@ describe('content/annotation orchestration', () => {
     const actions = postedRuntime.map((m) => m.action);
     expect(actions).toContain('annotationFailed');
   });
+
+  it('does not insert icons for an in-flight chunk that resolves after clear', async () => {
+    document.body.innerHTML = `<article>
+      <p>First paragraph with enough text to qualify as a content chunk one.</p>
+      <p>Second paragraph with enough text to qualify as a content chunk two.</p>
+    </article>`;
+    const promise = handleStartAnnotation();
+    // Resolve chunk 0, then clear BEFORE chunk 1 resolves.
+    await flushPorts(0, [{ id: 'a1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
+    handleClearAnnotation();
+    // Now chunk 1's port finally responds — it must not insert a late icon.
+    await flushPorts(1, [{ id: 'a2', perspective: 'critique', quote: 'Second paragraph', comment: 'c2' }]);
+    await promise;
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Only the chunk-0 mark should have existed; after clear, nothing remains.
+    expect(document.querySelectorAll('mark.anno-mark')).toHaveLength(0);
+    expect(document.querySelectorAll('.anno-icon')).toHaveLength(0);
+  });
 });

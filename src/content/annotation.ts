@@ -302,6 +302,9 @@ function reportToPanel(msg: { action: string; [k: string]: unknown }): void {
  * Begin annotating the page: collect chunks, request annotations per chunk
  * (serially), highlight + insert icons progressively, and report progress.
  * Reports annotationProgress / annotationDone / annotationFailed to the panel.
+ *
+ * Cancellation: if handleClearAnnotation runs mid-flight, in-flight ports are
+ * disconnected and results arriving after clear are dropped (no orphan icons).
  */
 export async function handleStartAnnotation(): Promise<void> {
   if (_running) return;
@@ -315,6 +318,9 @@ export async function handleStartAnnotation(): Promise<void> {
   for (let i = 0; i < chunks.length; i++) {
     if (!_running) break;
     const result = await requestChunk(fullArticle, i, chunks[i].text);
+    // Re-check after the await: a clear may have landed while this chunk was
+    // in flight. Drop the result so no icon is inserted after clear.
+    if (!_running) break;
     if (result === 'failed') {
       reportToPanel({ action: 'annotationFailed', chunkIndex: i });
     } else if (result && result.length > 0) {
@@ -331,18 +337,24 @@ export async function handleStartAnnotation(): Promise<void> {
     reportToPanel({ action: 'annotationProgress', done: i + 1, total: chunks.length });
   }
 
-  reportToPanel({ action: 'annotationDone', count: produced });
+  // Only report done if we finished naturally (not cancelled by a clear).
+  if (_running) reportToPanel({ action: 'annotationDone', count: produced });
   _running = false;
 }
+
+/** In-flight annotation ports, tracked so handleClearAnnotation can abort them. */
+const _activePorts = new Set<chrome.runtime.Port>();
 
 /**
  * Request annotations for one chunk via the background 'annotation' port.
  * Returns the parsed Annotation[] on success, or 'failed' on error/disconnect.
+ * The port is tracked in _activePorts so a mid-flight clear can disconnect it.
  */
 function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string): Promise<Annotation[] | 'failed'> {
   return new Promise((resolve) => {
     const port = chrome.runtime.connect({ name: 'annotation' });
-    const cleanup = () => { port.onMessage.removeListener(onMessage); port.onDisconnect.removeListener(onDisconnect); };
+    _activePorts.add(port);
+    const cleanup = () => { _activePorts.delete(port); port.onMessage.removeListener(onMessage); port.onDisconnect.removeListener(onDisconnect); };
     const onMessage = (msg: Record<string, unknown>) => {
       if (msg.type === 'annotated') {
         cleanup();
@@ -361,9 +373,15 @@ function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string
   });
 }
 
-/** Remove every annotation artifact from the page (marks, icons, bubbles). */
+/** Remove every annotation artifact from the page (marks, icons, bubbles).
+ *  Also aborts any in-flight annotation ports so no late icon is inserted. */
 export function handleClearAnnotation(): void {
   _running = false;
+  // Abort in-flight requests: disconnecting fires onDisconnect, which resolves
+  // each requestChunk promise with 'failed'. The orchestration loop then drops
+  // the result via its post-await _running check.
+  _activePorts.forEach((port) => { try { port.disconnect(); } catch { /* already gone */ } });
+  _activePorts.clear();
   // Unwrap marks: replace each <mark.anno-mark> with its children.
   document.querySelectorAll('mark.anno-mark').forEach((mark) => {
     const parent = mark.parentNode;

@@ -102,6 +102,21 @@ describe('sw-annotation prompt assembly', () => {
       expect(result).toEqual([]);
     });
 
+    it('falls back to Math.random-based id when crypto.randomUUID is unavailable', () => {
+      const savedRandomUUID = (globalThis.crypto as Crypto & { randomUUID?: () => string }).randomUUID;
+      // Temporarily hide randomUUID to exercise the fallback path.
+      Object.defineProperty(globalThis.crypto, 'randomUUID', { value: undefined, configurable: true });
+      try {
+        const result = parseAnnotationResponse(
+          JSON.stringify({ annotations: [{ perspective: 'critique', quote: 'q', comment: 'c' }] }),
+        );
+        expect(result).toHaveLength(1);
+        expect(result[0].id).toMatch(/^[\da-f-]{36}$/i); // fallback still produces a 36-char UUID
+      } finally {
+        Object.defineProperty(globalThis.crypto, 'randomUUID', { value: savedRandomUUID, configurable: true });
+      }
+    });
+
     it('drops annotations with invalid perspective or missing fields', () => {
       const raw = JSON.stringify({
         annotations: [

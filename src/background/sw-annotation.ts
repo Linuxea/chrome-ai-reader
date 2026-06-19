@@ -1,5 +1,5 @@
 import { safePostMessage } from './sw-utils';
-import type { Annotation, AnnotationPerspective } from '../shared/types';
+import type { Annotation, AnnotationPerspective, AnnotationResult } from '../shared/types';
 
 export const ANNOTATION_SYSTEM_PROMPT = `你是一位严谨、犀利但不刻薄的阅读批注员。你的任务是对用户提供的文章段落提供三类深度视角的批注，帮助读者看到字面之外的东西。
 
@@ -154,8 +154,8 @@ export async function annotateChunk(args: AnnotateArgs, port: chrome.runtime.Por
 
     const data = (await response.json()) as ChatCompletionResponse;
     const raw = data.choices?.[0]?.message?.content || '';
-    const annotations = parseAnnotationResponse(raw);
-    safePostMessage(port, { type: 'annotated', chunkIndex: args.chunkIndex, annotations });
+    const result: AnnotationResult = { chunkIndex: args.chunkIndex, annotations: parseAnnotationResponse(raw) };
+    safePostMessage(port, { type: 'annotated', ...result });
   } catch (e: unknown) {
     safePostMessage(port, { type: 'error', error: (e as Error).message });
   } finally {
