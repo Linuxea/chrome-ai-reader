@@ -3,6 +3,7 @@ import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
 import { handleChartVision, handleChartAnalysis, handleChartScreenshot } from './sw-chart';
 import { handleOcrParse } from './sw-ocr';
+import { annotateChunk } from './sw-annotation';
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
@@ -35,6 +36,19 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   } else if (port.name === 'embedding') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
       if (msg.type === 'embed') await callEmbedding(msg.text as string, port);
+    });
+  } else if (port.name === 'annotation') {
+    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
+      if (msg.type === 'annotate') {
+        await annotateChunk(
+          {
+            fullArticle: msg.fullArticle as string,
+            chunkIndex: msg.chunkIndex as number,
+            chunkText: msg.chunkText as string,
+          },
+          port,
+        );
+      }
     });
   }
 });
