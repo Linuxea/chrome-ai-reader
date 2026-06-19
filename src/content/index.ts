@@ -1,5 +1,6 @@
 import { handleExtract } from './page-extractor';
 import { handleDetectCharts, handleCaptureChart } from './chart-detector';
+import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS } from './annotation';
 
 chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => {
   const handlers: Record<string, (msg: unknown, sendResponse: (r?: unknown) => void) => true | void> = {
@@ -9,6 +10,19 @@ chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chr
   };
   const handler = handlers[request.action || ''];
   if (handler) return handler(request, sendResponse);
+
+  // Annotation actions are fire-and-forget (no response payload needed).
+  if (request.action === 'startAnnotation') {
+    injectAnnotationCSS();
+    handleStartAnnotation();
+    sendResponse({ ok: true });
+    return;
+  }
+  if (request.action === 'clearAnnotation') {
+    handleClearAnnotation();
+    sendResponse({ ok: true });
+    return;
+  }
 });
 
 function isContextValid(): boolean { return !!chrome.runtime?.id; }
