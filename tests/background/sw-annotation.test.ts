@@ -1,6 +1,48 @@
-import { vi, describe, it, expect } from 'vitest';
-import { buildAnnotationMessages, parseAnnotationResponse, ANNOTATION_SYSTEM_PROMPT } from '../../src/background/sw-annotation.js';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { buildAnnotationMessages, parseAnnotationResponse, ANNOTATION_SYSTEM_PROMPT, annotateChunk } from '../../src/background/sw-annotation.js';
+import { safePostMessage } from '../../src/background/sw-utils.js';
 import type { Annotation } from '../../src/shared/types';
+
+// --- Mock chrome.storage.sync (for annotateChunk config read) ---
+const annotationStore: Record<string, unknown> = {
+  apiKey: 'sk-test',
+  apiBase: 'https://api.deepseek.com',
+  modelName: 'deepseek-chat',
+};
+vi.stubGlobal('chrome', {
+  storage: {
+    sync: {
+      get(keys: string[] | string) {
+        const result: Record<string, unknown> = {};
+        const keyList = Array.isArray(keys) ? keys : [keys];
+        keyList.forEach((k) => {
+          if (annotationStore[k] !== undefined) result[k] = annotationStore[k];
+        });
+        return Promise.resolve(result);
+      },
+    },
+  },
+});
+
+// --- Mock sw-utils (vi.mock is hoisted to top of file) ---
+vi.mock('../../src/background/sw-utils.js', () => ({
+  safePostMessage: vi.fn(),
+}));
+
+// --- Mock global fetch ---
+const fetchMock = vi.fn();
+vi.stubGlobal('fetch', fetchMock);
+
+function mockPort() {
+  return {
+    postMessage: vi.fn(),
+    onDisconnect: { addListener: vi.fn(), removeListener: vi.fn() },
+  } as unknown as chrome.runtime.Port;
+}
+
+function jsonResponse(body: unknown): Response {
+  return { ok: true, status: 200, json: async () => body } as unknown as Response;
+}
 
 describe('sw-annotation prompt assembly', () => {
   describe('ANNOTATION_SYSTEM_PROMPT', () => {
@@ -78,5 +120,68 @@ describe('sw-annotation prompt assembly', () => {
       expect(parseAnnotationResponse('not json')).toEqual([]);
       expect(parseAnnotationResponse('')).toEqual([]);
     });
+  });
+});
+
+describe('sw-annotation annotateChunk', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    annotationStore.apiKey = 'sk-test';
+  });
+
+  it('posts error when apiKey missing', async () => {
+    annotationStore.apiKey = '';
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c) => (c[1] as Record<string, unknown>).type === 'error')).toBe(true);
+  });
+
+  it('posts annotated result with parsed annotations on success', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        choices: [{ message: { content: JSON.stringify({ annotations: [
+          { perspective: 'critique', quote: 'q', comment: 'c' },
+        ] }) } }],
+      }),
+    );
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 2, chunkText: 'C' }, port);
+
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const annotated = calls.find((c) => (c[1] as Record<string, unknown>).type === 'annotated');
+    expect(annotated).toBeTruthy();
+    const payload = annotated![1] as { chunkIndex: number; annotations: Annotation[] };
+    expect(payload.chunkIndex).toBe(2);
+    expect(payload.annotations).toHaveLength(1);
+    expect(payload.annotations[0].perspective).toBe('critique');
+  });
+
+  it('posts error when response not ok', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) } as unknown as Response);
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c) => (c[1] as Record<string, unknown>).type === 'error')).toBe(true);
+  });
+
+  it('posts empty annotations when model returns empty array', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ choices: [{ message: { content: JSON.stringify({ annotations: [] }) } }] }),
+    );
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const annotated = calls.find((c) => (c[1] as Record<string, unknown>).type === 'annotated');
+    expect((annotated![1] as { annotations: unknown[] }).annotations).toEqual([]);
+  });
+
+  it('registers a disconnect listener (aborts on port disconnect)', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 0, json: async () => ({}) } as unknown as Response);
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+    expect(port.onDisconnect.addListener).toHaveBeenCalled();
+    // removeListener is called in finally — cleanup happened
+    expect(port.onDisconnect.removeListener).toHaveBeenCalled();
   });
 });

@@ -104,5 +104,64 @@ function genId(): string {
       });
 }
 
+interface AnnotateArgs {
+  fullArticle: string;
+  chunkIndex: number;
+  chunkText: string;
+}
+
+interface ChatCompletionResponse {
+  choices?: { message?: { content?: string } }[];
+}
+
+/**
+ * Annotate one chunk via a non-streaming OpenAI-compatible call with JSON mode.
+ * Posts `{type:'annotated', chunkIndex, annotations}` or `{type:'error', error}` to the port.
+ * Aborts the request if the port disconnects.
+ */
+export async function annotateChunk(args: AnnotateArgs, port: chrome.runtime.Port): Promise<void> {
+  const { apiKey, apiBase, modelName } = (await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName'])) as {
+    apiKey?: string; apiBase?: string; modelName?: string;
+  };
+  if (!apiKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noApiKey' }); return; }
+
+  const baseUrl = apiBase || 'https://api.deepseek.com';
+  const controller = new AbortController();
+  const onDisconnect = () => controller.abort();
+  port.onDisconnect.addListener(onDisconnect);
+
+  try {
+    const messages = buildAnnotationMessages(args);
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: modelName || 'deepseek-chat',
+        messages,
+        stream: false,
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const msg = (errorData as Record<string, { message?: string }>)?.error?.message || `API request failed (${response.status})`;
+      safePostMessage(port, { type: 'error', error: msg });
+      return;
+    }
+
+    const data = (await response.json()) as ChatCompletionResponse;
+    const raw = data.choices?.[0]?.message?.content || '';
+    const annotations = parseAnnotationResponse(raw);
+    safePostMessage(port, { type: 'annotated', chunkIndex: args.chunkIndex, annotations });
+  } catch (e: unknown) {
+    safePostMessage(port, { type: 'error', error: (e as Error).message });
+  } finally {
+    port.onDisconnect.removeListener(onDisconnect);
+  }
+}
+
 // Re-exported for sw-annotation fetch layer (Task 3); harmless if unused in isolation tests.
 export { safePostMessage };
