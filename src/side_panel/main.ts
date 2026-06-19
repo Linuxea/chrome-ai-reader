@@ -15,6 +15,7 @@ import { renderOutlineFromJSON, outlineToMarkdown } from './features/outline';
 import { initImageInput } from './features/image-input';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
+import { initAnnotation } from './features/annotation';
 import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
 import type { UIElements } from './ui/global-events';
 import { handleLoadChat, resetUIForTabSwitch } from './ui/tab-switch-handler';
@@ -68,6 +69,10 @@ async function init(): Promise<void> {
   initImageInput({ userInput: els.userInput, imagePreviewBar });
   initPodcast({ chatArea: els.chatArea });
   initRelatedPages({ chatArea: els.chatArea });
+  const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');
+  if (annotationBtn) {
+    initAnnotation({ button: annotationBtn, userInput: els.userInput });
+  }
 
   on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });
   on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());

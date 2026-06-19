@@ -1,0 +1,5 @@
+/* 深度批阅 button reuses .action-btn styling; this file exists for future
+   annotation-specific panel styles. Intentionally minimal for v1. */
+.action-btn[data-action="annotation"] {
+  position: relative;
+}
