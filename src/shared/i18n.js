@@ -249,6 +249,16 @@ const TRANSLATIONS = {
     'related.minutesAgo': '{n}分钟前',
     'related.weekAgo': '1周前',
     'related.weeksAgo': '{n}周前',
+
+    'annotation.button': '深度批阅',
+    'annotation.buttonActive': '批阅中...（{done}/{total}）',
+    'annotation.buttonDone': '✓ 批阅完成（{n} 处）',
+    'annotation.error': '批阅失败，点击重试',
+    'annotation.critique': '批判',
+    'annotation.counterpoint': '反方',
+    'annotation.flaw': '漏洞',
+    'annotation.followUp': '在对话中追问',
+    'annotation.close': '关闭',
   },
 
   en: {
@@ -501,6 +511,16 @@ const TRANSLATIONS = {
     'related.minutesAgo': '{n} minutes ago',
     'related.weekAgo': '1 week ago',
     'related.weeksAgo': '{n} weeks ago',
+
+    'annotation.button': 'Deep Annotate',
+    'annotation.buttonActive': 'Annotating... ({done}/{total})',
+    'annotation.buttonDone': '✓ Done ({n} annotations)',
+    'annotation.error': 'Failed, click to retry',
+    'annotation.critique': 'Critique',
+    'annotation.counterpoint': 'Counterpoint',
+    'annotation.flaw': 'Flaw',
+    'annotation.followUp': 'Follow up in chat',
+    'annotation.close': 'Close',
   }
 };
 
