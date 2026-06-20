@@ -59,12 +59,13 @@ export const MARK_CLASS = 'anno-mark';
  * occurrence in <mark class="anno-mark">. Handles quotes that span multiple
  * adjacent text nodes. Leading/trailing whitespace on the quote is ignored.
  *
- * Returns true if the quote was found and wrapped; false otherwise (root left
- * unmodified).
+ * Returns the first created <mark> element on success, or null when the quote
+ * is absent/empty (root left unmodified). The mark is what callers anchor the
+ * annotation icon to, so the icon sits right next to the highlighted phrase.
  */
-export function findAndWrap(root: HTMLElement, quote: string): boolean {
+export function findAndWrap(root: HTMLElement, quote: string): HTMLElement | null {
   const q = quote.trim();
-  if (!q) return false;
+  if (!q) return null;
 
   // Gather text nodes with their cumulative offset.
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -77,11 +78,11 @@ export function findAndWrap(root: HTMLElement, quote: string): boolean {
       offset += current.nodeValue.length;
     }
   }
-  if (entries.length === 0) return false;
+  if (entries.length === 0) return null;
 
   const full = entries.map((e) => e.node.nodeValue!).join('');
   const at = full.indexOf(q);
-  if (at === -1) return false;
+  if (at === -1) return null;
   const end = at + q.length;
 
   // Build a range covering the quote and surround it. Range.surroundContents
@@ -98,7 +99,7 @@ export function findAndWrap(root: HTMLElement, quote: string): boolean {
 
   try {
     range.surroundContents(mark);
-    return true;
+    return mark;
   } catch {
     // surroundContents can throw if the quote crosses element boundaries.
     // Fall back to manual wrapping across the collected text nodes.
@@ -119,13 +120,14 @@ function locateTextNode(
   return { textNode: last.node, localOffset: last.length };
 }
 
-/** Fallback wrapper for quotes crossing element boundaries. */
+/** Fallback wrapper for quotes crossing element boundaries. Returns the first
+ *  created mark (used as the icon anchor), or null if nothing was wrapped. */
 function manualWrap(
   entries: { node: Text; start: number; length: number }[],
   at: number,
   end: number,
-): boolean {
-  let wrapped = false;
+): HTMLElement | null {
+  let firstMark: HTMLElement | null = null;
   for (const e of entries) {
     const nodeEnd = e.start + e.length;
     if (nodeEnd <= at || e.start >= end) continue; // no overlap
@@ -138,9 +140,9 @@ function manualWrap(
     middle.splitText(localEnd - localStart);
     middle.parentNode!.insertBefore(mark, middle);
     mark.appendChild(middle);
-    wrapped = true;
+    if (!firstMark) firstMark = mark;
   }
-  return wrapped;
+  return firstMark;
 }
 
 // --- Bubble rendering (Shadow-DOM isolated) ---
@@ -211,12 +213,15 @@ export interface IconHandle {
 }
 
 /**
- * Attach an annotation icon next to `node`. On click, opens a Shadow-DOM bubble
- * showing the comment; only one bubble open at a time. `onFollowUp` (optional)
- * is invoked with the comment text when the user clicks "follow up in chat".
+ * Attach an annotation icon immediately after `anchor` (typically the
+ * <mark> wrapping the quoted sentence), so the icon sits right next to the
+ * highlighted phrase rather than at the end of the paragraph. On click, opens
+ * a Shadow-DOM bubble showing the comment; only one bubble open at a time.
+ * `onFollowUp` (optional) is invoked with the comment text when the user
+ * clicks "follow up in chat".
  */
 export function createIconFor(
-  node: HTMLElement,
+  anchor: HTMLElement,
   annotation: Annotation,
   onFollowUp?: (comment: string) => void,
 ): IconHandle {
@@ -229,8 +234,8 @@ export function createIconFor(
     e.stopPropagation();
     openBubble(button, annotation, onFollowUp);
   });
-  // Place the icon immediately after the annotated node.
-  node.insertAdjacentElement('afterend', button);
+  // Place the icon immediately after the anchor (the <mark>).
+  anchor.insertAdjacentElement('afterend', button);
   return { button };
 }
 
@@ -345,10 +350,12 @@ export async function handleStartAnnotation(): Promise<void> {
       reportToPanel({ action: 'annotationFailed', chunkIndex: i });
     } else if (result && result.length > 0) {
       for (const ann of result) {
-        findAndWrap(chunks[i].node, ann.quote);
-        // Even if the quote didn't match, attach the icon to the paragraph so the
-        // annotation is still reachable (degraded, per spec §6.1).
-        createIconFor(chunks[i].node, ann, (comment) =>
+        const mark = findAndWrap(chunks[i].node, ann.quote);
+        // Anchor the icon to the highlighted phrase when possible; otherwise
+        // fall back to the paragraph so the annotation is still reachable
+        // (degraded, per spec §6.1).
+        const anchor = mark ?? chunks[i].node;
+        createIconFor(anchor, ann, (comment) =>
           reportToPanel({ action: 'annotationFollowUp', text: comment }),
         );
         produced += 1;

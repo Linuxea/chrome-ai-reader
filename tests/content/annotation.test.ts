@@ -74,11 +74,9 @@ describe('content/annotation findAndWrap', () => {
     document.body.appendChild(p);
 
     const found = findAndWrap(p, 'thirty percent');
-    expect(found).toBe(true);
-
-    const mark = p.querySelector('mark.anno-mark');
-    expect(mark).toBeTruthy();
-    expect(mark!.textContent).toBe('thirty percent');
+    expect(found).toBeInstanceOf(HTMLElement);
+    expect(found!.className).toBe('anno-mark');
+    expect(found!.textContent).toBe('thirty percent');
   });
 
   it('wraps a quote spanning two adjacent text nodes', () => {
@@ -88,7 +86,7 @@ describe('content/annotation findAndWrap', () => {
     document.body.appendChild(p);
 
     const found = findAndWrap(p, 'performance');
-    expect(found).toBe(true);
+    expect(found).toBeInstanceOf(HTMLElement);
     expect(p.querySelector('mark.anno-mark')!.textContent).toBe('performance');
   });
 
@@ -97,23 +95,23 @@ describe('content/annotation findAndWrap', () => {
     p.textContent = 'Some sentence.   performance is great here.';
     document.body.appendChild(p);
 
-    expect(findAndWrap(p, 'performance is great')).toBe(true);
+    expect(findAndWrap(p, 'performance is great')).toBeInstanceOf(HTMLElement);
     expect(p.querySelector('mark.anno-mark')!.textContent).toBe('performance is great');
   });
 
-  it('returns false and wraps nothing when quote not present', () => {
+  it('returns null and wraps nothing when quote not present', () => {
     const p = document.createElement('p');
     p.textContent = 'Nothing relevant here at all in this text.';
     document.body.appendChild(p);
 
-    expect(findAndWrap(p, 'absent phrase')).toBe(false);
+    expect(findAndWrap(p, 'absent phrase')).toBeNull();
     expect(p.querySelector('mark.anno-mark')).toBeNull();
   });
 
   it('returns false for empty quote', () => {
     const p = document.createElement('p');
     p.textContent = 'Some real content text to test against here.';
-    expect(findAndWrap(p, '')).toBe(false);
+    expect(findAndWrap(p, '')).toBeNull();
   });
 
   it('only wraps the first occurrence', () => {
@@ -121,7 +119,7 @@ describe('content/annotation findAndWrap', () => {
     p.textContent = 'great great great text that repeats the word great.';
     document.body.appendChild(p);
 
-    expect(findAndWrap(p, 'great')).toBe(true);
+    expect(findAndWrap(p, 'great')).toBeInstanceOf(HTMLElement);
     expect(p.querySelectorAll('mark.anno-mark')).toHaveLength(1);
   });
 });
@@ -149,6 +147,22 @@ describe('content/annotation bubbles', () => {
 
     expect(handle.button.classList.contains('anno-icon')).toBe(true);
     expect(handle.button.classList.contains('anno-icon-critique')).toBe(true);
+  });
+
+  it('places the icon immediately after the highlighted <mark>, not at paragraph end', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Before highlight. The quoted phrase here. After highlight trailing text.';
+    document.body.appendChild(p);
+
+    // Wrap a phrase in the middle of the paragraph.
+    const mark = findAndWrap(p, 'The quoted phrase');
+    expect(mark).toBeInstanceOf(HTMLElement);
+    // Anchor the icon to the mark (as the orchestration does).
+    createIconFor(mark!, { id: 'a1', perspective: 'critique', quote: 'The quoted phrase', comment: 'c' });
+
+    // The icon must be the mark's immediate next sibling — i.e. the icon sits
+    // right after "The quoted phrase", not appended after the whole paragraph.
+    expect(mark!.nextElementSibling).toBe(document.querySelector('.anno-icon'));
   });
 
   it('opens a bubble on icon click and closes on a second outside click', () => {
