@@ -220,16 +220,21 @@ import { handleStartAnnotation, handleClearAnnotation, resetAnnotationState } fr
 
 // --- chrome runtime mock for content orchestration ---
 let postedRuntime: { action: string; [k: string]: unknown }[] = [];
-const portListeners: ((msg: Record<string, unknown>) => void)[] = [];
+// Each port keeps its OWN listener list (mirrors real SW: a response is sent
+// back only on the port that requested it). `portListenerSets` is indexed by
+// connection order, so flushPorts(k, ...) targets the k-th opened port.
+let portListenerSets: ((msg: Record<string, unknown>) => void)[][] = [];
 function makePort() {
+  const listeners: ((m: Record<string, unknown>) => void)[] = [];
+  portListenerSets.push(listeners);
   return {
     postMessage: vi.fn(),
     disconnect: vi.fn(),
     onMessage: {
-      addListener: (cb: (m: Record<string, unknown>) => void) => portListeners.push(cb),
+      addListener: (cb: (m: Record<string, unknown>) => void) => listeners.push(cb),
       removeListener: (cb: (m: Record<string, unknown>) => void) => {
-        const idx = portListeners.indexOf(cb);
-        if (idx >= 0) portListeners.splice(idx, 1);
+        const idx = listeners.indexOf(cb);
+        if (idx >= 0) listeners.splice(idx, 1);
       },
     },
     onDisconnect: { addListener: vi.fn(), removeListener: vi.fn() },
@@ -243,17 +248,25 @@ vi.stubGlobal('chrome', {
   },
 });
 
+/** Deliver an `annotated` message to the k-th opened port's listeners only. */
 async function flushPorts(chunkIndex: number, annotations: Annotation[]): Promise<void> {
-  for (const cb of portListeners) {
+  const set = portListenerSets[chunkIndex] || [];
+  for (const cb of set) {
     cb({ type: 'annotated', chunkIndex, annotations });
   }
+}
+
+/** Deliver an `error` message to the k-th opened port's listeners only. */
+function flushError(chunkIndex: number): void {
+  const set = portListenerSets[chunkIndex] || [];
+  for (const cb of set) cb({ type: 'error', error: 'boom' });
 }
 
 describe('content/annotation orchestration', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     postedRuntime = [];
-    portListeners.length = 0;
+    portListenerSets = [];
     resetAnnotationState();
     getBubbleHost(true);
     (chrome.runtime.connect as ReturnType<typeof vi.fn>).mockClear();
@@ -322,7 +335,7 @@ describe('content/annotation orchestration', () => {
   it('reports failure to side panel when a chunk errors', async () => {
     document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
     const promise = handleStartAnnotation();
-    for (const cb of portListeners) cb({ type: 'error', error: 'boom' });
+    flushError(0);
     await promise;
     const actions = postedRuntime.map((m) => m.action);
     expect(actions).toContain('annotationFailed');
@@ -345,5 +358,27 @@ describe('content/annotation orchestration', () => {
     // Only the chunk-0 mark should have existed; after clear, nothing remains.
     expect(document.querySelectorAll('mark.anno-mark')).toHaveLength(0);
     expect(document.querySelectorAll('.anno-icon')).toHaveLength(0);
+  });
+
+  it('annotates multiple chunks concurrently (bounded pool) and aggregates counts', async () => {
+    document.body.innerHTML = `<article>
+      <p>Chunk zero paragraph with enough text to qualify as content one.</p>
+      <p>Chunk one paragraph with enough text to qualify as content two.</p>
+      <p>Chunk two paragraph with enough text to qualify as content three.</p>
+      <p>Chunk three paragraph with enough text to qualify as content four.</p>
+    </article>`;
+    const promise = handleStartAnnotation();
+    // All four chunks are requested concurrently; flush them in any order.
+    await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'Chunk zero', comment: 'c' }]);
+    await flushPorts(1, [{ id: 'a2', perspective: 'flaw', quote: 'Chunk one', comment: 'c' }]);
+    await flushPorts(2, [{ id: 'a3', perspective: 'counterpoint', quote: 'Chunk two', comment: 'c' }]);
+    await flushPorts(3, []); // no annotations on chunk 3
+    await promise;
+    await new Promise((r) => setTimeout(r, 0));
+
+    // 3 annotations produced across the 4 chunks.
+    const done = postedRuntime.find((m) => m.action === 'annotationDone') as { count: number };
+    expect(done.count).toBe(3);
+    expect(document.querySelectorAll('.anno-icon')).toHaveLength(3);
   });
 });

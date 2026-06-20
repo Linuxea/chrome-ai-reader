@@ -151,7 +151,7 @@ let _bubbleHost: HTMLElement | null = null;
 const BUBBLE_CSS = `
   .anno-bubble {
     position: absolute;
-    max-width: 320px;
+    width: 320px;
     background: #fff;
     color: #1f2329;
     border: 1px solid #e5e6eb;
@@ -159,12 +159,14 @@ const BUBBLE_CSS = `
     box-shadow: 0 6px 24px rgba(0,0,0,0.14);
     font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     overflow: hidden;
+    pointer-events: auto;
+    box-sizing: border-box;
   }
   .anno-bubble-header { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #f0f1f3; font-weight: 600; }
   .anno-bubble-label { flex: 1; }
   .anno-bubble-close { background: none; border: none; cursor: pointer; font-size: 14px; color: #86909c; padding: 0 2px; }
-  .anno-comment { padding: 10px 12px; color: #1f2329; }
-  .anno-followup { display: block; width: 100%; text-align: left; border: none; border-top: 1px solid #f0f1f3; background: #f7f8fa; color: #165dff; cursor: pointer; padding: 8px 12px; font: inherit; }
+  .anno-comment { padding: 10px 12px; color: #1f2329; word-break: break-word; }
+  .anno-followup { display: block; width: 100%; text-align: left; border: none; border-top: 1px solid #f0f1f3; background: #f7f8fa; color: #165dff; cursor: pointer; padding: 8px 12px; font: inherit; box-sizing: border-box; }
   .anno-followup:hover { background: #eef2ff; }
   .anno-bubble.critique .anno-bubble-header { background: #fff7e6; }
   .anno-bubble.counterpoint .anno-bubble-header { background: #e8f7ef; }
@@ -184,10 +186,17 @@ export function getBubbleHost(reset = false): HTMLElement {
 
   const host = document.createElement('div');
   host.id = 'anno-bubble-host';
-  host.style.position = 'fixed';
+  // Zero-size absolute container anchored at the document origin. Bubbles use
+  // position:absolute with DOCUMENT coordinates (getBoundingClientRect +
+  // scroll offset), so they scroll naturally with the page — no scroll
+  // listener needed. pointer-events:none on the host lets clicks pass through;
+  // each .anno-bubble re-enables pointer-events:auto (see BUBBLE_CSS).
+  host.style.position = 'absolute';
   host.style.zIndex = '2147483647';
   host.style.top = '0';
   host.style.left = '0';
+  host.style.width = '0';
+  host.style.height = '0';
   host.style.pointerEvents = 'none';
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${BUBBLE_CSS}</style><div class="anno-bubble-layer" part="layer"></div>`;
@@ -248,10 +257,13 @@ function openBubble(anchor: HTMLElement, annotation: Annotation, onFollowUp?: (c
   // Set comment text safely (avoid HTML injection).
   (bubble.querySelector('.anno-comment') as HTMLElement).textContent = annotation.comment;
 
-  // Position roughly below the anchor.
+  // Position below the anchor using DOCUMENT coordinates. Because the host is
+  // position:absolute at the document origin, absolute left/top here are
+  // document-relative — so the bubble scrolls naturally with the page.
   const rect = anchor.getBoundingClientRect();
-  bubble.style.left = `${Math.max(8, rect.left)}px`;
-  bubble.style.top = `${rect.bottom + 6}px`;
+  const left = Math.max(8, Math.min(rect.left + window.scrollX, document.documentElement.scrollWidth - 320 - 8));
+  bubble.style.left = `${left}px`;
+  bubble.style.top = `${rect.bottom + window.scrollY + 6}px`;
   layer.appendChild(bubble);
 
   _activeAnchor = anchor;
@@ -298,9 +310,13 @@ function reportToPanel(msg: { action: string; [k: string]: unknown }): void {
   try { chrome.runtime.sendMessage(msg); } catch { /* context invalidated */ }
 }
 
+/** Max number of chunks annotated concurrently. Caps API load + DOM churn. */
+const CONCURRENCY = 4;
+
 /**
  * Begin annotating the page: collect chunks, request annotations per chunk
- * (serially), highlight + insert icons progressively, and report progress.
+ * with bounded concurrency (CONCURRENCY at a time), highlight + insert icons
+ * progressively, and report progress.
  * Reports annotationProgress / annotationDone / annotationFailed to the panel.
  *
  * Cancellation: if handleClearAnnotation runs mid-flight, in-flight ports are
@@ -312,15 +328,19 @@ export async function handleStartAnnotation(): Promise<void> {
 
   const chunks = collectChunks(document);
   const fullArticle = buildFullArticle(chunks);
-  reportToPanel({ action: 'annotationProgress', done: 0, total: chunks.length });
+  const total = chunks.length;
+  reportToPanel({ action: 'annotationProgress', done: 0, total });
 
   let produced = 0;
-  for (let i = 0; i < chunks.length; i++) {
-    if (!_running) break;
+  let completed = 0;
+
+  // One task per chunk; the pool runs up to CONCURRENCY concurrently.
+  const runOne = async (i: number): Promise<void> => {
+    if (!_running) return;
     const result = await requestChunk(fullArticle, i, chunks[i].text);
-    // Re-check after the await: a clear may have landed while this chunk was
-    // in flight. Drop the result so no icon is inserted after clear.
-    if (!_running) break;
+    // A clear may have landed while this chunk was in flight — drop the result
+    // so no icon is inserted after clear.
+    if (!_running) return;
     if (result === 'failed') {
       reportToPanel({ action: 'annotationFailed', chunkIndex: i });
     } else if (result && result.length > 0) {
@@ -334,8 +354,21 @@ export async function handleStartAnnotation(): Promise<void> {
         produced += 1;
       }
     }
-    reportToPanel({ action: 'annotationProgress', done: i + 1, total: chunks.length });
-  }
+    completed += 1;
+    reportToPanel({ action: 'annotationProgress', done: completed, total });
+  };
+
+  // Bounded-concurrency pool: feed indices into at most CONCURRENCY workers.
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (_running) {
+      const i = nextIndex++;
+      if (i >= chunks.length) return;
+      await runOne(i);
+    }
+  };
+  const workers = Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker);
+  await Promise.all(workers);
 
   // Only report done if we finished naturally (not cancelled by a clear).
   if (_running) reportToPanel({ action: 'annotationDone', count: produced });
