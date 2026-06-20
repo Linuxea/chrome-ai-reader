@@ -8,6 +8,14 @@ type SendToAIFn = (text: string, displayText: string, retryQuote?: string, ocrCo
 
 let _sendToAI: SendToAIFn;
 
+/**
+ * Actions that handleQuickAction knows how to run as a quick chat action
+ * (each maps to a prompt sent to the AI). Other `.action-btn` clicks (e.g.
+ * 'podcast' handled above, 'annotation' handled by its own feature) must be
+ * ignored here, otherwise sendToAI would be called with an undefined prompt.
+ */
+const KNOWN_ACTIONS = new Set(['summarize', 'translate', 'keyInfo']);
+
 export function initQuickActionHandler({ sendToAI }: { sendToAI: SendToAIFn }): void {
   _sendToAI = sendToAI;
 }
@@ -19,6 +27,12 @@ export async function handleQuickAction(action: string): Promise<void> {
     emit(EVENTS.PODCAST_CLICK);
     return;
   }
+
+  // Unknown action: the click is handled elsewhere (e.g. the annotation
+  // feature wires its own listener). Bail out so we never call sendToAI with
+  // an undefined prompt — that would push a malformed
+  // {role:'user', content:undefined} into the chat history.
+  if (!KNOWN_ACTIONS.has(action)) return;
 
   const imageError = validateImageState();
   if (imageError) {

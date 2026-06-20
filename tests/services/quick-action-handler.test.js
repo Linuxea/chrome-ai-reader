@@ -67,6 +67,16 @@ describe('handleQuickAction', () => {
     expect(sendToAI).not.toHaveBeenCalled();
   });
 
+  it('does NOT call sendToAI for an unknown action (e.g. annotation button)', async () => {
+    // Regression: every .action-btn gets handleQuickAction bound to its click,
+    // but only summarize/translate/keyInfo/podcast are real quick actions. An
+    // unknown action (like 'annotation') must not call sendToAI with an
+    // undefined prompt — that would push {role:'user', content:undefined} into
+    // the chat history and produce a malformed API request.
+    await handleQuickAction('annotation');
+    expect(sendToAI).not.toHaveBeenCalled();
+  });
+
   it('shows error when OCR is running', async () => {
     ocrMock.validateImageState.mockReturnValue('[error.ocrRunning]');
     await handleQuickAction('summarize');
