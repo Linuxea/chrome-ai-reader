@@ -1,5 +1,13 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
+// Mock global-events so we can assert the follow-up reuses updateQuotePreview.
+// vi.hoisted ensures the mock fn exists before vi.mock's factory runs (vi.mock
+// is hoisted above imports).
+const { updateQuotePreview } = vi.hoisted(() => ({ updateQuotePreview: vi.fn() }));
+vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
+  updateQuotePreview,
+}));
+
 // chrome mock
 let runtimeListeners: ((msg: Record<string, unknown>) => void)[] = [];
 const tabsQuery = vi.fn();
@@ -69,15 +77,37 @@ describe('side_panel/features/annotation', () => {
     expect(__getAnnotationState()).toBe('error');
   });
 
-  it('fills the input with the comment on annotationFollowUp', () => {
+  it('on annotationFollowUp: shows the source quote via updateQuotePreview and fills the comment into the input', () => {
+    updateQuotePreview.mockClear();
     const input = document.createElement('textarea');
     input.id = 'userInput';
     document.body.appendChild(input);
+    const quoteText = document.createElement('span');
+    quoteText.id = 'quoteText';
+    const quotePreview = document.createElement('div');
+    quotePreview.id = 'quotePreview';
+    document.body.append(quoteText, quotePreview);
+
     initAnnotation({
       button: document.getElementById('annotationBtn') as HTMLButtonElement,
       userInput: input,
+      quoteText,
+      quotePreview,
     });
-    fireRuntime({ action: 'annotationFollowUp', text: 'follow up on this' });
-    expect(input.value).toContain('follow up on this');
+
+    fireRuntime({
+      action: 'annotationFollowUp',
+      quote: '90% 以上代码由 AI 辅助编写',
+      comment: '这里的水分在于基线未说明',
+    });
+
+    // The annotated SOURCE sentence is shown as the quote preview (same UI as
+    // the normal quote feature), so the next send attaches it as context.
+    expect(updateQuotePreview).toHaveBeenCalledTimes(1);
+    const [elsArg, textArg] = updateQuotePreview.mock.calls[0];
+    expect(elsArg.quotePreview).toBe(quotePreview);
+    expect(textArg).toBe('90% 以上代码由 AI 辅助编写');
+    // The AI COMMENT goes into the input for follow-up.
+    expect(input.value).toContain('这里的水分在于基线未说明');
   });
 });

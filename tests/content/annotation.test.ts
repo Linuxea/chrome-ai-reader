@@ -219,14 +219,17 @@ describe('content/annotation bubbles', () => {
     p.textContent = 'Some content paragraph that is long enough to be a chunk here.';
     document.body.appendChild(p);
 
-    createIconFor(p, { id: 'a1', perspective: 'flaw', quote: 'Some', comment: 'comment body' }, onFollowUp);
+    const ann = { id: 'a1', perspective: 'flaw' as const, quote: 'Some', comment: 'comment body' };
+    createIconFor(p, ann, onFollowUp);
     const icon = p.parentElement!.querySelector<HTMLButtonElement>('.anno-icon')!;
     icon.click();
 
     const root = getBubbleHost().shadowRoot!;
     const followBtn = root.querySelector<HTMLButtonElement>('.anno-followup')!;
     followBtn.click();
-    expect(onFollowUp).toHaveBeenCalledWith('comment body');
+    // The callback receives the full annotation (quote + comment), so the
+    // panel can show the source sentence as the quote preview.
+    expect(onFollowUp).toHaveBeenCalledWith(ann);
   });
 });
 

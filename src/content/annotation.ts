@@ -217,13 +217,13 @@ export interface IconHandle {
  * <mark> wrapping the quoted sentence), so the icon sits right next to the
  * highlighted phrase rather than at the end of the paragraph. On click, opens
  * a Shadow-DOM bubble showing the comment; only one bubble open at a time.
- * `onFollowUp` (optional) is invoked with the comment text when the user
- * clicks "follow up in chat".
+ * `onFollowUp` (optional) is invoked with the full annotation (quote +
+ * comment) when the user clicks "follow up in chat".
  */
 export function createIconFor(
   anchor: HTMLElement,
   annotation: Annotation,
-  onFollowUp?: (comment: string) => void,
+  onFollowUp?: (annotation: Annotation) => void,
 ): IconHandle {
   const button = document.createElement('button');
   button.type = 'button';
@@ -242,7 +242,7 @@ export function createIconFor(
 /** The icon anchor currently owning an open bubble (for outside-click guards). */
 let _activeAnchor: HTMLElement | null = null;
 
-function openBubble(anchor: HTMLElement, annotation: Annotation, onFollowUp?: (comment: string) => void): void {
+function openBubble(anchor: HTMLElement, annotation: Annotation, onFollowUp?: (annotation: Annotation) => void): void {
   const host = getBubbleHost();
   const layer = host.shadowRoot!.querySelector('.anno-bubble-layer')!;
   // Close any existing bubble (only one at a time).
@@ -292,7 +292,7 @@ function openBubble(anchor: HTMLElement, annotation: Annotation, onFollowUp?: (c
   });
   (bubble.querySelector('.anno-followup') as HTMLElement).addEventListener('click', (ev) => {
     ev.stopPropagation();
-    onFollowUp?.(annotation.comment);
+    onFollowUp?.(annotation);
     close();
   });
   // Attach synchronously so a subsequent outside click (e.g. document.body.click()
@@ -355,8 +355,8 @@ export async function handleStartAnnotation(): Promise<void> {
         // fall back to the paragraph so the annotation is still reachable
         // (degraded, per spec §6.1).
         const anchor = mark ?? chunks[i].node;
-        createIconFor(anchor, ann, (comment) =>
-          reportToPanel({ action: 'annotationFollowUp', text: comment }),
+        createIconFor(anchor, ann, (a) =>
+          reportToPanel({ action: 'annotationFollowUp', quote: a.quote, comment: a.comment }),
         );
         produced += 1;
       }

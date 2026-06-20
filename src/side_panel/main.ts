@@ -71,7 +71,12 @@ async function init(): Promise<void> {
   initRelatedPages({ chatArea: els.chatArea });
   const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');
   if (annotationBtn) {
-    initAnnotation({ button: annotationBtn, userInput: els.userInput });
+    initAnnotation({
+      button: annotationBtn,
+      userInput: els.userInput,
+      quoteText: els.quoteText,
+      quotePreview: els.quotePreview,
+    });
   }
 
   on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });

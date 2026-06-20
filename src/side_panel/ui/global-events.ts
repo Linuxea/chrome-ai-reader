@@ -28,7 +28,11 @@ export interface GlobalEventDeps {
   stopTTS: () => void;
 }
 
-export function updateQuotePreview(els: UIElements, text: string): void {
+/** Subset of UIElements that updateQuotePreview touches. Accepting a Pick lets
+ *  callers (e.g. the annotation feature) pass just these two elements. */
+type QuotePreviewEls = Pick<UIElements, 'quoteText' | 'quotePreview'>;
+
+export function updateQuotePreview(els: QuotePreviewEls, text: string): void {
   state.setSelectedText(text);
   if (text) {
     const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
