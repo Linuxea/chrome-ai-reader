@@ -364,16 +364,47 @@ describe('initRelatedPages', () => {
     expect(panel.querySelector('.related-badge')).not.toBeNull();
   });
 
-  it('toggles collapse on click', () => {
+  it('starts collapsed and toggles on click', () => {
     document.body.innerHTML = '<div id="chatArea"></div>';
     initRelatedPages({ chatArea: document.getElementById('chatArea') });
     const btn = document.querySelector('.related-toggle');
     const list = document.getElementById('relatedList');
+    // Initial state: collapsed (no content yet).
+    expect(list.classList.contains('collapsed')).toBe(true);
+    // First click: expand.
+    btn.click();
     expect(list.classList.contains('collapsed')).toBe(false);
+    // Second click: collapse again.
     btn.click();
     expect(list.classList.contains('collapsed')).toBe(true);
-    btn.click();
+  });
+
+  it('auto-expands on results and auto-collapses on empty/error/disabled', async () => {
+    document.body.innerHTML = '<div id="chatArea"></div>';
+    initRelatedPages({ chatArea: document.getElementById('chatArea') });
+    const list = document.getElementById('relatedList');
+
+    // empty → collapsed
+    store.local.pageRecords = [];
+    await renderRelatedPages('https://example.com');
+    expect(__internals.getState().status).toBe('empty');
+    expect(list.classList.contains('collapsed')).toBe(true);
+
+    // results → expanded
+    store.sync.embeddingThreshold = 0.5;
+    store.local.pageRecords = [
+      { url: 'https://example.com', normalizedUrl: 'https://example.com', id: '1', title: 'Current', excerpt: 'c', embedding: [1, 0, 0], timestamp: Date.now() },
+      { url: 'https://other.com', normalizedUrl: 'https://other.com', id: '2', title: 'Other', excerpt: 'o', embedding: [1, 0.1, 0], timestamp: Date.now() },
+    ];
+    await renderRelatedPages('https://example.com');
+    expect(__internals.getState().status).toBe('results');
     expect(list.classList.contains('collapsed')).toBe(false);
+
+    // disabled → collapsed
+    store.sync.embeddingEnabled = false;
+    await renderRelatedPages('https://example.com');
+    expect(__internals.getState().status).toBe('disabled');
+    expect(list.classList.contains('collapsed')).toBe(true);
   });
 });
 

@@ -358,6 +358,9 @@ function renderState(): void {
     default:
       break;
   }
+  // All non-results states are auto-collapsed to keep the panel unobtrusive
+  // when there's nothing to read. See applyAutoCollapse().
+  applyAutoCollapse();
 }
 
 function stateMessageHTML(title: string, hint: string): string {
@@ -380,6 +383,39 @@ function bindRetry(): void {
       if (lastRenderedUrl) void renderRelatedPagesByNormalized(lastRenderedUrl);
     });
   }
+}
+
+// --- Collapse control ------------------------------------------------------
+
+/**
+ * Collapsed-state setter. Centralizes the DOM updates (list class, toggle
+ * button glyph, aria-label) so callers don't drift.
+ *
+ * Auto-collapse policy: the panel collapses whenever there is nothing useful
+ * to show (loading / empty / error / disabled / not-configured) and expands
+ * only when results are available. The user can still toggle manually — but
+ * the next renderRelatedPages() will reapply the policy based on the new
+ * status, which matches the "show me content, hide the chrome" intent.
+ */
+function setCollapsed(collapsed: boolean): void {
+  if (!panelEl) return;
+  const listContainer = panelEl.querySelector('.related-list') as HTMLElement | null;
+  const toggleBtn = panelEl.querySelector('.related-toggle') as HTMLButtonElement | null;
+  if (!listContainer || !toggleBtn) return;
+  if (collapsed) {
+    listContainer.classList.add('collapsed');
+    toggleBtn.textContent = '▼';
+    toggleBtn.setAttribute('aria-label', t('related.toggleExpanded'));
+  } else {
+    listContainer.classList.remove('collapsed');
+    toggleBtn.textContent = '▲';
+    toggleBtn.setAttribute('aria-label', t('related.toggleCollapsed'));
+  }
+}
+
+/** Apply the auto-collapse policy based on the current status. */
+function applyAutoCollapse(): void {
+  setCollapsed(state.status !== 'results');
 }
 
 /**
@@ -414,7 +450,7 @@ async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<vo
   state.errorKey = undefined;
   state.errorMessage = undefined;
   state.status = 'loading';
-  renderState();
+  renderState(); // also auto-collapses
 
   try {
     const relations = await findRelatedPages(normalizedUrl);
@@ -424,6 +460,7 @@ async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<vo
     if (relations.length === 0) {
       state.status = 'empty';
       listEl.innerHTML = `<div class="related-empty">${escapeHtml(t('related.empty'))}</div>`;
+      applyAutoCollapse(); // empty → collapse
       return;
     }
 
@@ -448,10 +485,11 @@ async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<vo
         if (url) chrome.tabs.create({ url });
       });
     });
+    applyAutoCollapse(); // results → expand
   } catch (e) {
     state.status = 'error';
     state.errorMessage = (e as Error).message;
-    renderState();
+    renderState(); // also auto-collapses
   }
 }
 
@@ -492,12 +530,17 @@ export function initRelatedPages(deps: RelatedPagesDeps): void {
   listEl = panelEl.querySelector('#relatedList');
   badgeEl = panelEl.querySelector('.related-badge');
 
-  const toggleBtn = panelEl.querySelector('.related-toggle') as HTMLButtonElement;
-  const listContainer = panelEl.querySelector('.related-list') as HTMLElement;
+  // Initial state is empty (no records yet) — start collapsed so the panel
+  // doesn't claim side-panel space until there's something to show.
+  setCollapsed(true);
+
+  // Capture panel locally so the click handler doesn't read the module-level
+  // `panelEl` (which TS narrowing can't carry into the closure).
+  const panel = panelEl;
+  const toggleBtn = panel.querySelector('.related-toggle') as HTMLButtonElement;
   toggleBtn.addEventListener('click', () => {
-    const collapsed = listContainer.classList.toggle('collapsed');
-    toggleBtn.textContent = collapsed ? '▼' : '▲';
-    toggleBtn.setAttribute('aria-label', collapsed ? t('related.toggleExpanded') : t('related.toggleCollapsed'));
+    const listContainer = panel.querySelector('.related-list') as HTMLElement;
+    setCollapsed(!listContainer.classList.contains('collapsed'));
   });
 
   // Drop legacy records (no normalizedUrl) on first init — clean rebuild.
