@@ -249,16 +249,19 @@ async function storePageRecord(record: Omit<PageRecord, 'id' | 'timestamp'>): Pr
 
   // Auto-refresh the panel so the user sees the result without having to
   // switch tabs. Debounced so a burst of extractions doesn't thrash the DOM.
-  scheduleAutoRefresh(record.normalizedUrl);
+  // Note: we refresh the CURRENTLY displayed URL (lastRenderedUrl), not the
+  // stored record's URL — the new record may be similar to whatever page the
+  // user is currently viewing, so the list must be recomputed either way.
+  // This also ensures the badge clears promptly instead of staying lit.
+  scheduleAutoRefresh();
 }
 
-function scheduleAutoRefresh(normalizedUrl: string): void {
+function scheduleAutoRefresh(): void {
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
-    // Only re-render if the user is still on the same page.
-    if (lastRenderedUrl === normalizedUrl) {
-      void renderRelatedPagesByNormalized(normalizedUrl);
+    if (lastRenderedUrl) {
+      void renderRelatedPagesByNormalized(lastRenderedUrl);
     }
   }, REFRESH_DEBOUNCE_MS);
 }

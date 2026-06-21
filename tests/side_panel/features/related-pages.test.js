@@ -447,7 +447,7 @@ describe('renderRelatedPages', () => {
 });
 
 describe('auto-refresh after storePageRecord', () => {
-  it('does NOT auto-refresh when the stored record is for a different URL', async () => {
+  it('auto-refreshes the current view even when the stored record is for a different URL', async () => {
     vi.useFakeTimers();
     document.body.innerHTML = '<div id="chatArea"></div>';
     initRelatedPages({ chatArea: document.getElementById('chatArea') });
@@ -461,8 +461,9 @@ describe('auto-refresh after storePageRecord', () => {
     expect(__internals.getState().status).toBe('empty');
     expect(document.querySelectorAll('.related-item').length).toBe(0);
 
-    // Storing a record for a DIFFERENT page should not trigger a re-render
-    // (user is still on https://example.com).
+    // Storing a record for a DIFFERENT page should still refresh the current
+    // view — the new page may be similar to what the user is viewing, so the
+    // list must be recomputed. The badge must also clear.
     const port = mockPort();
     chrome.runtime.connect.mockReturnValue(port);
     const promise = requestEmbedding('a'.repeat(200), 'https://other.com', 'Other');
@@ -470,11 +471,16 @@ describe('auto-refresh after storePageRecord', () => {
     await port._listeners.message({ type: 'embedding', embedding: [1, 0.1, 0] });
     await promise;
 
-    // Fast-forward past the debounce window — panel should still be empty
-    // because the auto-refresh URL (other.com) != lastRenderedUrl (example.com).
+    // Badge lit by storePageRecord.
+    expect(__internals.getState().hasNewRelations).toBe(true);
+
+    // After the debounce window, the current view is refreshed and the
+    // newly-stored page appears as a related item; the badge clears.
     await vi.advanceTimersByTimeAsync(500);
-    expect(__internals.getState().status).toBe('empty');
-    expect(document.querySelectorAll('.related-item').length).toBe(0);
+    expect(__internals.getState().status).toBe('results');
+    expect(__internals.getState().hasNewRelations).toBe(false);
+    expect(document.querySelectorAll('.related-item').length).toBe(1);
+    expect(document.querySelector('.related-item').dataset.url).toBe('https://other.com');
 
     vi.useRealTimers();
   });
@@ -494,8 +500,7 @@ describe('auto-refresh after storePageRecord', () => {
     await renderRelatedPages('https://example.com');
     expect(document.querySelectorAll('.related-item').length).toBe(1);
 
-    // Re-store the current URL — the auto-refresh URL will match lastRenderedUrl,
-    // triggering a debounced re-render that refreshes the list.
+    // Re-store the current URL — the auto-refresh fires and refreshes the list.
     const port = mockPort();
     chrome.runtime.connect.mockReturnValue(port);
     const promise = requestEmbedding('a'.repeat(200), 'https://example.com', 'Current (updated)');
@@ -503,10 +508,6 @@ describe('auto-refresh after storePageRecord', () => {
     await port._listeners.message({ type: 'embedding', embedding: [1, 0, 0] });
     await promise;
 
-    // Before the debounce window elapses, the panel shows the old title.
-    expect(document.querySelector('.related-item-title').textContent).not.toContain('updated');
-
-    // After 300ms the refresh fires and the list is rebuilt from storage.
     await vi.advanceTimersByTimeAsync(400);
     expect(__internals.getState().status).toBe('results');
     expect(document.querySelectorAll('.related-item').length).toBe(1);
