@@ -1,7 +1,7 @@
 import { t } from '../../../shared/i18n.js';
 import * as state from '../../state';
 import { appendMessage } from '../../ui/dom-helpers';
-import { extractPageContent } from '../../services/ai-chat';
+import { extractPageContent } from '../../services/page-extractor';
 import { isTTSPlaying, stopTTS } from '../../services/tts/index.js';
 import { clearImagePreviews } from '../../services/ocr.js';
 import { createPodcastCard, updateCardStatus, restoreWelcomeIfNeeded, resetHighlightState, initUICallbacks } from './ui';

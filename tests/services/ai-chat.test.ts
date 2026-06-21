@@ -22,19 +22,13 @@ vi.mock('../../src/side_panel/services/message-sender.js', () => ({
   sendToAI: vi.fn(),
   sendMessage: vi.fn(),
   retryMessage: vi.fn(),
-  extractPageContent: vi.fn(),
-}));
-// page-extractor must be mocked too — it imports state.ts which registers
-// chrome.tabs.onRemoved.addListener at module load time
-vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
-  extractPageContent: vi.fn(),
 }));
 
 // --- Import after mocks ---
-import { initAIChat, sendToAI, sendMessage, retryMessage, extractPageContent } from '../../src/side_panel/services/ai-chat.js';
+import { initAIChat } from '../../src/side_panel/services/ai-chat.js';
 import { initStreamHandler } from '../../src/side_panel/services/stream-handler.js';
 import { initQuickActionHandler, handleQuickAction } from '../../src/side_panel/services/quick-action-handler.js';
-import { initMessageSender } from '../../src/side_panel/services/message-sender.js';
+import { initMessageSender, sendToAI, sendMessage } from '../../src/side_panel/services/message-sender.js';
 
 /**
  * Build a minimal set of AIChatDeps for testing.
@@ -260,19 +254,6 @@ describe('services/ai-chat', () => {
       pressKey(deps.userInput, 'Escape');
 
       expect(deps.hideCommandPopup).not.toHaveBeenCalled();
-    });
-  });
-
-  // ==========================================================================
-  // Re-exports
-  // ==========================================================================
-  describe('re-exports', () => {
-    it('re-exports sendToAI, sendMessage, retryMessage, extractPageContent', () => {
-      // Verify these are functions (re-exported from ai-chat)
-      expect(typeof sendToAI).toBe('function');
-      expect(typeof sendMessage).toBe('function');
-      expect(typeof retryMessage).toBe('function');
-      expect(typeof extractPageContent).toBe('function');
     });
   });
 });

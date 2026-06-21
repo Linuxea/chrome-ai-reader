@@ -1,5 +1,6 @@
 import { t } from '../../../shared/i18n.js';
 import { CSS } from '../../../shared/css-selectors';
+import { onSyncChange } from '../../../platform/storage';
 import { createTTSButtons } from '../../ui/tts-buttons';
 import { splitToSegments } from './utils';
 import {
@@ -26,10 +27,8 @@ export function initTTS({ chatArea }: { chatArea: HTMLElement }): void {
     setTTSAutoPlay(data.ttsAutoPlay === true);
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes.ttsAutoPlay) {
-      setTTSAutoPlay(changes.ttsAutoPlay.newValue === true);
-    }
+  onSyncChange('ttsAutoPlay', (newValue) => {
+    setTTSAutoPlay(newValue === true);
   });
 }
 

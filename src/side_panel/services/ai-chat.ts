@@ -1,7 +1,6 @@
 import { initStreamHandler } from './stream-handler';
 import { initQuickActionHandler, handleQuickAction } from './quick-action-handler';
-import { initMessageSender, sendToAI, sendMessage, retryMessage } from './message-sender';
-import { extractPageContent } from './page-extractor';
+import { initMessageSender, sendToAI, sendMessage } from './message-sender';
 
 let _userInput: HTMLTextAreaElement;
 let _sendBtn: HTMLButtonElement;
@@ -100,5 +99,3 @@ function handleKeydown(
     sendMessage();
   }
 }
-
-export { sendToAI, sendMessage, retryMessage, extractPageContent };

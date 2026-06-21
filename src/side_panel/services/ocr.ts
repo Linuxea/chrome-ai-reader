@@ -21,23 +21,32 @@ export function initOCR(): void {
     const files = Array.from(_imageFileInput.files || []);
     if (files.length === 0) return;
     _imageFileInput.value = '';
+    ingestImages(files);
+  });
+}
 
-    _imagePreviewBar.classList.remove('hidden');
-
-    files.forEach(file => {
-      let idx = state.getImageIndex();
-      idx++;
-      state.setImageIndex(idx);
-      const reader = new FileReader();
-
-      reader.onload = (e) => {
-        const dataUri = e.target?.result as string;
-        addImagePreview(idx, file.name, dataUri);
-        runOCR(idx, file.name, dataUri);
-      };
-
-      reader.readAsDataURL(file);
-    });
+/**
+ * Shared image intake: assigns each file an incrementing index, reads it as a
+ * data URI, then adds a preview thumbnail and kicks off OCR.
+ *
+ * Used by both the upload button (initOCR) and the paste/drag-drop handler
+ * (features/image-input). Extracted to eliminate duplicated index+FileReader
+ * loops that had drifted in parallel.
+ */
+export function ingestImages(files: File[]): void {
+  if (files.length === 0) return;
+  _imagePreviewBar.classList.remove('hidden');
+  files.forEach(file => {
+    let idx = state.getImageIndex();
+    idx++;
+    state.setImageIndex(idx);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUri = e.target?.result as string;
+      addImagePreview(idx, file.name, dataUri);
+      runOCR(idx, file.name, dataUri);
+    };
+    reader.readAsDataURL(file);
   });
 }
 

@@ -1,6 +1,6 @@
 import { t } from '../shared/i18n.js';
 import { showStatus } from './status';
-import { clearAllPageRecords } from '../side_panel/features/related-pages.js';
+import { clearPageRecords } from '../shared/page-records';
 
 const embeddingEnabledCheckbox = document.getElementById('embeddingEnabled') as HTMLInputElement;
 const embeddingApiKeyInput = document.getElementById('embeddingApiKey') as HTMLInputElement;
@@ -18,7 +18,7 @@ export function initEmbeddingSettings(): void {
 
   clearEmbeddingBtn.addEventListener('click', () => {
     if (!confirm(t('settings.embedding.clearAll.confirm'))) return;
-    clearAllPageRecords().then(() => {
+    clearPageRecords().then(() => {
       showStatus(t('settings.embedding.cleared'), 'success');
     });
   });

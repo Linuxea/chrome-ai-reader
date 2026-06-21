@@ -4,10 +4,6 @@ vi.mock('../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
 }));
 
-vi.mock('../../src/side_panel/features/related-pages.js', () => ({
-  requestEmbedding: vi.fn(),
-}));
-
 vi.mock('../../src/side_panel/state.js', () => ({
   getActiveTabId: vi.fn(() => 42),
   getStateForTab: vi.fn(() => ({ pageContent: '', pageExcerpt: '', pageTitle: '' })),

@@ -20,7 +20,7 @@ vi.mock('../../../../src/side_panel/state.js', () => ({
 vi.mock('../../../../src/side_panel/ui/dom-helpers.js', () => ({
   appendMessage: vi.fn(),
 }));
-vi.mock('../../../../src/side_panel/services/ai-chat.js', () => ({
+vi.mock('../../../../src/side_panel/services/page-extractor.js', () => ({
   extractPageContent: vi.fn(() => Promise.resolve({ ok: true, value: { textContent: 'page text' } })),
 }));
 vi.mock('../../../../src/side_panel/services/tts/index.js', () => ({
@@ -53,7 +53,7 @@ vi.mock('../../../../src/side_panel/features/podcast/script.js', () => ({
 
 import { initPodcast, handlePodcastClick } from '../../../../src/side_panel/features/podcast/index';
 import * as stateMock from '../../../../src/side_panel/state.js';
-import { extractPageContent } from '../../../../src/side_panel/services/ai-chat.js';
+import { extractPageContent } from '../../../../src/side_panel/services/page-extractor.js';
 import { generatePodcastScript } from '../../../../src/side_panel/features/podcast/script.js';
 import { appendMessage } from '../../../../src/side_panel/ui/dom-helpers.js';
 import { createPodcastCard } from '../../../../src/side_panel/features/podcast/ui.js';

@@ -1,6 +1,7 @@
 import { t } from '../../shared/i18n.js';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
+import type { ChatMessage } from '../../shared/types';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
@@ -11,6 +12,7 @@ import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
 import { extractPageContent } from './page-extractor';
 import { callAI } from './stream-handler';
+import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
 
 let _chatArea: HTMLElement;
 let _userInput: HTMLTextAreaElement;
@@ -60,7 +62,7 @@ export async function sendToAI(
       if (!extractResult.ok) throw extractResult.error;
     }
 
-    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+    const messages: ChatMessage[] = [];
     const pageContent = tabState.pageContent || '';
     if (pageContent) {
       const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
@@ -86,8 +88,7 @@ export async function sendToAI(
       apiContent = withQuote;
     }
 
-    tabState.conversationHistory.push({ role: 'user', content: historyContent });
-    state.persistForTab(startTabId!);
+    appendHistory(tabState, { role: 'user', content: historyContent }, startTabId!);
 
     if (ocrContext) {
       apiContent = apiContent + '\n\n' + ocrContext;
@@ -103,11 +104,7 @@ export async function sendToAI(
       state.setIsGenerating(false);
       setButtonsDisabled(false);
     }
-    const hist = tabState.conversationHistory;
-    if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
-      hist.splice(hist.length - 1, 1);
-      state.persistForTab(startTabId!);
-    }
+    rollbackTrailingUserMessage(tabState, startTabId!);
     tabState.isGenerating = false;
     state.persistForTab(startTabId!);
   }
@@ -160,12 +157,7 @@ export async function retryMessage(
   const userContent = rawQuote
     ? t('ai.quotePrefix') + '\n\n' + safeTruncate(rawQuote, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated')) + '\n\n' + rawText
     : rawText;
-  const conversationHistory = tabState.conversationHistory;
-  const idx = conversationHistory.findLastIndex(m => m.role === 'user' && m.content === userContent);
-  if (idx !== -1) {
-    conversationHistory.splice(idx, conversationHistory.length - idx);
-    state.persistForTab(startTabId!);
-  }
+  truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
   await sendToAI(rawText, rawDisplay, rawQuote);
 }

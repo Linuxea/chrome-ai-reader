@@ -11,10 +11,38 @@
  *   /** @type {ChatMessage} * /
  */
 
+/**
+ * A single chat message in the OpenAI-compatible chat-completion format.
+ *
+ * NOTE: the optional agent fields below (`tool_calls`, `tool_call_id`, `name`)
+ * are RESERVED for a future agent/tool-calling architecture. They are not yet
+ * populated by the current chatbot flow (which is pure text-in/text-out), but
+ * declaring them here means the type contract is ready when tool calling is
+ * introduced — callers won't need to widen ChatMessage later.
+ */
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   type?: string;
+  /** Tool calls emitted by the assistant (agent evolution — not yet wired). */
+  tool_calls?: ToolCall[];
+  /** When role is 'tool', the id of the tool call this result responds to. */
+  tool_call_id?: string;
+  /** Optional function/tool name (used with role 'tool' or 'assistant' tool_calls). */
+  name?: string;
+}
+
+/**
+ * A tool/function call the model requests the host to execute.
+ * Reserved for agent evolution — the current chatbot never produces these.
+ */
+export interface ToolCall {
+  /** Unique id for this call (model-provided). */
+  id: string;
+  /** The callable name (must match a registered tool). */
+  name: string;
+  /** JSON-encoded arguments string (per OpenAI convention). */
+  arguments: string;
 }
 
 export interface TabState {

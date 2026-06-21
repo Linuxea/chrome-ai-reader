@@ -2,7 +2,7 @@ import { t } from '../../shared/i18n.js';
 import type { Result } from '../../shared/types';
 import { ok, err } from '../../shared/result.js';
 import * as state from '../state';
-import { requestEmbedding } from '../features/related-pages';
+import { emit, EVENTS } from '../events';
 
 export interface ExtractResult {
   textContent: string;
@@ -31,13 +31,17 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
     state.persistForTab(tabId);
   }
 
-  // Trigger embedding in background after a delay (avoid rapid tab switches wasting calls)
+  // Notify subscribers (e.g. related-pages embedding) via the event bus instead
+  // of importing the feature layer upward. Trigger after a delay to avoid
+  // rapid tab switches wasting embedding calls.
   if (response.data) {
+    const excerpt = response.data.excerpt;
+    const title = response.data.title;
     // Capture URL now to avoid race condition if user switches tabs during the delay
     const tab = await chrome.tabs.get(tabId);
     const url = tab.url;
     setTimeout(() => {
-      if (url) requestEmbedding(response.data!.excerpt, url, response.data!.title);
+      if (url) emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title });
     }, 3000);
   }
 

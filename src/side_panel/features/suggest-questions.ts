@@ -1,4 +1,5 @@
 import { t } from '../../shared/i18n.js';
+import { onSyncChange } from '../../platform/storage';
 import * as state from '../state';
 import { smartScrollToBottom } from '../ui/dom-helpers';
 import type { ChatMessage } from '../../shared/types';
@@ -21,10 +22,8 @@ export function initSuggestQuestions({ chatArea, userInput, onSend }: {
     state.setSuggestQuestionsEnabled(data.suggestQuestions !== false);
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes.suggestQuestions) {
-      state.setSuggestQuestionsEnabled(changes.suggestQuestions.newValue !== false);
-    }
+  onSyncChange('suggestQuestions', (newValue) => {
+    state.setSuggestQuestionsEnabled(newValue !== false);
   });
 }
 

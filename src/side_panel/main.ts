@@ -7,7 +7,8 @@ import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
 import { initOCR, clearImagePreviews } from './services/ocr.js';
-import { initAIChat, sendToAI, sendMessage, retryMessage, extractPageContent } from './services/ai-chat';
+import { initAIChat } from './services/ai-chat';
+import { sendToAI, sendMessage, retryMessage } from './services/message-sender';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
 import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands';
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions';
@@ -41,7 +42,6 @@ const els = {
 
 const sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
 const actionBtns = document.querySelectorAll('.action-btn') as NodeListOf<HTMLButtonElement>;
-const imagePreviewBar = document.getElementById('imagePreviewBar')!;
 const commandPopup = document.getElementById('commandPopup')!;
 
 const deps = { isTTSPlaying, stopTTS, removeSuggestQuestions, clearImagePreviews };
@@ -66,7 +66,7 @@ async function init(): Promise<void> {
   });
   initQuickCommands({ userInput: els.userInput, commandPopup, onSendToAI: sendToAI });
   initSuggestQuestions({ chatArea: els.chatArea, userInput: els.userInput, onSend: sendMessage });
-  initImageInput({ userInput: els.userInput, imagePreviewBar });
+  initImageInput({ userInput: els.userInput });
   initPodcast({ chatArea: els.chatArea });
   initRelatedPages({ chatArea: els.chatArea });
   const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');

@@ -12,9 +12,9 @@
 import type { PageRecord, PageRelation } from '../../shared/types';
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
-import { emit, EVENTS } from '../events';
+import { PAGE_RECORDS_KEY } from '../../shared/page-records';
+import { emit, on, EVENTS } from '../events';
 
-const STORAGE_KEY = 'pageRecords';
 const MAX_RECORDS_DEFAULT = 200;
 const THRESHOLD_DEFAULT = 0.7;
 const MIN_CONTENT_LENGTH = 100;
@@ -29,8 +29,8 @@ let hasNewRelations = false;
 
 async function getPageRecords(): Promise<PageRecord[]> {
   try {
-    const data = await chrome.storage.local.get(STORAGE_KEY);
-    return (data[STORAGE_KEY] as PageRecord[]) || [];
+    const data = await chrome.storage.local.get(PAGE_RECORDS_KEY);
+    return (data[PAGE_RECORDS_KEY] as PageRecord[]) || [];
   } catch (e) {
     console.error('Failed to get page records:', e);
     return [];
@@ -39,7 +39,7 @@ async function getPageRecords(): Promise<PageRecord[]> {
 
 async function savePageRecords(records: PageRecord[]): Promise<void> {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEY]: records });
+    await chrome.storage.local.set({ [PAGE_RECORDS_KEY]: records });
   } catch (e) {
     console.error('Failed to save page records:', e);
   }
@@ -238,7 +238,7 @@ export async function renderRelatedPages(currentUrl: string): Promise<void> {
 // --- Clear All ---
 
 export async function clearAllPageRecords(): Promise<void> {
-  await chrome.storage.local.remove(STORAGE_KEY);
+  await chrome.storage.local.remove(PAGE_RECORDS_KEY);
   if (listEl) listEl.innerHTML = `<div class="related-empty">${t('related.empty')}</div>`;
 }
 
@@ -278,5 +278,12 @@ export function initRelatedPages(deps: RelatedPagesDeps): void {
   toggleBtn.addEventListener('click', () => {
     const collapsed = listContainer.classList.toggle('collapsed');
     toggleBtn.textContent = collapsed ? '▼' : '▲';
+  });
+
+  // Subscribe to PAGE_EXTRACTED instead of being imported upward by the
+  // page-extractor service. This keeps the dependency direction
+  // (feature → listens to event) instead of (service → feature).
+  on(EVENTS.PAGE_EXTRACTED, ({ excerpt, url, title }) => {
+    void requestEmbedding(excerpt, url, title);
   });
 }

@@ -13,6 +13,7 @@ import {
 } from './tts/index.js';
 import { marked } from 'marked';
 import type { ChatMessage } from '../../shared/types';
+import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
 
 let _chatArea: HTMLElement;
 
@@ -101,7 +102,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         ttsAppendChunk(msg.content || '');
       }
     } else if (msg.type === 'done') {
-      tabState.conversationHistory.push({ role: 'assistant', content: fullText });
+      appendHistory(tabState, { role: 'assistant', content: fullText }, tabId!);
       tabState.isGenerating = false;
       state.persistForTab(tabId!);
       port.disconnect();
@@ -126,11 +127,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         }
       }
     } else if (msg.type === 'error') {
-      const hist = tabState.conversationHistory;
-      if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
-        hist.splice(hist.length - 1, 1);
-        state.persistForTab(tabId!);
-      }
+      rollbackTrailingUserMessage(tabState, tabId!);
       tabState.isGenerating = false;
       state.persistForTab(tabId!);
       port.disconnect();
@@ -162,11 +159,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
           msgEl.className = 'message message-error';
           msgEl.textContent = t('error.apiFailed');
         }
-        const hist = tabState.conversationHistory;
-        if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
-          hist.splice(hist.length - 1, 1);
-          state.persistForTab(tabId!);
-        }
+        rollbackTrailingUserMessage(tabState, tabId!);
       }
       tabState.isGenerating = false;
       state.persistForTab(tabId!);

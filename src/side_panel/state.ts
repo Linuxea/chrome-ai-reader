@@ -74,16 +74,32 @@ export async function initState(): Promise<void> {
 
   const syncData = await chrome.storage.sync.get(['suggestQuestions']);
   if (syncData.suggestQuestions !== undefined) _suggestQuestionsEnabled = syncData.suggestQuestions as boolean;
+
+  // Register tab-cleanup listener during init (not at module load) so tests
+  // can import state.ts without chrome.tabs being present first.
+  initTabLifecycleListener();
 }
 
-chrome.tabs.onRemoved.addListener((tabId: number) => {
-  _tabStates.delete(tabId);
-  chrome.storage.session.remove(`tabState_${tabId}`);
-  if (tabId === _activeTabId) {
-    _activeState = null;
-    _activeTabId = null;
-  }
-});
+let _tabLifecycleListenerRegistered = false;
+function initTabLifecycleListener(): void {
+  if (_tabLifecycleListenerRegistered) return;
+  _tabLifecycleListenerRegistered = true;
+  chrome.tabs.onRemoved.addListener((tabId: number) => {
+    _tabStates.delete(tabId);
+    chrome.storage.session.remove(`tabState_${tabId}`);
+    if (tabId === _activeTabId) {
+      _activeState = null;
+      _activeTabId = null;
+    }
+  });
+}
+
+// Backwards-compat: register the listener at module load for production use
+// (mirrors the original behavior). initState() is idempotent and will not
+// double-register. This keeps existing importers working without changes.
+if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
+  initTabLifecycleListener();
+}
 
 // --- Global state fields ---
 

@@ -2,7 +2,7 @@
  * Tests for options/embedding-settings.ts — embedding config + threshold conversion.
  *
  * Uses vi.hoisted for DOM setup (before module import) instead of vi.resetModules,
- * because we need stable mock references for clearAllPageRecords assertions.
+ * because we need stable mock references for clearPageRecords assertions.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
@@ -23,8 +23,8 @@ vi.hoisted(() => {
 
 vi.mock('../../src/shared/i18n.js', () => ({ t: (k: string) => `[${k}]` }));
 vi.mock('../../src/shared/constants.js', () => ({ escapeHtml: (s: string) => s }));
-vi.mock('../../src/side_panel/features/related-pages.js', () => ({
-  clearAllPageRecords: vi.fn(() => Promise.resolve()),
+vi.mock('../../src/shared/page-records.js', () => ({
+  clearPageRecords: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('../../src/options/status.js', () => ({ showStatus: vi.fn() }));
 
@@ -33,7 +33,7 @@ import {
   loadEmbeddingValues,
   initEmbeddingSettings,
 } from '../../src/options/embedding-settings';
-import { clearAllPageRecords } from '../../src/side_panel/features/related-pages.js';
+import { clearPageRecords } from '../../src/shared/page-records.js';
 
 describe('options/embedding-settings', () => {
   let enabledCheckbox: HTMLInputElement;
@@ -144,18 +144,18 @@ describe('options/embedding-settings', () => {
   });
 
   describe('initEmbeddingSettings() — clear all records', () => {
-    it('calls clearAllPageRecords when confirmed', () => {
+    it('calls clearPageRecords when confirmed', () => {
       initEmbeddingSettings();
       globalThis.confirm = () => true;
       clearBtn.click();
-      expect(clearAllPageRecords).toHaveBeenCalled();
+      expect(clearPageRecords).toHaveBeenCalled();
     });
 
     it('does nothing when confirm is dismissed', () => {
       initEmbeddingSettings();
       globalThis.confirm = () => false;
       clearBtn.click();
-      expect(clearAllPageRecords).not.toHaveBeenCalled();
+      expect(clearPageRecords).not.toHaveBeenCalled();
     });
   });
 });

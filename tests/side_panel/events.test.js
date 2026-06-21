@@ -38,6 +38,7 @@ describe('events', () => {
         'SAVE_CURRENT_CHAT',
         'RENDER_HISTORY_LIST',
         'SHOW_RELATED_PAGES',
+        'PAGE_EXTRACTED',
       ];
       expectedKeys.forEach(key => {
         expect(EVENTS).toHaveProperty(key);
@@ -46,7 +47,7 @@ describe('events', () => {
 
     it('EVENTS object is frozen or sealed to prevent accidental mutation', () => {
       // EVENTS is a plain const object — verify no extra keys sneaked in
-      expect(Object.keys(EVENTS).length).toBe(10);
+      expect(Object.keys(EVENTS).length).toBe(11);
     });
   });
 

@@ -11,6 +11,9 @@ export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.P
   port.onDisconnect.addListener(() => controller.abort());
 
   try {
+    // AGENT TODO: when tool calling is introduced, accept an optional `tools`
+    // array here and add it to requestBody. The SSE parser below must then
+    // also read delta.tool_calls (currently only reasoning_content + content).
     const requestBody: Record<string, unknown> = { model: modelName || 'deepseek-chat', messages, stream: true, temperature: 0.7 };
     if (options?.response_format) requestBody.response_format = options.response_format;
 
@@ -30,7 +33,12 @@ export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.P
         const trimmed = line.trim(); if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const data = trimmed.slice(6);
         if (data === '[DONE]') { safePostMessage(port, { type: 'done' }); return; }
-        try { const parsed = JSON.parse(data) as { choices?: { delta?: { reasoning_content?: string; content?: string } }[] }; const delta = parsed.choices?.[0]?.delta;
+        try {
+          // AGENT TODO: extend this delta type with `tool_calls?: ToolCallDelta[]`
+          // and forward them as a new StreamMessage variant (see shared/protocol.ts).
+          // Currently only reasoning_content + content are read; tool_calls would
+          // be silently dropped.
+          const parsed = JSON.parse(data) as { choices?: { delta?: { reasoning_content?: string; content?: string } }[] }; const delta = parsed.choices?.[0]?.delta;
           if (delta?.reasoning_content) safePostMessage(port, { type: 'thinking', content: delta.reasoning_content });
           if (delta?.content) safePostMessage(port, { type: 'chunk', content: delta.content });
         } catch { /* skip */ }
