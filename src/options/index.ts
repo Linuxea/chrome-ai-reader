@@ -39,6 +39,8 @@ saveBtn.addEventListener('click', () => {
   const suggest = collectSuggestSaveData();
   const embedding = collectEmbeddingSaveData();
 
+  if (embedding.error) { showStatus(embedding.error, 'error'); return; }
+
   const toRemove = [...(llm.remove || []), ...(tts.remove || []), ...(ocr.remove || []), ...(embedding.remove || [])];
   if (toRemove.length > 0) chrome.storage.sync.remove(toRemove);
 

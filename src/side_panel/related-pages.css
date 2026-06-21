@@ -68,6 +68,84 @@
   text-align: center;
 }
 
+/* Generic status card — used for disabled / not-configured / error / loading */
+.related-state {
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.related-state-title {
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.related-state-hint {
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.related-state--warn .related-state-title {
+  color: var(--accent, #e6a700);
+}
+
+.related-state--error .related-state-title {
+  color: #e74c3c;
+}
+
+.related-state--error .related-state-hint {
+  color: #e74c3c;
+  opacity: 0.85;
+  word-break: break-word;
+}
+
+.related-retry-btn,
+.related-settings-link {
+  display: inline-block;
+  background: var(--accent, #4a90d9);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.related-retry-btn:hover,
+.related-settings-link:hover {
+  opacity: 0.85;
+}
+
+/* Loading spinner */
+.related-loading {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.related-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border, #ccc);
+  border-top-color: var(--accent, #4a90d9);
+  border-radius: 50%;
+  display: inline-block;
+  animation: related-spin 0.8s linear infinite;
+}
+
+@keyframes related-spin {
+  to { transform: rotate(360deg); }
+}
+
 .related-item {
   padding: 8px 16px;
   cursor: pointer;

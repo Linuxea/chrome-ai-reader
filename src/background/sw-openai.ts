@@ -83,15 +83,22 @@ export async function callSuggestQuestions(messages: ChatMessage[], port: chrome
 }
 
 export async function callEmbedding(text: string, port: chrome.runtime.Port): Promise<void> {
-  const { embeddingApiKey, embeddingApiBase, embeddingModel, apiKey, apiBase } = await chrome.storage.sync.get([
-    'embeddingApiKey', 'embeddingApiBase', 'embeddingModel', 'apiKey', 'apiBase',
-  ]) as { embeddingApiKey?: string; embeddingApiBase?: string; embeddingModel?: string; apiKey?: string; apiBase?: string };
+  // Embedding must be configured independently — there is no fallback to the
+  // chat apiKey/apiBase. The default `doubao-embedding-vision` model and the
+  // hardcoded volcano-engine base URL previously caused silent 401/404 when
+  // users only configured a chat provider (e.g. DeepSeek). Now any missing
+  // field surfaces as an explicit error the UI can show.
+  const { embeddingApiKey, embeddingApiBase, embeddingModel } = await chrome.storage.sync.get([
+    'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
+  ]) as { embeddingApiKey?: string; embeddingApiBase?: string; embeddingModel?: string };
 
-  const key = embeddingApiKey || apiKey;
-  if (!key) { safePostMessage(port, { type: 'error', errorKey: 'error.noEmbeddingApiKey' }); return; }
+  if (!embeddingApiKey || !embeddingApiBase || !embeddingModel) {
+    safePostMessage(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });
+    return;
+  }
 
-  const baseUrl = embeddingApiBase || apiBase || 'https://ark.cn-beijing.volces.com/api/coding/v3';
-  const model = embeddingModel || 'doubao-embedding-vision';
+  const baseUrl = embeddingApiBase;
+  const model = embeddingModel;
 
   const controller = new AbortController();
   port.onDisconnect.addListener(() => controller.abort());
@@ -99,7 +106,7 @@ export async function callEmbedding(text: string, port: chrome.runtime.Port): Pr
   try {
     const response = await fetch(`${baseUrl}/embeddings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${embeddingApiKey}` },
       body: JSON.stringify({ model, input: text }),
       signal: controller.signal,
     });
@@ -117,6 +124,6 @@ export async function callEmbedding(text: string, port: chrome.runtime.Port): Pr
     }
     safePostMessage(port, { type: 'embedding', embedding });
   } catch (e: unknown) {
-    safePostMessage(port, { type: 'error', error: (e as Error).message });
+    safePostMessage(port, { type: 'error', error: (e as Error).message, errorKey: 'error.embeddingRequestFailed' });
   }
 }

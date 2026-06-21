@@ -1256,3 +1256,85 @@ Expected: Build succeeds, `dist/` contains all files
 git add -A
 git commit -m "chore: final verification and cleanup for knowledge association"
 ```
+
+---
+
+## Changelog — 2026-06 Refactor (相关阅读 v2)
+
+This section documents the comprehensive refactor triggered by persistent
+"panel always empty" reports. Root causes were multiple silent-failure paths
+that compounded into an unusable feature.
+
+### Bugs fixed
+
+1. **Configuration fallback mismatch (root cause)** — `callEmbedding` fell
+   back to `apiKey`/`apiBase` from the chat config when embedding-specific
+   fields were missing, but kept the hardcoded default model
+   `doubao-embedding-vision` and base URL
+   `https://ark.cn-beijing.volces.com/api/coding/v3`. The result was
+   cross-provider requests (e.g. DeepSeek key + volcano base) that always
+   401'd, or DeepSeek base + doubao model that always 400'd. **Fix:**
+   embedding config is now strictly independent; missing fields surface as
+   `error.embeddingNotConfigured`.
+2. **Silent error swallowing** — background returned `errorKey` but the
+   feature discarded it; users saw "no related pages" instead of the actual
+   error. **Fix:** errors now drive UI state `error` + show the i18n message.
+3. **Circuit breaker silenced everything** — 3 consecutive failures paused
+   the feature for 1 hour with no UI feedback. **Fix:** breaker removed
+   entirely; every request runs, errors are shown immediately.
+4. **No auto-refresh after indexing** — `storePageRecord` only updated the
+   badge; the panel never re-rendered, so the user had to switch tabs to see
+   results. **Fix:** debounced (300ms) `renderRelatedPages` call after each
+   successful store.
+5. **URL not normalized** — same page under `?utm_source=...` or `#anchor`
+   produced duplicate records and caused `findRelatedPages` to miss the
+   current page's own embedding → empty result. **Fix:** new
+   `shared/url-normalize.ts`; records keyed by `normalizedUrl`.
+6. **First-visit deadlock** — `findRelatedPages` required the current URL to
+   already have an embedding; combined with bug #4 the panel appeared dead.
+   **Fix:** auto-refresh after store breaks the deadlock.
+
+### Architecture changes
+
+- Feature now goes through `platform/ports.ts` (`openEmbeddingPort`) and
+  `platform/storage.ts` (`getSync`/`getLocal`/`setLocal`) instead of calling
+  `chrome.*` directly.
+- Wire contract uses `shared/protocol.ts` types (`EmbeddingRequest`,
+  `EmbeddingResponse`, `EmbeddingErrorMessage`) instead of
+  `Record<string, unknown>` + manual casts.
+- `service-worker.ts` port dispatcher uses `PORT_NAMES.EMBEDDING` instead
+  of the string `'embedding'`.
+- Panel has a typed state machine
+  (`idle|loading|results|empty|error|disabled|not-configured`) driving
+  rendering, replacing the previous binary "list / empty" rendering.
+- `PAGE_EXTRACTED` debounce lowered from 3000ms to 1500ms for faster
+  perceived response.
+- `dropLegacyRecords()` runs once at `initRelatedPages()` to clean
+  pre-`normalizedUrl` records (clean rebuild policy per user decision).
+
+### Options page changes
+
+- Embedding API Key / Base / Model inputs are now `required`.
+- Hints/placeholders updated to reflect independent configuration
+  (no more "leave empty to reuse LLM API key").
+- `collectEmbeddingSaveData` blocks save when `embeddingEnabled=true` but
+  any of the three fields is missing, surfacing
+  `status.embeddingConfigIncomplete`.
+
+### Test coverage
+
+- `tests/shared/url-normalize.test.ts` (10 cases) — hash, utm, sorting,
+  host case, root path, invalid input.
+- `tests/side_panel/features/related-pages.test.js` (34 cases, up from 17)
+  — added: state machine for all 6 user-visible statuses, init DOM test,
+  auto-refresh both branches, error surfacing, URL dedup, legacy drop,
+  click-through.
+- `tests/background/sw-openai.test.js` `callEmbedding` block rewritten —
+  removed fallback cases, added per-field `error.embeddingNotConfigured`
+  cases, explicit "does not fall back to chat config" regression guard.
+
+### Verification
+
+- `npm run test` — 857 passing (28 new).
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean.

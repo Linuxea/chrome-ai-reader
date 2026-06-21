@@ -32,8 +32,10 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
   }
 
   // Notify subscribers (e.g. related-pages embedding) via the event bus instead
-  // of importing the feature layer upward. Trigger after a delay to avoid
-  // rapid tab switches wasting embedding calls.
+  // of importing the feature layer upward. Trigger after a short delay to let
+  // the page settle and avoid wasting an embedding call when the user is just
+  // tab-skimming. Was 3000ms; lowered to 1500ms in the 2026-06 refactor so the
+  // auto-refresh on the related-reading panel shows results noticeably faster.
   if (response.data) {
     const excerpt = response.data.excerpt;
     const title = response.data.title;
@@ -42,7 +44,7 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
     const url = tab.url;
     setTimeout(() => {
       if (url) emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title });
-    }, 3000);
+    }, 1500);
   }
 
   return ok(response.data!);

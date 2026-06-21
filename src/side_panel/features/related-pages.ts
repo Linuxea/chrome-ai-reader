@@ -3,34 +3,85 @@
  * computes cosine similarity, and renders the "Related Reading" panel.
  *
  * Flow:
- *   1. extractPageContent() triggers requestEmbedding() with page excerpt
- *   2. requestEmbedding() calls background via chrome.runtime.connect('embedding')
- *   3. On response, storePageRecord() saves to chrome.storage.local
- *   4. On tab switch / page load, showRelatedPages() computes top-5 and renders UI
+ *   1. extractPageContent() emits PAGE_EXTRACTED → requestEmbedding()
+ *   2. requestEmbedding() calls background via openEmbeddingPort()
+ *   3. On response, storePageRecord() saves to chrome.storage.local,
+ *      then schedules a debounced renderRelatedPages() so the panel
+ *      reflects the new entry without requiring a tab switch.
+ *   4. On tab switch / page load, renderRelatedPages() computes top-5
+ *      and renders UI. Status (loading/error/disabled/not-configured)
+ *      is derived from current config + last request outcome.
+ *
+ * Refactor notes (2026-06):
+ *   - URL normalization prevents duplicate records + missing self-match
+ *     when the same page is visited with tracking params or a hash.
+ *   - The circuit breaker (FAILURE_KEY / PAUSE_KEY) was removed: every
+ *     request now runs and any error is surfaced to the UI as `status:'error'`.
+ *   - Embedding config no longer falls back to the chat provider; if the
+ *     three embedding_* fields are missing, the panel shows `not-configured`.
  */
 
 import type { PageRecord, PageRelation } from '../../shared/types';
+import type { EmbeddingRequest, EmbeddingResponse } from '../../shared/protocol';
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
-import { PAGE_RECORDS_KEY } from '../../shared/page-records';
+import { PAGE_RECORDS_KEY, clearPageRecords } from '../../shared/page-records';
+import { normalizeUrl } from '../../shared/url-normalize';
 import { emit, on, EVENTS } from '../events';
+import { openEmbeddingPort } from '../../platform/ports';
+import { getSync, getLocal, setLocal } from '../../platform/storage';
+import { openOptionsPage } from '../../platform/messaging';
 
 const MAX_RECORDS_DEFAULT = 200;
 const THRESHOLD_DEFAULT = 0.7;
 const MIN_CONTENT_LENGTH = 100;
 const MAX_EXCERPT_LENGTH = 200;
+/** Debounce window for auto-refresh after storePageRecord(). */
+const REFRESH_DEBOUNCE_MS = 300;
+
+// --- Panel state -----------------------------------------------------------
+
+export type RelatedStatus =
+  | 'idle' // initial / unknown
+  | 'loading' // request in flight
+  | 'results' // list shown
+  | 'empty' // request succeeded, nothing matched
+  | 'error' // last request failed (errorKey/errorMessage set)
+  | 'disabled' // embeddingEnabled === false
+  | 'not-configured'; // one of embeddingApiKey/Base/Model missing
+
+interface RelatedPagesState {
+  status: RelatedStatus;
+  errorKey?: string;
+  errorMessage?: string;
+  hasNewRelations: boolean;
+}
+
+const state: RelatedPagesState = {
+  status: 'idle',
+  hasNewRelations: false,
+};
+
+/** Reset state — primarily for tests. */
+export function resetState(): void {
+  state.status = 'idle';
+  state.errorKey = undefined;
+  state.errorMessage = undefined;
+  state.hasNewRelations = false;
+}
 
 let panelEl: HTMLElement | null = null;
 let listEl: HTMLElement | null = null;
 let badgeEl: HTMLElement | null = null;
-let hasNewRelations = false;
+let lastRenderedUrl = '';
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-// --- Storage ---
+// --- Storage (via platform layer) -----------------------------------------
 
 async function getPageRecords(): Promise<PageRecord[]> {
   try {
-    const data = await chrome.storage.local.get(PAGE_RECORDS_KEY);
-    return (data[PAGE_RECORDS_KEY] as PageRecord[]) || [];
+    const data = await getLocal<Record<string, PageRecord[]>>([PAGE_RECORDS_KEY]);
+    return data[PAGE_RECORDS_KEY] || [];
   } catch (e) {
     console.error('Failed to get page records:', e);
     return [];
@@ -39,13 +90,25 @@ async function getPageRecords(): Promise<PageRecord[]> {
 
 async function savePageRecords(records: PageRecord[]): Promise<void> {
   try {
-    await chrome.storage.local.set({ [PAGE_RECORDS_KEY]: records });
+    await setLocal({ [PAGE_RECORDS_KEY]: records });
   } catch (e) {
     console.error('Failed to save page records:', e);
   }
 }
 
-// --- Cosine Similarity ---
+/**
+ * One-shot migration for records written before normalizedUrl existed.
+ * Per the 2026-06 refactor decision, records lacking the field are treated
+ * as legacy and dropped (clean rebuild) — embeddings were generated against
+ * a misconfigured provider in most cases, so re-indexing is preferable.
+ */
+export async function dropLegacyRecords(): Promise<void> {
+  const records = await getPageRecords();
+  const kept = records.filter((r) => r && typeof r.normalizedUrl === 'string');
+  if (kept.length !== records.length) await savePageRecords(kept);
+}
+
+// --- Cosine Similarity -----------------------------------------------------
 
 function dotProduct(a: number[], b: number[]): number {
   let sum = 0;
@@ -67,112 +130,164 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct(a, b) / (magA * magB);
 }
 
-// --- Embedding Request ---
+// --- Embedding configuration probe ----------------------------------------
+
+interface EmbeddingConfig {
+  enabled: boolean;
+  apiKey?: string;
+  apiBase?: string;
+  model?: string;
+  threshold: number;
+  maxPages: number;
+}
+
+async function loadEmbeddingConfig(): Promise<EmbeddingConfig> {
+  const cfg = await getSync<Record<string, unknown>>([
+    'embeddingEnabled',
+    'embeddingApiKey',
+    'embeddingApiBase',
+    'embeddingModel',
+    'embeddingThreshold',
+    'embeddingMaxPages',
+  ]);
+  return {
+    // enabled defaults to true (matches the checkbox default) — the UI still
+    // surfaces a `not-configured` status when the three required fields are
+    // missing, so "enabled" just gates the whole feature.
+    enabled: cfg.embeddingEnabled !== false,
+    apiKey: cfg.embeddingApiKey as string | undefined,
+    apiBase: cfg.embeddingApiBase as string | undefined,
+    model: cfg.embeddingModel as string | undefined,
+    threshold: typeof cfg.embeddingThreshold === 'number' ? (cfg.embeddingThreshold as number) : THRESHOLD_DEFAULT,
+    maxPages: typeof cfg.embeddingMaxPages === 'number' ? (cfg.embeddingMaxPages as number) : MAX_RECORDS_DEFAULT,
+  };
+}
+
+// --- Embedding Request -----------------------------------------------------
 
 export async function requestEmbedding(text: string, url: string, title: string): Promise<void> {
   if (!text || text.length < MIN_CONTENT_LENGTH) return;
 
-  const { embeddingEnabled } = await chrome.storage.sync.get('embeddingEnabled');
-  if (embeddingEnabled === false) return;
+  const cfg = await loadEmbeddingConfig();
+  if (!cfg.enabled) return;
 
-  if (await isEmbeddingPaused()) return;
+  // Silently skip when not fully configured — the panel already shows
+  // `not-configured` status via renderRelatedPages(); no need to also
+  // spam errors on every page extraction.
+  if (!cfg.apiKey || !cfg.apiBase || !cfg.model) return;
 
-  const port = chrome.runtime.connect({ name: 'embedding' });
+  const port = openEmbeddingPort();
+  const normalized = normalizeUrl(url);
 
   return new Promise<void>((resolve) => {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
+    let settled = false;
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        try { port.disconnect(); } catch { /* already disconnected */ }
+        resolve();
+      }
+    };
+
+    port.onMessage.addListener(async (msg: EmbeddingResponse) => {
       if (msg.type === 'embedding') {
-        const embedding = msg.embedding as number[];
+        const embedding = msg.embedding;
         if (embedding && embedding.length > 0) {
-          await storePageRecord({ url, title, excerpt: text.slice(0, MAX_EXCERPT_LENGTH), embedding });
+          await storePageRecord({
+            url,
+            normalizedUrl: normalized,
+            title,
+            excerpt: text.slice(0, MAX_EXCERPT_LENGTH),
+            embedding,
+          });
         }
-        port.disconnect();
-        resolve();
+        finish();
       } else if (msg.type === 'error') {
-        await handleEmbeddingError();
-        port.disconnect();
-        resolve();
+        // Surface the error to the UI so the user can see why the panel is
+        // empty instead of silently swallowing it.
+        state.status = 'error';
+        state.errorKey = msg.errorKey;
+        state.errorMessage = msg.error;
+        renderState();
+        finish();
       }
     });
 
-    port.onDisconnect.addListener(() => resolve());
-    port.postMessage({ type: 'embed', text: text.slice(0, MAX_EXCERPT_LENGTH) });
+    port.onDisconnect.addListener(() => finish());
+
+    const req: EmbeddingRequest = { type: 'embed', text: text.slice(0, MAX_EXCERPT_LENGTH) };
+    port.postMessage(req);
   });
 }
 
-// --- Error Handling ---
-
-const FAILURE_KEY = 'embeddingFailures';
-const PAUSE_KEY = 'embeddingPausedUntil';
-const MAX_CONSECUTIVE_FAILURES = 3;
-const PAUSE_DURATION_MS = 60 * 60 * 1000; // 1 hour
-
-async function handleEmbeddingError(): Promise<void> {
-  const data = await chrome.storage.local.get([FAILURE_KEY, PAUSE_KEY]);
-  const failures = ((data[FAILURE_KEY] as number) || 0) + 1;
-  await chrome.storage.local.set({ [FAILURE_KEY]: failures });
-
-  if (failures >= MAX_CONSECUTIVE_FAILURES) {
-    await chrome.storage.local.set({ [PAUSE_KEY]: Date.now() + PAUSE_DURATION_MS });
-  }
-}
-
-async function isEmbeddingPaused(): Promise<boolean> {
-  const data = await chrome.storage.local.get(PAUSE_KEY);
-  const pausedUntil = data[PAUSE_KEY] as number | undefined;
-  if (!pausedUntil) return false;
-  if (Date.now() >= pausedUntil) {
-    await chrome.storage.local.remove([PAUSE_KEY, FAILURE_KEY]);
-    return false;
-  }
-  return true;
-}
-
-// --- Store Page Record ---
+// --- Store Page Record -----------------------------------------------------
 
 async function storePageRecord(record: Omit<PageRecord, 'id' | 'timestamp'>): Promise<void> {
   const records = await getPageRecords();
 
-  // Update existing record for same URL rather than creating a duplicate
-  const existingIdx = records.findIndex((r) => r.url === record.url);
+  // Update existing record for same normalizedUrl rather than creating a
+  // duplicate. This is the fix for the "different utm params → duplicate
+  // entries + self-match failure" bug.
+  const existingIdx = records.findIndex((r) => r.normalizedUrl === record.normalizedUrl);
   if (existingIdx >= 0) {
     records[existingIdx] = { ...records[existingIdx], ...record, timestamp: Date.now() };
   } else {
     records.push({ ...record, id: crypto.randomUUID(), timestamp: Date.now() });
   }
 
-  // FIFO cleanup — oldest records evicted when exceeding max
-  const { embeddingMaxPages } = await chrome.storage.sync.get('embeddingMaxPages');
-  const maxPages = (embeddingMaxPages as number) || MAX_RECORDS_DEFAULT;
-  while (records.length > maxPages) records.shift();
+  // FIFO cleanup — oldest records evicted when exceeding max.
+  // Use a single splice rather than repeated O(n) shifts.
+  const cfg = await loadEmbeddingConfig();
+  if (records.length > cfg.maxPages) {
+    records.splice(0, records.length - cfg.maxPages);
+  }
 
   await savePageRecords(records);
-  hasNewRelations = true;
+
+  state.hasNewRelations = true;
   updateBadge();
+
+  // Auto-refresh the panel so the user sees the result without having to
+  // switch tabs. Debounced so a burst of extractions doesn't thrash the DOM.
+  scheduleAutoRefresh(record.normalizedUrl);
 }
 
-// --- Find Related Pages ---
+function scheduleAutoRefresh(normalizedUrl: string): void {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    // Only re-render if the user is still on the same page.
+    if (lastRenderedUrl === normalizedUrl) {
+      void renderRelatedPagesByNormalized(normalizedUrl);
+    }
+  }, REFRESH_DEBOUNCE_MS);
+}
 
-export async function findRelatedPages(currentUrl: string): Promise<PageRelation[]> {
+// --- Find Related Pages ----------------------------------------------------
+
+export async function findRelatedPages(currentNormalizedUrl: string): Promise<PageRelation[]> {
+  // Idempotent: callers (renderRelatedPages) already normalize, but direct
+  // callers (tests, future code) might not. normalizeUrl is stable so this
+  // is safe to call on already-normalized input.
+  const target = normalizeUrl(currentNormalizedUrl);
   const records = await getPageRecords();
-  const currentRecord = records.find((r) => r.url === currentUrl);
+  const currentRecord = records.find((r) => r.normalizedUrl === target);
   if (!currentRecord || !currentRecord.embedding?.length) return [];
 
-  const { embeddingThreshold } = await chrome.storage.sync.get('embeddingThreshold');
-  const threshold = (embeddingThreshold as number) || THRESHOLD_DEFAULT;
+  const cfg = await loadEmbeddingConfig();
 
   const relations: PageRelation[] = [];
   for (const record of records) {
-    if (record.url === currentUrl || !record.embedding?.length) continue;
+    if (record.normalizedUrl === target || !record.embedding?.length) continue;
     const similarity = cosineSimilarity(currentRecord.embedding, record.embedding);
-    if (similarity >= threshold) relations.push({ record, similarity });
+    if (similarity >= cfg.threshold) relations.push({ record, similarity });
   }
 
   relations.sort((a, b) => b.similarity - a.similarity);
   return relations.slice(0, 5);
 }
 
-// --- Time Formatting ---
+// --- Time Formatting -------------------------------------------------------
 
 function formatTimeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -183,73 +298,176 @@ function formatTimeAgo(timestamp: number): string {
   if (minutes < 1) return t('related.justNow');
   if (minutes < 60) return t('related.minutesAgo', { n: minutes });
   if (hours < 24) return t('related.hoursAgo', { n: hours });
-  if (days === 1) return t('related.daysAgo', { n: 1 });
   if (days < 7) return t('related.daysAgo', { n: days });
   if (days < 14) return t('related.weekAgo');
   return t('related.weeksAgo', { n: Math.floor(days / 7) });
 }
 
-// --- UI Rendering ---
+// --- UI Rendering ----------------------------------------------------------
 
 function updateBadge(): void {
   if (!badgeEl) return;
-  if (hasNewRelations) {
+  if (state.hasNewRelations) {
     badgeEl.classList.remove('hidden');
   } else {
     badgeEl.classList.add('hidden');
   }
 }
 
-export async function renderRelatedPages(currentUrl: string): Promise<void> {
+function setState(next: Partial<RelatedPagesState>): void {
+  Object.assign(state, next);
+  renderState();
+}
+
+function renderState(): void {
   if (!listEl) return;
+  switch (state.status) {
+    case 'disabled':
+      listEl.innerHTML = stateMessageHTML(t('related.disabled'), '');
+      break;
+    case 'not-configured':
+      listEl.innerHTML = `
+        <div class="related-state related-state--warn">
+          <div class="related-state-title">${escapeHtml(t('related.notConfigured'))}</div>
+          <div class="related-state-hint">${escapeHtml(t('related.notConfiguredHint'))}</div>
+          <button class="related-settings-link" type="button">${escapeHtml(t('related.openSettings'))}</button>
+        </div>`;
+      bindSettingsLink();
+      break;
+    case 'loading':
+      listEl.innerHTML = `
+        <div class="related-loading">
+          <span class="related-spinner"></span>
+          <span>${escapeHtml(t('related.loading'))}</span>
+        </div>`;
+      break;
+    case 'error': {
+      const msg = state.errorKey ? t(state.errorKey) : state.errorMessage || t('related.error');
+      listEl.innerHTML = `
+        <div class="related-state related-state--error">
+          <div class="related-state-title">${escapeHtml(t('related.error'))}</div>
+          <div class="related-state-hint">${escapeHtml(msg)}</div>
+          <button class="related-retry-btn" type="button">${escapeHtml(t('related.retry'))}</button>
+        </div>`;
+      bindRetry();
+      break;
+    }
+    default:
+      break;
+  }
+}
 
-  const relations = await findRelatedPages(currentUrl);
-  hasNewRelations = false;
-  updateBadge();
+function stateMessageHTML(title: string, hint: string): string {
+  return `<div class="related-state"><div class="related-state-title">${escapeHtml(title)}</div>${hint ? `<div class="related-state-hint">${escapeHtml(hint)}</div>` : ''}</div>`;
+}
 
-  if (relations.length === 0) {
-    listEl.innerHTML = `<div class="related-empty">${t('related.empty')}</div>`;
+function bindSettingsLink(): void {
+  const btn = listEl?.querySelector('.related-settings-link');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      void openOptionsPage();
+    });
+  }
+}
+
+function bindRetry(): void {
+  const btn = listEl?.querySelector('.related-retry-btn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (lastRenderedUrl) void renderRelatedPagesByNormalized(lastRenderedUrl);
+    });
+  }
+}
+
+/**
+ * Public render entry — takes a raw URL (typically `tabs[0].url`) and
+ * normalizes it internally. Emits loading → results/empty/error/not-configured.
+ */
+export async function renderRelatedPages(currentUrl: string): Promise<void> {
+  await renderRelatedPagesByNormalized(normalizeUrl(currentUrl));
+}
+
+async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<void> {
+  if (!listEl) return;
+  lastRenderedUrl = normalizedUrl;
+
+  const cfg = await loadEmbeddingConfig();
+
+  if (!cfg.enabled) {
+    setState({ status: 'disabled' });
+    state.hasNewRelations = false;
+    updateBadge();
     return;
   }
 
-  listEl.innerHTML = relations
-    .map(
-      (r) => `
+  if (!cfg.apiKey || !cfg.apiBase || !cfg.model) {
+    setState({ status: 'not-configured' });
+    state.hasNewRelations = false;
+    updateBadge();
+    return;
+  }
+
+  // Clear any previous error message before re-entering loading.
+  state.errorKey = undefined;
+  state.errorMessage = undefined;
+  state.status = 'loading';
+  renderState();
+
+  try {
+    const relations = await findRelatedPages(normalizedUrl);
+    state.hasNewRelations = false;
+    updateBadge();
+
+    if (relations.length === 0) {
+      state.status = 'empty';
+      listEl.innerHTML = `<div class="related-empty">${escapeHtml(t('related.empty'))}</div>`;
+      return;
+    }
+
+    state.status = 'results';
+    listEl.innerHTML = relations
+      .map(
+        (r) => `
     <div class="related-item" data-url="${escapeHtml(r.record.url)}">
       <div class="related-item-title">${escapeHtml(r.record.title || r.record.url)}</div>
       <div class="related-item-meta">
-        <span class="related-similarity">${t('related.similarity')} ${Math.round(r.similarity * 100)}%</span>
-        <span class="related-time">· ${formatTimeAgo(r.record.timestamp)}</span>
+        <span class="related-similarity">${escapeHtml(t('related.similarity'))} ${Math.round(r.similarity * 100)}%</span>
+        <span class="related-time">· ${escapeHtml(formatTimeAgo(r.record.timestamp))}</span>
       </div>
       <div class="related-item-excerpt">${escapeHtml(r.record.excerpt.slice(0, 100))}</div>
     </div>`
-    )
-    .join('');
+      )
+      .join('');
 
-  // Click handlers — open related page in a new tab
-  listEl.querySelectorAll('.related-item').forEach((item) => {
-    item.addEventListener('click', () => {
-      const url = (item as HTMLElement).dataset.url;
-      if (url) chrome.tabs.create({ url });
+    listEl.querySelectorAll('.related-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const url = (item as HTMLElement).dataset.url;
+        if (url) chrome.tabs.create({ url });
+      });
     });
-  });
+  } catch (e) {
+    state.status = 'error';
+    state.errorMessage = (e as Error).message;
+    renderState();
+  }
 }
 
-// --- Clear All ---
+// --- Clear All (delegates to shared/page-records) --------------------------
 
 export async function clearAllPageRecords(): Promise<void> {
-  await chrome.storage.local.remove(PAGE_RECORDS_KEY);
-  if (listEl) listEl.innerHTML = `<div class="related-empty">${t('related.empty')}</div>`;
+  await clearPageRecords();
+  state.hasNewRelations = false;
+  updateBadge();
+  if (listEl) listEl.innerHTML = `<div class="related-empty">${escapeHtml(t('related.empty'))}</div>`;
 }
 
-// --- Initialization ---
+// --- Initialization --------------------------------------------------------
 
 export interface RelatedPagesDeps {
   chatArea: HTMLElement;
 }
 
 export function initRelatedPages(deps: RelatedPagesDeps): void {
-  // Create panel DOM — inserted after the chat area
   panelEl = document.createElement('div');
   panelEl.id = 'relatedPagesPanel';
   panelEl.className = 'related-panel';
@@ -259,26 +477,28 @@ export function initRelatedPages(deps: RelatedPagesDeps): void {
         <span class="related-badge hidden"></span>
         ${t('related.title')}
       </span>
-      <button class="related-toggle" title="${t('related.title')}">▲</button>
+      <button class="related-toggle" type="button" aria-label="${escapeHtml(t('related.toggleCollapsed'))}" title="${escapeHtml(t('related.title'))}">▲</button>
     </div>
     <div class="related-list" id="relatedList">
-      <div class="related-empty">${t('related.empty')}</div>
+      <div class="related-empty">${escapeHtml(t('related.empty'))}</div>
     </div>
   `;
 
-  // Insert after chat area
   deps.chatArea.insertAdjacentElement('afterend', panelEl);
 
   listEl = panelEl.querySelector('#relatedList');
   badgeEl = panelEl.querySelector('.related-badge');
 
-  // Toggle collapse/expand
   const toggleBtn = panelEl.querySelector('.related-toggle') as HTMLButtonElement;
   const listContainer = panelEl.querySelector('.related-list') as HTMLElement;
   toggleBtn.addEventListener('click', () => {
     const collapsed = listContainer.classList.toggle('collapsed');
     toggleBtn.textContent = collapsed ? '▼' : '▲';
+    toggleBtn.setAttribute('aria-label', collapsed ? t('related.toggleExpanded') : t('related.toggleCollapsed'));
   });
+
+  // Drop legacy records (no normalizedUrl) on first init — clean rebuild.
+  void dropLegacyRecords();
 
   // Subscribe to PAGE_EXTRACTED instead of being imported upward by the
   // page-extractor service. This keeps the dependency direction
@@ -287,3 +507,12 @@ export function initRelatedPages(deps: RelatedPagesDeps): void {
     void requestEmbedding(excerpt, url, title);
   });
 }
+
+// --- Test hooks ------------------------------------------------------------
+// Exported for unit tests; not part of the public surface used by main.ts.
+export const __internals = {
+  get panelEl() { return panelEl; },
+  get listEl() { return listEl; },
+  get badgeEl() { return badgeEl; },
+  getState: () => state,
+};

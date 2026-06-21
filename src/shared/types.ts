@@ -93,7 +93,15 @@ export type Result<T, E = Error> =
 
 export interface PageRecord {
   id: string;
+  /** Original URL as captured from the tab. */
   url: string;
+  /**
+   * Normalized URL used for matching/dedup. Computed via `normalizeUrl()`
+   * (see `shared/url-normalize.ts`): hash stripped, tracking params removed,
+   * remaining params sorted, host lowercased. Stored so queries don't have
+   * to re-normalize on every read.
+   */
+  normalizedUrl: string;
   title: string;
   excerpt: string;
   embedding: number[];

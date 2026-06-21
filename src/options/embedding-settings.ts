@@ -36,11 +36,12 @@ export function loadEmbeddingValues(data: Record<string, unknown>): void {
   if (data.embeddingMaxPages) embeddingMaxPagesInput.value = String(data.embeddingMaxPages);
 }
 
-export function collectEmbeddingSaveData(): { set: Record<string, unknown>; remove: string[] } {
+export function collectEmbeddingSaveData(): { error?: string; set: Record<string, unknown>; remove: string[] } {
   const set: Record<string, unknown> = {};
   const remove: string[] = [];
 
-  set.embeddingEnabled = embeddingEnabledCheckbox.checked;
+  const enabled = embeddingEnabledCheckbox.checked;
+  set.embeddingEnabled = enabled;
 
   const apiKey = embeddingApiKeyInput.value.trim();
   if (apiKey) set.embeddingApiKey = apiKey; else remove.push('embeddingApiKey');
@@ -50,6 +51,13 @@ export function collectEmbeddingSaveData(): { set: Record<string, unknown>; remo
 
   const model = embeddingModelInput.value.trim();
   if (model) set.embeddingModel = model; else remove.push('embeddingModel');
+
+  // When enabled, all three embedding fields are required — there is no longer
+  // a fallback to the chat provider config. Surface the violation here so the
+  // caller (options/index.ts) can block the save and show the status message.
+  if (enabled && (!apiKey || !apiBase || !model)) {
+    return { error: t('status.embeddingConfigIncomplete'), set, remove };
+  }
 
   set.embeddingThreshold = parseInt(embeddingThresholdInput.value, 10) / 100;
   set.embeddingMaxPages = parseInt(embeddingMaxPagesInput.value, 10) || 200;

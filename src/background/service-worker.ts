@@ -4,6 +4,7 @@ import { callPodcast } from './sw-podcast';
 import { handleChartVision, handleChartAnalysis, handleChartScreenshot } from './sw-chart';
 import { handleOcrParse } from './sw-ocr';
 import { annotateChunk } from './sw-annotation';
+import { PORT_NAMES } from '../shared/protocol';
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
@@ -33,7 +34,7 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
       if (msg.type === 'generate') await callPodcast(msg.nlpTexts as { speaker: string; text: string }[], msg.audioConfig as { format: string; sample_rate: number; speech_rate: number }, port);
     });
-  } else if (port.name === 'embedding') {
+  } else if (port.name === PORT_NAMES.EMBEDDING) {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
       if (msg.type === 'embed') await callEmbedding(msg.text as string, port);
     });

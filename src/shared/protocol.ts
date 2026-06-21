@@ -131,6 +131,17 @@ export interface EmbeddingMessage {
   embedding: number[];
 }
 
+export interface EmbeddingErrorMessage {
+  type: 'error';
+  /** Free-text error message (e.g. network failure detail). */
+  error?: string;
+  /** i18n key into the side panel's `error.*` namespace (preferred). */
+  errorKey?: string;
+}
+
+/** Union of all messages the background may post back on the embedding port. */
+export type EmbeddingResponse = EmbeddingMessage | EmbeddingErrorMessage;
+
 // ---------------------------------------------------------------------------
 // annotation port — content script ↔ background
 // ---------------------------------------------------------------------------
