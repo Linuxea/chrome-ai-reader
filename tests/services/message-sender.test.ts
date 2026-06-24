@@ -99,6 +99,31 @@ vi.mock('../../src/side_panel/services/stream-handler.js', () => ({
   callAI: vi.fn(() => Promise.resolve()),
 }));
 
+vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
+  appendMessage: vi.fn((ts: { conversationHistory: unknown[] }, msg: unknown) => {
+    ts.conversationHistory.push(msg);
+  }),
+  rollbackTrailingUserMessage: vi.fn((ts: { conversationHistory: { role: string }[] }) => {
+    const hist = ts.conversationHistory;
+    if (hist.length > 0 && hist[hist.length - 1].role === 'user') {
+      hist.splice(hist.length - 1, 1);
+      return true;
+    }
+    return false;
+  }),
+  truncateHistoryFromUserContent: vi.fn((ts: { conversationHistory: unknown[] }, content: unknown) => {
+    const hist = ts.conversationHistory;
+    const idx = hist.findLastIndex((m: { role: string; content: unknown }) =>
+      m.role === 'user' && m.content === content);
+    if (idx !== -1) hist.splice(idx, hist.length - idx);
+    return idx;
+  }),
+}));
+
+vi.mock('../../src/platform/storage.js', () => ({
+  getSync: vi.fn(() => Promise.resolve({})),
+}));
+
 // --- Import after mocks ---
 import {
   initMessageSender,
@@ -112,6 +137,8 @@ import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
 import * as ocrMock from '../../src/side_panel/services/ocr.js';
 import { ensurePageContent } from '../../src/side_panel/services/page-extractor.js';
 import { callAI } from '../../src/side_panel/services/stream-handler.js';
+import { getSync } from '../../src/platform/storage.js';
+import { appendMessage as appendHistory } from '../../src/side_panel/services/chat/history-ops.js';
 
 describe('services/message-sender', () => {
   let tabState: Record<string, unknown>;
@@ -148,6 +175,7 @@ describe('services/message-sender', () => {
     ocrMock.collectImageDataUris.mockReturnValue([]);
     ocrMock.clearImagePreviews.mockImplementation(() => {});
     ocrMock.validateImageState.mockReturnValue(null);
+    (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: false });
 
     userInput = document.createElement('textarea');
     chatArea = document.createElement('div');
@@ -441,6 +469,61 @@ describe('services/message-sender', () => {
       await retryMessage(wrapper, 'text', 'display');
 
       expect(tabState.isPodcastGenerating).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // sendToAI — vision fork (multimodal content assembly)
+  // ==========================================================================
+  describe('sendToAI — vision fork', () => {
+    it('builds array content with image_url blocks when visionEnabled + images present', async () => {
+      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
+      const img1 = 'data:image/png;base64,AAA';
+      const img2 = 'data:image/png;base64,BBB';
+
+      await sendToAI('分析这些图', '分析这些图', undefined, '', [img1, img2]);
+
+      const messagesArg = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const lastMsg = messagesArg[messagesArg.length - 1];
+      expect(lastMsg.role).toBe('user');
+      expect(Array.isArray(lastMsg.content)).toBe(true);
+      const parts = lastMsg.content;
+      expect(parts[0]).toEqual({ type: 'text', text: '分析这些图' });
+      expect(parts[1]).toEqual({ type: 'image_url', image_url: { url: img1 } });
+      expect(parts[2]).toEqual({ type: 'image_url', image_url: { url: img2 } });
+      expect(lastMsg.hadImages).toBe(true);
+
+      // history append 收到原始带图消息（内存保留图片）
+      const historyArg = (appendHistory as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(Array.isArray(historyArg.content)).toBe(true);
+    });
+
+    it('builds string content when visionEnabled is false (OCR fallback path)', async () => {
+    (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: false });
+    (appendHistory as ReturnType<typeof vi.fn>).mockImplementation(
+      (ts: { conversationHistory: unknown[] }, msg: unknown) => {
+        ts.conversationHistory.push(msg);
+      },
+    );
+
+      await sendToAI('总结', '总结', undefined, 'OCR_TEXT', []);
+
+      const messagesArg = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const lastMsg = messagesArg[messagesArg.length - 1];
+      expect(typeof lastMsg.content).toBe('string');
+      expect(lastMsg.content).toContain('总结');
+      expect(lastMsg.content).toContain('OCR_TEXT');
+    });
+
+    it('builds string content when visionEnabled but no images', async () => {
+      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
+
+      await sendToAI('纯文字提问', '纯文字提问', undefined, '', []);
+
+      const messagesArg = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const lastMsg = messagesArg[messagesArg.length - 1];
+      expect(typeof lastMsg.content).toBe('string');
+      expect(lastMsg.content).toBe('纯文字提问');
     });
   });
 });

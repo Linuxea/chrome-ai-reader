@@ -3,7 +3,8 @@ import { getCurrentLang } from '../../shared/i18n.js';
 import { getPrompt } from '../../shared/prompts';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
-import type { ChatMessage } from '../../shared/types';
+import { getSync } from '../../platform/storage';
+import type { ChatMessage, MessageContentPart } from '../../shared/types';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
@@ -91,22 +92,37 @@ export async function sendToAI(
     const conversationHistory = tabState.conversationHistory || [];
     messages.push(...conversationHistory);
 
-    let historyContent = text;
     let apiContent = text;
 
     if (quoteForContext) {
       const quote = safeTruncate(quoteForContext, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated'));
       const withQuote = t('ai.quotePrefix') + '\n\n' + quote + '\n\n' + text;
-      historyContent = withQuote;
       apiContent = withQuote;
     }
 
-    appendHistory(tabState, { role: 'user', content: historyContent }, startTabId!);
+    const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
+    const visionOn = visionEnabled === true;
+    const hasImages = visionOn && imageUris !== undefined && imageUris.length > 0;
 
-    if (ocrContext) {
-      apiContent = apiContent + '\n\n' + ocrContext;
+    let userMessage: ChatMessage;
+    if (hasImages) {
+      const parts: MessageContentPart[] = [];
+      if (apiContent) parts.push({ type: 'text', text: apiContent });
+      for (const uri of imageUris!) parts.push({ type: 'image_url', image_url: { url: uri } });
+      userMessage = { role: 'user', content: parts, hadImages: true };
+    } else {
+      if (ocrContext) apiContent = apiContent + '\n\n' + ocrContext;
+      userMessage = { role: 'user', content: apiContent };
     }
-    messages.push({ role: 'user', content: apiContent });
+    messages.push(userMessage);
+    appendHistory(tabState, userMessage, startTabId!);
+
+    if (hasImages) {
+      const totalBytes = imageUris!.reduce((sum, u) => sum + u.length, 0);
+      if (totalBytes > 10 * 1024 * 1024) {
+        appendMessage('error', t('error.visionPayloadTooLarge'));
+      }
+    }
 
     await callAI(messages, startTabId);
   } catch (e: unknown) {
