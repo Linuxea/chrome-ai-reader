@@ -1,6 +1,6 @@
 import { safePostMessage } from './sw-utils';
 
-interface ChatMessage { role: string; content: string; [key: string]: unknown; }
+interface ChatMessage { role: string; content: string | unknown[]; [key: string]: unknown; }
 
 export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.Port, options?: { response_format?: Record<string, unknown>; temperature?: number }): Promise<void> {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']) as { apiKey?: string; apiBase?: string; modelName?: string };
