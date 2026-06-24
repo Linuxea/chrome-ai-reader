@@ -5,6 +5,7 @@ interface ChatMessage { role: string; content: string; [key: string]: unknown; }
 export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.Port, options?: { response_format?: Record<string, unknown>; temperature?: number }): Promise<void> {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']) as { apiKey?: string; apiBase?: string; modelName?: string };
   if (!apiKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noApiKey' }); return; }
+  if (!modelName) { safePostMessage(port, { type: 'error', errorKey: 'error.noModelName' }); return; }
 
   const baseUrl = apiBase || 'https://api.deepseek.com';
   const controller = new AbortController();
@@ -16,7 +17,7 @@ export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.P
     // also read delta.tool_calls (currently only reasoning_content + content).
     // Temperature defaults to 0.7 (conversational). Callers doing structured
     // JSON work (e.g. outline) pass a lower value for format stability.
-    const requestBody: Record<string, unknown> = { model: modelName || 'deepseek-chat', messages, stream: true, temperature: options?.temperature ?? 0.7 };
+    const requestBody: Record<string, unknown> = { model: modelName, messages, stream: true, temperature: options?.temperature ?? 0.7 };
     if (options?.response_format) requestBody.response_format = options.response_format;
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -53,6 +54,7 @@ export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.P
 export async function callSuggestQuestions(messages: ChatMessage[], port: chrome.runtime.Port): Promise<void> {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']) as { apiKey?: string; apiBase?: string; modelName?: string };
   if (!apiKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noApiKeySuggest' }); return; }
+  if (!modelName) { safePostMessage(port, { type: 'error', errorKey: 'error.noModelName' }); return; }
 
   const baseUrl = apiBase || 'https://api.deepseek.com';
   const controller = new AbortController();
@@ -61,7 +63,7 @@ export async function callSuggestQuestions(messages: ChatMessage[], port: chrome
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: modelName || 'deepseek-chat', messages, stream: true, temperature: 0.8 }), signal: controller.signal,
+      body: JSON.stringify({ model: modelName, messages, stream: true, temperature: 0.8 }), signal: controller.signal,
     });
 
     if (!response.ok) { const errorData = await response.json().catch(() => ({})); throw new Error((errorData as Record<string, { message?: string }>).error?.message || `API request failed (${response.status})`); }

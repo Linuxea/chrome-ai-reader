@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { buildAnnotationMessages, parseAnnotationResponse, annotateChunk } from '../../src/background/sw-annotation.js';
+import { buildAnnotationMessages, parseAnnotationResponse, annotateChunk, __resetJsonModeFlag } from '../../src/background/sw-annotation.js';
 import { getPrompt } from '../../src/shared/prompts';
 import { safePostMessage } from '../../src/background/sw-utils.js';
 import type { Annotation } from '../../src/shared/types';
@@ -140,6 +140,33 @@ describe('sw-annotation prompt assembly', () => {
       expect(parseAnnotationResponse('not json')).toEqual([]);
       expect(parseAnnotationResponse('')).toEqual([]);
     });
+
+    it('strips markdown ```json fences and parses the inner JSON', () => {
+      const raw = '```json\n' + JSON.stringify({ annotations: [
+        { perspective: 'critique', quote: 'q', comment: 'c' },
+      ] }) + '\n```';
+      const result = parseAnnotationResponse(raw);
+      expect(result).toHaveLength(1);
+      expect(result[0].perspective).toBe('critique');
+    });
+
+    it('extracts the JSON object from surrounding prose', () => {
+      const raw = '好的，以下是批注结果：\n' + JSON.stringify({ annotations: [
+        { perspective: 'flaw', quote: 'q', comment: 'c' },
+      ] }) + '\n希望对你有帮助。';
+      const result = parseAnnotationResponse(raw);
+      expect(result).toHaveLength(1);
+      expect(result[0].perspective).toBe('flaw');
+    });
+
+    it('strips fences AND ignores prose around them', () => {
+      const raw = '好的：\n```json\n' + JSON.stringify({ annotations: [
+        { perspective: 'counterpoint', quote: 'q', comment: 'c' },
+      ] }) + '\n```\n以上。';
+      const result = parseAnnotationResponse(raw);
+      expect(result).toHaveLength(1);
+      expect(result[0].perspective).toBe('counterpoint');
+    });
   });
 });
 
@@ -147,6 +174,8 @@ describe('sw-annotation annotateChunk', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     annotationStore.apiKey = 'sk-test';
+    annotationStore.modelName = 'deepseek-chat';
+    __resetJsonModeFlag();
   });
 
   it('posts error when apiKey missing', async () => {
@@ -155,6 +184,17 @@ describe('sw-annotation annotateChunk', () => {
     await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
     const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.some((c) => (c[1] as Record<string, unknown>).type === 'error')).toBe(true);
+  });
+
+  it('posts error when modelName missing', async () => {
+    annotationStore.modelName = '';
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const errCall = calls.find((c) => (c[1] as Record<string, unknown>).type === 'error');
+    expect(errCall).toBeTruthy();
+    expect((errCall![1] as Record<string, unknown>).errorKey).toBe('error.noModelName');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('posts annotated result with parsed annotations on success', async () => {
@@ -203,5 +243,69 @@ describe('sw-annotation annotateChunk', () => {
     expect(port.onDisconnect.addListener).toHaveBeenCalled();
     // removeListener is called in finally — cleanup happened
     expect(port.onDisconnect.removeListener).toHaveBeenCalled();
+  });
+
+  it('downgrades: retries without response_format when provider rejects json_object, then succeeds', async () => {
+    // First call: 400 with response_format error → triggers downgrade retry.
+    fetchMock.mockResolvedValueOnce({
+      ok: false, status: 400,
+      json: async () => ({ error: { message: "json_object is not supported by this model" } }),
+    } as unknown as Response);
+    // Second call (no response_format): success.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ choices: [{ message: { content: JSON.stringify({ annotations: [
+        { perspective: 'critique', quote: 'q', comment: 'c' },
+      ] }) } }] }),
+    );
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+
+    // Two fetches happened: first with response_format, second without.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const secondBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(firstBody.response_format).toEqual({ type: 'json_object' });
+    expect(secondBody.response_format).toBeUndefined();
+    // The annotated result was posted from the second (successful) call.
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const annotated = calls.find((c) => (c[1] as Record<string, unknown>).type === 'annotated');
+    expect(annotated).toBeTruthy();
+  });
+
+  it('after downgrade flag is set, subsequent chunks skip response_format on the first try', async () => {
+    // Prime the flag by running one chunk that triggers the downgrade.
+    fetchMock.mockResolvedValueOnce({
+      ok: false, status: 400,
+      json: async () => ({ error: { message: "response_format json_object not supported" } }),
+    } as unknown as Response);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ choices: [{ message: { content: JSON.stringify({ annotations: [] }) } }] }),
+    );
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, mockPort());
+
+    // Now a second chunk: only ONE fetch, and it must NOT have response_format.
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ choices: [{ message: { content: JSON.stringify({ annotations: [] }) } }] }),
+    );
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 1, chunkText: 'D' }, mockPort());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.response_format).toBeUndefined();
+  });
+
+  it('does not downgrade on a non-response_format 400 (surfaces the error directly)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false, status: 400,
+      json: async () => ({ error: { message: "Invalid model id" } }),
+    } as unknown as Response);
+    const port = mockPort();
+    await annotateChunk({ fullArticle: 'A', chunkIndex: 0, chunkText: 'C' }, port);
+    // No retry — only one fetch.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calls = (safePostMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const errCall = calls.find((c) => (c[1] as Record<string, unknown>).type === 'error');
+    expect(errCall).toBeTruthy();
+    expect((errCall![1] as Record<string, unknown>).error).toBe('Invalid model id');
   });
 });

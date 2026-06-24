@@ -29,11 +29,16 @@ function reportToPanel(msg: { action: string; [k: string]: unknown }): void {
 /** Max number of chunks annotated concurrently. Caps API load + DOM churn. */
 const CONCURRENCY = 4;
 
+/** Per-chunk result: either parsed annotations or a forwarded error message. */
+type ChunkResult = { status: 'ok'; annotations: Annotation[] } | { status: 'error'; error: string };
+
 /**
  * Begin annotating the page: collect chunks, request annotations per chunk
  * with bounded concurrency (CONCURRENCY at a time), highlight + insert icons
  * progressively, and report progress.
- * Reports annotationProgress / annotationDone / annotationFailed to the panel.
+ * Reports annotationProgress during the run, then a terminal event:
+ *   - annotationDone {count, failed?}  — at least one chunk succeeded
+ *   - annotationFailed {error}          — every chunk failed (surfaces the real error)
  *
  * Cancellation: if handleClearAnnotation runs mid-flight, in-flight ports are
  * disconnected and results arriving after clear are dropped (no orphan icons).
@@ -49,6 +54,8 @@ export async function handleStartAnnotation(): Promise<void> {
 
   let produced = 0;
   let completed = 0;
+  let failed = 0;
+  let firstError = '';
 
   // One task per chunk; the pool runs up to CONCURRENCY concurrently.
   const runOne = async (i: number): Promise<void> => {
@@ -57,10 +64,12 @@ export async function handleStartAnnotation(): Promise<void> {
     // A clear may have landed while this chunk was in flight — drop the result
     // so no icon is inserted after clear.
     if (!_running) return;
-    if (result === 'failed') {
-      reportToPanel({ action: 'annotationFailed', chunkIndex: i });
-    } else if (result && result.length > 0) {
-      for (const ann of result) {
+    if (result.status === 'error') {
+      failed += 1;
+      if (!firstError) firstError = result.error;
+      console.warn(`[annotation] chunk ${i} failed:`, result.error);
+    } else if (result.annotations.length > 0) {
+      for (const ann of result.annotations) {
         const mark = findAndWrap(chunks[i].node, ann.quote);
         // Anchor the icon to the highlighted phrase when possible; otherwise
         // fall back to the paragraph so the annotation is still reachable
@@ -88,8 +97,15 @@ export async function handleStartAnnotation(): Promise<void> {
   const workers = Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker);
   await Promise.all(workers);
 
-  // Only report done if we finished naturally (not cancelled by a clear).
-  if (_running) reportToPanel({ action: 'annotationDone', count: produced });
+  // Only report a terminal event if we finished naturally (not cancelled).
+  if (_running) {
+    if (failed === total) {
+      // Every chunk failed — surface the real error instead of a silent "0 处".
+      reportToPanel({ action: 'annotationFailed', error: firstError });
+    } else {
+      reportToPanel({ action: 'annotationDone', count: produced, failed });
+    }
+  }
   _running = false;
 }
 
@@ -98,10 +114,11 @@ const _activePorts = new Set<chrome.runtime.Port>();
 
 /**
  * Request annotations for one chunk via the background 'annotation' port.
- * Returns the parsed Annotation[] on success, or 'failed' on error/disconnect.
- * The port is tracked in _activePorts so a mid-flight clear can disconnect it.
+ * Returns the parsed annotations on success, or the forwarded error string on
+ * failure/disconnect. The port is tracked in _activePorts so a mid-flight clear
+ * can disconnect it.
  */
-function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string): Promise<Annotation[] | 'failed'> {
+function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string): Promise<ChunkResult> {
   return new Promise((resolve) => {
     const port = chrome.runtime.connect({ name: 'annotation' });
     _activePorts.add(port);
@@ -110,14 +127,15 @@ function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string
       if (msg.type === 'annotated') {
         cleanup();
         port.disconnect();
-        resolve((msg.annotations as Annotation[]) || []);
+        resolve({ status: 'ok', annotations: (msg.annotations as Annotation[]) || [] });
       } else if (msg.type === 'error') {
         cleanup();
         port.disconnect();
-        resolve('failed');
+        const error = (msg.error as string) || (msg.errorKey as string) || 'unknown error';
+        resolve({ status: 'error', error });
       }
     };
-    const onDisconnect = () => { cleanup(); resolve('failed'); };
+    const onDisconnect = () => { cleanup(); resolve({ status: 'error', error: 'port disconnected' }); };
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(onDisconnect);
     port.postMessage({ type: 'annotate', fullArticle, chunkIndex, chunkText });

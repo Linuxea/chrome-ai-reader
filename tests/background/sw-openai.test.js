@@ -178,19 +178,14 @@ describe('background/sw-openai', () => {
       expect(body.response_format).toEqual({ type: 'json_object' });
     });
 
-    it('defaults model to deepseek-chat when not configured', async () => {
+    it('posts error when modelName is not configured (no default fallback)', async () => {
       store.sync.modelName = undefined;
-      const sseBody = createSSEStream([]);
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
-      const callArgs = fetch.mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.model).toBe('deepseek-chat');
+      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.noModelName' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      store.sync.modelName = 'test-model';
     });
 
     it('sends error on fetch exception', async () => {

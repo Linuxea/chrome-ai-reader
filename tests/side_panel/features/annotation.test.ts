@@ -77,6 +77,28 @@ describe('side_panel/features/annotation', () => {
     expect(__getAnnotationState()).toBe('error');
   });
 
+  it('surfaces the real error on annotationFailed (button title + console.error)', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const btn = document.getElementById('annotationBtn') as HTMLButtonElement;
+    initAnnotation({ button: btn });
+    fireRuntime({ action: 'annotationFailed', error: 'json_object is not supported by this model' });
+    expect(__getAnnotationState()).toBe('error');
+    expect(btn.title).toContain('json_object is not supported');
+    expect(consoleSpy).toHaveBeenCalledWith('[annotation] failed:', 'json_object is not supported by this model');
+    consoleSpy.mockRestore();
+  });
+
+  it('shows partial-failure info on annotationDone with failed > 0 (title + console.warn)', () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const btn = document.getElementById('annotationBtn') as HTMLButtonElement;
+    initAnnotation({ button: btn });
+    fireRuntime({ action: 'annotationDone', count: 5, failed: 2 });
+    expect(__getAnnotationState()).toBe('done');
+    expect(btn.title).toContain('2');
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
   it('on annotationFollowUp: shows the source quote via updateQuotePreview and fills the comment into the input', () => {
     updateQuotePreview.mockClear();
     const input = document.createElement('textarea');

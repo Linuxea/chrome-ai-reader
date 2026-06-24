@@ -7,8 +7,8 @@
  *
  * Messages from content (via chrome.runtime.onMessage):
  *   annotationProgress {done, total} — update button label
- *   annotationDone {count}           — mark done, show count
- *   annotationFailed {chunkIndex}    — mark error
+ *   annotationDone {count, failed?}  — mark done, show count (+ partial-fail note)
+ *   annotationFailed {error}         — terminal: every chunk failed, surface error
  *   annotationFollowUp {quote, comment} — quote the AI-annotated source
  *     sentence (shows the same quote-preview bar as the normal quote feature)
  *     and fill the AI comment into the input for follow-up chat.
@@ -76,9 +76,19 @@ function onRuntimeMessage(msg: Record<string, unknown>): void {
   } else if (action === 'annotationDone') {
     setState('done');
     _button!.innerHTML = `<span class="action-icon">${ICON_CHECK}</span><span>${t('annotation.buttonDone', { n: msg.count })}</span>`;
+    const failed = (msg.failed as number) || 0;
+    if (failed > 0) {
+      _button!.title = t('annotation.donePartialTitle', { failed });
+      console.warn(`[annotation] ${failed} chunk(s) failed during annotation`);
+    }
   } else if (action === 'annotationFailed') {
     setState('error');
     _button!.innerHTML = `<span class="action-icon">${ICON_ALERT}</span><span>${t('annotation.error')}</span>`;
+    const error = (msg.error as string) || '';
+    if (error) {
+      _button!.title = t('annotation.errorTitle', { error });
+      console.error('[annotation] failed:', error);
+    }
   } else if (action === 'annotationFollowUp') {
     const quote = (msg.quote as string) || '';
     const comment = (msg.comment as string) || '';

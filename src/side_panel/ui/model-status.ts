@@ -17,5 +17,5 @@ export function initModelStatus(): void {
 }
 
 export function updateModelStatusBar(name?: string): void {
-  _modelStatusBar.textContent = t('sidebar.modelStatus') + (name || 'deepseek-chat');
+  _modelStatusBar.textContent = t('sidebar.modelStatus') + (name || t('sidebar.modelNotConfigured'));
 }

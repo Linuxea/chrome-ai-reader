@@ -96,6 +96,7 @@ const TRANSLATIONS = {
     'sidebar.clearQuote': '清除引用',
     'sidebar.welcome': '打开任意网页，点击上方按钮或输入问题开始使用。',
     'sidebar.modelStatus': '当前模型：',
+    'sidebar.modelNotConfigured': '未配置',
     'sidebar.historyEmpty': '暂无历史对话',
     'sidebar.dropHint': '松开以上传图片',
 
@@ -140,6 +141,7 @@ const TRANSLATIONS = {
     'error.emptyEmbedding': 'Embedding 返回空向量',
     'error.embeddingNotConfigured': 'Embedding 服务配置不完整（API Key / Base / Model 均需独立填写）',
     'error.embeddingRequestFailed': 'Embedding 请求失败',
+    'error.noModelName': '请先在设置页面配置模型名称',
 
     'status.loading': '加载中...',
     'status.modelsLoaded': '已获取 {n} 个模型',
@@ -220,7 +222,9 @@ const TRANSLATIONS = {
     'annotation.button': '深度批阅',
     'annotation.buttonActive': '批阅中...（{done}/{total}）',
     'annotation.buttonDone': '✓ 批阅完成（{n} 处）',
+    'annotation.donePartialTitle': '批阅完成，但有 {failed} 段失败（详情见控制台）',
     'annotation.error': '批阅失败，点击重试',
+    'annotation.errorTitle': '批阅失败：{error}',
     'annotation.critique': '批判',
     'annotation.counterpoint': '反方',
     'annotation.flaw': '漏洞',
@@ -325,6 +329,7 @@ const TRANSLATIONS = {
     'sidebar.clearQuote': 'Clear quote',
     'sidebar.welcome': 'Open any webpage, then click a button above or type a question to get started.',
     'sidebar.modelStatus': 'Current model: ',
+    'sidebar.modelNotConfigured': 'not configured',
     'sidebar.historyEmpty': 'No chat history',
     'sidebar.dropHint': 'Drop to upload image',
 
@@ -369,6 +374,7 @@ const TRANSLATIONS = {
     'error.emptyEmbedding': 'Empty embedding returned',
     'error.embeddingNotConfigured': 'Embedding service is not fully configured (API Key / Base / Model are all required)',
     'error.embeddingRequestFailed': 'Embedding request failed',
+    'error.noModelName': 'Please configure a model name in Settings',
 
     'status.loading': 'Loading...',
     'status.modelsLoaded': '{n} models loaded',
@@ -449,7 +455,9 @@ const TRANSLATIONS = {
     'annotation.button': 'Deep Annotate',
     'annotation.buttonActive': 'Annotating... ({done}/{total})',
     'annotation.buttonDone': '✓ Done ({n} annotations)',
+    'annotation.donePartialTitle': 'Annotation done, but {failed} chunk(s) failed (see console for details)',
     'annotation.error': 'Failed, click to retry',
+    'annotation.errorTitle': 'Annotation failed: {error}',
     'annotation.critique': 'Critique',
     'annotation.counterpoint': 'Counterpoint',
     'annotation.flaw': 'Flaw',

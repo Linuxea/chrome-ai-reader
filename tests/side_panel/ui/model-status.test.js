@@ -61,19 +61,19 @@ describe('ui/model-status', () => {
       expect(statusBar.textContent).toBe('[sidebar.modelStatus]gpt-4');
     });
 
-    it('defaults to deepseek-chat when no name provided', () => {
+    it('shows not-configured placeholder when no name provided', () => {
       updateModelStatusBar(undefined);
-      expect(statusBar.textContent).toBe('[sidebar.modelStatus]deepseek-chat');
+      expect(statusBar.textContent).toBe('[sidebar.modelStatus][sidebar.modelNotConfigured]');
     });
 
-    it('defaults to deepseek-chat when null provided', () => {
+    it('shows not-configured placeholder when null provided', () => {
       updateModelStatusBar(null);
-      expect(statusBar.textContent).toBe('[sidebar.modelStatus]deepseek-chat');
+      expect(statusBar.textContent).toBe('[sidebar.modelStatus][sidebar.modelNotConfigured]');
     });
 
-    it('defaults to deepseek-chat when empty string provided', () => {
+    it('shows not-configured placeholder when empty string provided', () => {
       updateModelStatusBar('');
-      expect(statusBar.textContent).toBe('[sidebar.modelStatus]deepseek-chat');
+      expect(statusBar.textContent).toBe('[sidebar.modelStatus][sidebar.modelNotConfigured]');
     });
   });
 
@@ -85,10 +85,10 @@ describe('ui/model-status', () => {
       expect(statusBar.textContent).toBe('[sidebar.modelStatus]gpt-4o');
     });
 
-    it('defaults when no model name in storage', () => {
+    it('shows not-configured when no model name in storage', () => {
       store.sync.modelName = undefined;
       initModelStatus();
-      expect(statusBar.textContent).toBe('[sidebar.modelStatus]deepseek-chat');
+      expect(statusBar.textContent).toBe('[sidebar.modelStatus][sidebar.modelNotConfigured]');
     });
 
     it('updates on chrome.storage.onChanged for modelName', () => {
@@ -104,7 +104,7 @@ describe('ui/model-status', () => {
       const listener = [...storageListeners.sync][0];
 
       listener({ apiKey: { newValue: 'sk-xxx' } }, 'sync');
-      expect(statusBar.textContent).toBe('[sidebar.modelStatus]deepseek-chat');
+      expect(statusBar.textContent).toBe('[sidebar.modelStatus][sidebar.modelNotConfigured]');
     });
   });
 });

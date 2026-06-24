@@ -349,13 +349,33 @@ describe('content/annotation orchestration', () => {
     expect(getBubbleHost().shadowRoot!.querySelector('.anno-bubble')).toBeNull();
   });
 
-  it('reports failure to side panel when a chunk errors', async () => {
+  it('reports terminal annotationFailed with the real error when every chunk fails', async () => {
     document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
     const promise = handleStartAnnotation();
     flushError(0);
     await promise;
-    const actions = postedRuntime.map((m) => m.action);
-    expect(actions).toContain('annotationFailed');
+    const failed = postedRuntime.find((m) => m.action === 'annotationFailed') as { error?: string };
+    expect(failed).toBeTruthy();
+    expect(failed.error).toBe('boom');
+    // No annotationDone should be sent when all chunks failed.
+    expect(postedRuntime.some((m) => m.action === 'annotationDone')).toBe(false);
+  });
+
+  it('reports annotationDone with failed count on partial failure (some succeed, some error)', async () => {
+    document.body.innerHTML = `<article>
+      <p>First paragraph with enough text to qualify as a content chunk one.</p>
+      <p>Second paragraph with enough text to qualify as a content chunk two.</p>
+    </article>`;
+    const promise = handleStartAnnotation();
+    await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'First paragraph', comment: 'c1' }]);
+    flushError(1);
+    await promise;
+    const done = postedRuntime.find((m) => m.action === 'annotationDone') as { count: number; failed?: number };
+    expect(done).toBeTruthy();
+    expect(done.count).toBe(1);
+    expect(done.failed).toBe(1);
+    // No terminal annotationFailed — not all chunks failed.
+    expect(postedRuntime.some((m) => m.action === 'annotationFailed')).toBe(false);
   });
 
   it('does not insert icons for an in-flight chunk that resolves after clear', async () => {
