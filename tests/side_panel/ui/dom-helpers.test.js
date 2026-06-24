@@ -14,6 +14,7 @@ import {
   initDOMHelpers,
   appendMessage,
   appendMessageWithQuote,
+  appendMessageFromHistory,
   buildBubbleImagesHtml,
   prependBubbleImages,
   wrapUserMessage,
@@ -302,6 +303,51 @@ describe('dom-helpers', () => {
       expect(retryBtn).not.toBeNull();
       retryBtn.click();
       expect(emit).toHaveBeenCalledWith(EVENTS.RETRY, expect.any(Object));
+    });
+  });
+
+  describe('appendMessageFromHistory — multimodal content', () => {
+    it('extracts image_url blocks from array content and renders thumbnails', () => {
+      const msg = {
+        role: 'user',
+        content: [
+          { type: 'text', text: '看这张图' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,ABC' } },
+        ],
+      };
+      const div = appendMessageFromHistory(msg);
+
+      expect(div.textContent).toContain('看这张图');
+      const imgs = div.querySelectorAll('img.bubble-img-thumb');
+      expect(imgs.length).toBe(1);
+      expect(imgs[0].src).toBe('data:image/png;base64,ABC');
+    });
+
+    it('shows image-lost hint when hadImages=true but content is string (reload state)', () => {
+      const msg = {
+        role: 'user',
+        content: '原本有图的文字',
+        hadImages: true,
+      };
+      const div = appendMessageFromHistory(msg);
+
+      expect(div.textContent).toContain('原本有图的文字');
+      expect(div.querySelector('.image-lost-hint')).not.toBeNull();
+    });
+
+    it('renders plain string content without image-lost hint when hadImages absent', () => {
+      const msg = { role: 'user', content: '纯文字' };
+      const div = appendMessageFromHistory(msg);
+
+      expect(div.textContent).toContain('纯文字');
+      expect(div.querySelector('.image-lost-hint')).toBeNull();
+    });
+
+    it('renders assistant message as ai role (markdown)', () => {
+      const msg = { role: 'assistant', content: 'AI 回复' };
+      const div = appendMessageFromHistory(msg);
+
+      expect(div.className).toContain('message-ai');
     });
   });
 });

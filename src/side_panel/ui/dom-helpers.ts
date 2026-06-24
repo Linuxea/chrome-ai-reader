@@ -3,6 +3,7 @@ import { t } from '../../shared/i18n.js';
 import { CSS } from '../../shared/css-selectors';
 import { marked } from 'marked';
 import { emit, EVENTS } from '../events';
+import type { ChatMessage, MessageContentPart } from '../../shared/types';
 
 let _chatArea: HTMLElement;
 let _actionBtns: NodeListOf<HTMLButtonElement>;
@@ -170,4 +171,41 @@ export function setButtonsDisabled(disabled: boolean): void {
     btn.disabled = disabled;
   });
   _sendBtn.disabled = disabled;
+}
+
+/**
+ * Render a chat message from `conversationHistory` (memory or reloaded from
+ * storage) into the chat area. Handles both string content (plain text) and
+ * array content (multimodal — extracts image_url thumbnails). On reload,
+ * `hadImages: true` with string content means images were stripped at
+ * persistence time → show an "image lost" hint.
+ */
+export function appendMessageFromHistory(msg: ChatMessage): HTMLDivElement {
+  const imageUris = extractImageUrisFromContent(msg);
+  const text = extractTextFromContent(msg);
+  const role = msg.role === 'assistant' ? 'ai' : msg.role;
+  const div = appendMessage(role, text, imageUris);
+
+  if (msg.hadImages && imageUris.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'image-lost-hint';
+    hint.textContent = t('error.imageLostAfterReload');
+    div.insertBefore(hint, div.firstChild);
+  }
+  return div;
+}
+
+export function extractImageUrisFromContent(msg: ChatMessage): string[] {
+  if (typeof msg.content === 'string') return [];
+  return msg.content
+    .filter((p): p is Extract<MessageContentPart, { type: 'image_url' }> => p.type === 'image_url')
+    .map(p => p.image_url.url);
+}
+
+function extractTextFromContent(msg: ChatMessage): string {
+  if (typeof msg.content === 'string') return msg.content;
+  return msg.content
+    .filter((p): p is Extract<MessageContentPart, { type: 'text' }> => p.type === 'text')
+    .map(p => p.text)
+    .join('\n');
 }

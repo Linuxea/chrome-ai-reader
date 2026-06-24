@@ -1,6 +1,6 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
-import { appendMessage } from './dom-helpers';
+import { appendMessage, appendMessageFromHistory } from './dom-helpers';
 import { clearImagePreviews } from '../services/ocr.js';
 import { updateQuotePreview } from './global-events';
 import type { ChatMessage } from '../../shared/types';
@@ -42,17 +42,7 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
 
   if (history.length > 0) {
     for (const msg of history) {
-      // TODO(Task 6): replace with appendMessageFromHistory to render
-      // image_url blocks and "image lost" hints. For now, collapse array
-      // content to text so tsc passes after the ChatMessage.content union.
-      const text = typeof msg.content === 'string'
-        ? msg.content
-        : msg.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
-      if (msg.role === 'user') {
-        appendMessage('user', text);
-      } else if (msg.role === 'assistant') {
-        appendMessage('ai', text);
-      }
+      appendMessageFromHistory(msg);
     }
   } else {
     els.chatArea.innerHTML = `<div class="welcome-msg"><p>${t('sidebar.welcome')}</p></div>`;

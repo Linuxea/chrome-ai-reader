@@ -23,6 +23,12 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
     const el = document.createElement('div');
     return el;
   }),
+  appendMessageFromHistory: vi.fn((msg: { role: string; content: unknown }) => {
+    const el = document.createElement('div');
+    el.className = `message message-${msg.role === 'assistant' ? 'ai' : msg.role}`;
+    if (typeof msg.content === 'string') el.textContent = msg.content;
+    return el;
+  }),
 }));
 vi.mock('../../../src/side_panel/services/ocr.js', () => ({ clearImagePreviews: vi.fn() }));
 vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
@@ -37,7 +43,7 @@ import {
   type GlobalEventDeps,
 } from '../../../src/side_panel/ui/tab-switch-handler';
 import * as stateMock from '../../../src/side_panel/state.js';
-import { appendMessage } from '../../../src/side_panel/ui/dom-helpers.js';
+import { appendMessage, appendMessageFromHistory } from '../../../src/side_panel/ui/dom-helpers.js';
 
 function createEls(): UIElements {
   return {
@@ -143,10 +149,10 @@ describe('ui/tab-switch-handler', () => {
 
       resetUIForTabSwitch(els, deps);
 
-      // appendMessage called for each message
-      expect(appendMessage).toHaveBeenCalledTimes(2);
-      expect(appendMessage).toHaveBeenCalledWith('user', 'question');
-      expect(appendMessage).toHaveBeenCalledWith('ai', 'answer');
+      // appendMessageFromHistory called for each message
+      expect(appendMessageFromHistory).toHaveBeenCalledTimes(2);
+      expect(appendMessageFromHistory).toHaveBeenCalledWith({ role: 'user', content: 'question' });
+      expect(appendMessageFromHistory).toHaveBeenCalledWith({ role: 'assistant', content: 'answer' });
     });
 
     it('shows welcome message when no history', () => {
