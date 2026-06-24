@@ -20,10 +20,27 @@
  * declaring them here means the type contract is ready when tool calling is
  * introduced — callers won't need to widen ChatMessage later.
  */
+/**
+ * 一个多模态内容块。视觉消息的 `content` 是此类型的数组；
+ * 纯文字消息的 `content` 仍是 `string`。遵循 OpenAI 兼容格式。
+ */
+export type MessageContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+  /**
+   * 纯文字消息为 `string`；视觉/多模态消息为 `MessageContentPart[]`
+   *（OpenAI 兼容格式：text 块 + image_url 块）。
+   */
+  content: string | MessageContentPart[];
   type?: string;
+  /**
+   * 仅内存态标记：该消息原本含图片，重启后图片已失效。
+   * 持久化时仍保留此字段，用于重载后渲染"图片已失效"提示。
+   */
+  hadImages?: boolean;
   /** Tool calls emitted by the assistant (agent evolution — not yet wired). */
   tool_calls?: ToolCall[];
   /** When role is 'tool', the id of the tool call this result responds to. */

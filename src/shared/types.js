@@ -16,9 +16,22 @@
  * A single chat message in the conversation history.
  *
  * @typedef {Object} ChatMessage
- * @property {'system'|'user'|'assistant'} role - Who sent the message
- * @property {string} content - The text content of the message
- * @property {string} [type] - Optional discriminator (e.g. 'image' for multimodal)
+ * @property {'system'|'user'|'assistant'|'tool'} role - Who sent the message
+ * @property {string|MessageContentPart[]} content - Text content, or an array
+ *   of multimodal content blocks (text + image_url) for vision messages
+ * @property {string} [type] - Optional discriminator
+ * @property {boolean} [hadImages] - Memory-only flag: message originally
+ *   contained images that were stripped at persistence time (reload shows hint)
+ */
+
+/**
+ * A single multimodal content block. Vision messages use an array of these
+ * as `ChatMessage.content`; plain-text messages use a plain string.
+ *
+ * @typedef {Object} MessageContentPart
+ * @property {'text'|'image_url'} type
+ * @property {string} [text] - Present when type is 'text'
+ * @property {{url: string}} [image_url] - Present when type is 'image_url'
  */
 
 /**
