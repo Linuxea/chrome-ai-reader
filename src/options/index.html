@@ -90,9 +90,9 @@
             <textarea id="systemPrompt" rows="4" data-i18n-placeholder="settings.llm.systemPrompt.ph" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
             <p class="hint" data-i18n="settings.llm.systemPrompt.hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
 
-            <label class="checkbox-row">
-              <input type="checkbox" id="visionEnabled">
+            <label class="toggle-row">
               <span data-i18n="settings.vision.enabled">模型支持视觉能力</span>
+              <input type="checkbox" id="visionEnabled">
             </label>
             <p class="hint" data-i18n="settings.vision.hint">勾选后需使用 OpenAI 兼容的视觉模型（如 gpt-4o、qwen-vl）。勾选后上传与截图的图片将直接发给模型，不再走 OCR。</p>
           </div>
