@@ -24,7 +24,7 @@ const TEXT_INPUT_IDS = [
 
 /** IDs of all checkbox elements */
 const CHECKBOX_IDS = [
-  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled',
+  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'visionEnabled',
 ] as const;
 
 /** IDs of all button elements */

@@ -17,6 +17,7 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
   suggestQuestions: document.getElementById('suggestQuestions') as HTMLInputElement,
   ttsAutoPlay: document.getElementById('ttsAutoPlay') as HTMLInputElement,
   embeddingEnabled: document.getElementById('embeddingEnabled') as HTMLInputElement,
+  visionEnabled: document.getElementById('visionEnabled') as HTMLInputElement,
 };
 
 export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language', 'embeddingThreshold', 'embeddingMaxPages'];
