@@ -1,12 +1,15 @@
 import { loadLanguage } from '../shared/i18n.js';
+import { t } from '../shared/i18n.js';
 import { initState } from './state';
 import * as state from './state';
 import { on, EVENTS } from './events';
-import { initDOMHelpers } from './ui/dom-helpers';
+import { initDOMHelpers, appendMessage } from './ui/dom-helpers';
 import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
-import { initOCR, clearImagePreviews } from './services/ocr.js';
+import { initOCR, clearImagePreviews, addImageDataUri } from './services/ocr.js';
+import { captureVisibleTab } from './services/screenshot';
+import { getSync, onSyncChange } from '../platform/storage';
 import { initAIChat } from './services/ai-chat';
 import { sendToAI, sendMessage, retryMessage } from './services/message-sender';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
@@ -55,6 +58,26 @@ async function init(): Promise<void> {
 
   initTTS({ chatArea: els.chatArea });
   initOCR();
+
+  // 视觉分析按钮：显隐由 visionEnabled 控制，onSyncChange 实时联动
+  const visionCaptureBtn = document.getElementById('visionCaptureBtn')!;
+  const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
+  if (visionEnabled) visionCaptureBtn.classList.remove('hidden');
+
+  onSyncChange('visionEnabled', (val) => {
+    if (val === true) visionCaptureBtn.classList.remove('hidden');
+    else visionCaptureBtn.classList.add('hidden');
+  });
+
+  visionCaptureBtn.addEventListener('click', async () => {
+    try {
+      const dataUri = await captureVisibleTab();
+      const name = `截图 ${new Date().toLocaleString()}`;
+      await addImageDataUri(dataUri, name);
+    } catch (e) {
+      appendMessage('error', t('error.screenshotFailed') + (e instanceof Error ? `：${e.message}` : ''));
+    }
+  });
 
   initChatHistory({
     chatArea: els.chatArea,
