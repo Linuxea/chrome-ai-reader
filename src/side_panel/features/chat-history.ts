@@ -4,6 +4,7 @@ import { formatDate, formatDateTime, formatDateOnly } from '../../shared/format'
 import { downloadFile } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
+import { stripImagesForPersistence } from '../services/chat/strip-images';
 import { marked } from 'marked';
 import type { ChatMessage } from '../../shared/types';
 
@@ -112,7 +113,9 @@ export async function saveCurrentChat(): Promise<void> {
     const idx = histories.findIndex(h => h.id === currentChatId);
     if (idx !== -1) {
       histories[idx].messages = messages;
-      histories[idx].conversationHistory = conversationHistory.filter(m => m.role !== 'system') as ChatMessage[];
+      histories[idx].conversationHistory = conversationHistory
+        .filter(m => m.role !== 'system')
+        .map(stripImagesForPersistence);
       histories[idx].pageTitle = pageTitle;
       histories[idx].updatedAt = now;
       await saveChatHistories(histories);
@@ -124,7 +127,9 @@ export async function saveCurrentChat(): Promise<void> {
       title,
       pageTitle,
       messages,
-      conversationHistory: conversationHistory.filter(m => m.role !== 'system') as ChatMessage[],
+      conversationHistory: conversationHistory
+        .filter(m => m.role !== 'system')
+        .map(stripImagesForPersistence),
       createdAt: now,
       updatedAt: now,
     };

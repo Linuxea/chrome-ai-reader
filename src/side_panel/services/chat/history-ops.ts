@@ -38,6 +38,11 @@ export function rollbackTrailingUserMessage(tabState: TabState, tabId: number): 
  * content matches `userContent` (used by retry to discard the tail of the
  * conversation being retried). If no match is found, history is unchanged.
  *
+ * Compares both string content and array content (multimodal messages) by
+ * folding array content's text parts into a single string — visual messages
+ * have their image_url blocks stripped for comparison purposes, so retry can
+ * match a visual user message by its text portion.
+ *
  * @returns the index where truncation began, or -1 if nothing was removed.
  */
 export function truncateHistoryFromUserContent(
@@ -46,12 +51,25 @@ export function truncateHistoryFromUserContent(
   tabId: number,
 ): number {
   const hist = tabState.conversationHistory;
-  const idx = hist.findLastIndex(m => m.role === 'user' && m.content === userContent);
+  const idx = hist.findLastIndex(m => m.role === 'user' && normalizeContent(m.content) === userContent);
   if (idx !== -1) {
     hist.splice(idx, hist.length - idx);
     state.persistForTab(tabId);
   }
   return idx;
+}
+
+/**
+ * Normalize a ChatMessage's content to a string for comparison purposes.
+ * String content is returned as-is; array content is folded to its text parts
+ * joined by newlines (image_url blocks are ignored).
+ */
+function normalizeContent(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .filter((p): p is Extract<NonNullable<ChatMessage['content']>[number], { type: 'text' }> => p.type === 'text')
+    .map(p => p.text)
+    .join('\n');
 }
 
 /**

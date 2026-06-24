@@ -160,6 +160,36 @@ describe('services/chat/history-ops', () => {
       expect(idx).toBe(-1);
       expect(stateMock.persistForTab).not.toHaveBeenCalled();
     });
+
+    it('matches visual (array content) user message by its text parts', () => {
+      const ts = makeTabState([
+        { role: 'user', content: [
+          { type: 'text', text: '分析这张图' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+        ], hadImages: true },
+        { role: 'assistant', content: '这是一个图表' },
+      ]);
+
+      const idx = truncateHistoryFromUserContent(ts, '分析这张图', TAB_ID);
+
+      expect(idx).toBe(0);
+      expect(ts.conversationHistory).toHaveLength(0);
+      expect(stateMock.persistForTab).toHaveBeenCalledWith(TAB_ID);
+    });
+
+    it('does NOT match visual message when text parts differ from userContent', () => {
+      const ts = makeTabState([
+        { role: 'user', content: [
+          { type: 'text', text: '不同的文字' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+        ] },
+      ]);
+
+      const idx = truncateHistoryFromUserContent(ts, '分析这张图', TAB_ID);
+
+      expect(idx).toBe(-1);
+      expect(ts.conversationHistory).toHaveLength(1);
+    });
   });
 
   // ==========================================================================

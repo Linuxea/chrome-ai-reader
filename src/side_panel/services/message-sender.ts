@@ -16,6 +16,7 @@ import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePrevie
 import { ensurePageContent } from './page-extractor';
 import { callAI } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
+import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
 let _chatArea: HTMLElement;
 let _userInput: HTMLTextAreaElement;
@@ -120,7 +121,7 @@ export async function sendToAI(
     if (hasImages) {
       const totalBytes = imageUris!.reduce((sum, u) => sum + u.length, 0);
       if (totalBytes > 10 * 1024 * 1024) {
-        appendMessage('error', t('error.visionPayloadTooLarge'));
+        throw new Error(t('error.visionPayloadTooLarge'));
       }
     }
 
@@ -185,7 +186,29 @@ export async function retryMessage(
   const userContent = rawQuote
     ? t('ai.quotePrefix') + '\n\n' + safeTruncate(rawQuote, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated')) + '\n\n' + rawText
     : rawText;
+
+  // Before truncating, extract any images from the user message being retried
+  // (visual messages store image_url blocks in content array). After truncate
+  // these are gone from history, so we capture them now to re-send.
+  const retriedImages = extractImagesForRetry(tabState, userContent);
+
   truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
-  await sendToAI(rawText, rawDisplay, rawQuote);
+  await sendToAI(rawText, rawDisplay, rawQuote, undefined, retriedImages);
+}
+
+/**
+ * Find the user message matching `userContent` in history and extract its
+ * image_url blocks. Used by retryMessage to re-send images that were part of
+ * the original visual message but whose preview-bar thumbnails were already
+ * cleared by a prior sendMessage.
+ */
+function extractImagesForRetry(tabState: { conversationHistory: ChatMessage[] }, userContent: string): string[] | undefined {
+  const hist = tabState.conversationHistory;
+  const idx = hist.findLastIndex(m =>
+    m.role === 'user' && typeof m.content !== 'string' &&
+    m.content.filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n') === userContent,
+  );
+  if (idx === -1) return undefined;
+  return extractImageUrisFromContent(hist[idx]);
 }

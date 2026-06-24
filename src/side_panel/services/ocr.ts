@@ -64,8 +64,16 @@ function readAsDataURL(file: File): Promise<string> {
  * Add a screenshot (or any pre-decoded image data URI) directly to the preview
  * bar without triggering OCR. Used by the "视觉分析" capture button —
  * screenshots are meant for the vision model, never for OCR.
+ *
+ * Guards on visionEnabled: if vision is off, the screenshot would be silently
+ * dropped at send time (sendToAI only assembles image_url blocks when vision
+ * is on). Rather than let that happen, refuse and surface an error.
  */
 export async function addImageDataUri(dataUri: string, name: string): Promise<void> {
+  const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
+  if (!visionEnabled) {
+    throw new Error('Vision not enabled');
+  }
   _imagePreviewBar.classList.remove('hidden');
   let idx = state.getImageIndex();
   idx++;
@@ -80,10 +88,12 @@ export function addImagePreview(index: number, fileName: string, dataUri: string
 
   const statusHtml = showStatus ? `<span class="image-status loading"></span>` : '';
   item.innerHTML = `
-    <img src="${dataUri}" class="image-thumb" alt="${escapeHtml(fileName)}">
+    <img class="image-thumb" alt="${escapeHtml(fileName)}">
     ${statusHtml}
     <button class="image-remove" title="${t('sidebar.remove')}">×</button>
   `;
+  // Set src via DOM API (not innerHTML) to avoid XSS via crafted URIs
+  (item.querySelector('.image-thumb') as HTMLImageElement).src = dataUri;
 
   item.querySelector('.image-remove')!.addEventListener('click', () => {
     item.remove();

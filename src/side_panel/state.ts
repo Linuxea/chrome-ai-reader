@@ -35,7 +35,11 @@ function createFreshTabState(): TabState {
 
 function persistTabState(): void {
   if (!_activeTabId || !_activeState) return;
-  chrome.storage.session.set({ [`tabState_${_activeTabId}`]: _activeState });
+  const persistable: TabState = {
+    ..._activeState,
+    conversationHistory: _activeState.conversationHistory.map(stripImagesForPersistence),
+  };
+  chrome.storage.session.set({ [`tabState_${_activeTabId}`]: persistable });
 }
 
 export async function switchToTab(newTabId: number): Promise<void> {

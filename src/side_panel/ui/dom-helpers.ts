@@ -74,7 +74,7 @@ export function appendMessageWithQuote(quoteStr: string, userText: string, image
 
 export function buildBubbleImagesHtml(imageUris: string[]): string {
   return '<div class="bubble-images">' +
-    imageUris.map(uri => `<img src="${uri}" class="bubble-img-thumb">`).join('') +
+    imageUris.map(uri => `<img src="${uri.replace(/"/g, '&quot;')}" class="bubble-img-thumb">`).join('') +
     '</div>';
 }
 

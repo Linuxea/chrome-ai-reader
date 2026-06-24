@@ -302,6 +302,7 @@ describe('OCR service', () => {
 
   describe('addImageDataUri — direct injection', () => {
     it('adds a screenshot data URI to preview bar without OCR', async () => {
+      getSync.mockResolvedValue({ visionEnabled: true });
       const bar = document.getElementById('imagePreviewBar');
       bar.classList.add('hidden');
 
@@ -312,6 +313,15 @@ describe('OCR service', () => {
       const img = bar.querySelector('.image-thumb');
       expect(img.src).toBe('data:image/png;base64,XXXX');
       expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('throws when visionEnabled is false', async () => {
+      getSync.mockResolvedValue({ visionEnabled: false });
+      const bar = document.getElementById('imagePreviewBar');
+      bar.classList.add('hidden');
+
+      await expect(addImageDataUri('data:image/png;base64,XXXX', '截图')).rejects.toThrow('Vision not enabled');
+      expect(bar.classList.contains('hidden')).toBe(true);
     });
   });
 });

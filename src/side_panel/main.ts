@@ -64,6 +64,8 @@ async function init(): Promise<void> {
   const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
   if (visionEnabled) visionCaptureBtn.classList.remove('hidden');
 
+  // Listener lives for the panel's lifetime; side panel is a single-page
+  // context that unloads cleanly on close, so no explicit unsubscribe needed.
   onSyncChange('visionEnabled', (val) => {
     if (val === true) visionCaptureBtn.classList.remove('hidden');
     else visionCaptureBtn.classList.add('hidden');
