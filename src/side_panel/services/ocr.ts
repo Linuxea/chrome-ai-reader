@@ -70,17 +70,18 @@ export async function addImageDataUri(dataUri: string, name: string): Promise<vo
   let idx = state.getImageIndex();
   idx++;
   state.setImageIndex(idx);
-  addImagePreview(idx, name, dataUri);
+  addImagePreview(idx, name, dataUri, false);
 }
 
-export function addImagePreview(index: number, fileName: string, dataUri: string): void {
+export function addImagePreview(index: number, fileName: string, dataUri: string, showStatus = true): void {
   const item = document.createElement('div');
   item.className = 'image-preview-item';
   item.dataset.index = String(index);
 
+  const statusHtml = showStatus ? `<span class="image-status loading"></span>` : '';
   item.innerHTML = `
     <img src="${dataUri}" class="image-thumb" alt="${escapeHtml(fileName)}">
-    <span class="image-status loading"></span>
+    ${statusHtml}
     <button class="image-remove" title="${t('sidebar.remove')}">×</button>
   `;
 
