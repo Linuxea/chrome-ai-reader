@@ -7,6 +7,7 @@
 
 export interface ActiveTab {
   id: number | undefined;
+  windowId: number | undefined;
   url: string | undefined;
   title: string | undefined;
 }
@@ -15,7 +16,7 @@ export interface ActiveTab {
 export async function getActiveTab(): Promise<ActiveTab> {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
-  return { id: tab?.id, url: tab?.url, title: tab?.title };
+  return { id: tab?.id, windowId: tab?.windowId, url: tab?.url, title: tab?.title };
 }
 
 /** Subscribe to tab activation changes. Returns unsubscribe. */
