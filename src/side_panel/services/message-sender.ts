@@ -68,13 +68,19 @@ export async function sendToAI(
     const pageContent = tabState.pageContent || '';
     if (pageContent) {
       const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
-      // Single system message: base prompt (instructions + article) with the
-      // user's optional custom prompt appended. Keeping it to one message is
-      // idiomatic for OpenAI-compatible consumers — some ignore a second
-      // trailing system message entirely.
+      // The custom prompt is injected into the {custom} slot INSIDE the base
+      // template (between the answering rules and the article), so user
+      // overrides sit in the instruction region instead of being stranded
+      // after the article content. Empty custom leaves a blank line.
       const customSystemPrompt = state.getCustomSystemPrompt();
-      const systemContent = getPrompt('default', getCurrentLang(), { title: tabState.pageTitle, content: context ?? '' })
-        + (customSystemPrompt ? '\n\n' + customSystemPrompt : '');
+      const customBlock = customSystemPrompt
+        ? `【补充要求】\n${customSystemPrompt}`
+        : '';
+      const systemContent = getPrompt('default', getCurrentLang(), {
+        title: tabState.pageTitle,
+        content: context ?? '',
+        custom: customBlock,
+      });
       messages.push({ role: 'system', content: systemContent });
     }
 

@@ -10,11 +10,27 @@ import { getPrompt } from '../../src/shared/prompts';
 describe('shared/prompts', () => {
   describe('getPrompt', () => {
     it('substitutes {param} placeholders', () => {
-      const out = getPrompt('default', 'zh', { title: 'MyTitle', content: 'BodyText' });
+      const out = getPrompt('default', 'zh', { title: 'MyTitle', content: 'BodyText', custom: 'MyCustom' });
       expect(out).toContain('MyTitle');
       expect(out).toContain('BodyText');
+      expect(out).toContain('MyCustom');
       expect(out).not.toContain('{title}');
       expect(out).not.toContain('{content}');
+      expect(out).not.toContain('{custom}');
+    });
+
+    it('leaves a blank line when {custom} is empty (no raw token leak)', () => {
+      const out = getPrompt('default', 'zh', { title: 't', content: 'c', custom: '' });
+      expect(out).not.toContain('{custom}');
+    });
+
+    it('places the {custom} block between answering rules and the article', () => {
+      const out = getPrompt('default', 'zh', { title: 'TITLE', content: 'BODY', custom: '【补充要求】\nNEVER' });
+      const customPos = out.indexOf('NEVER');
+      const articlePos = out.indexOf('BODY');
+      const rulesPos = out.indexOf('回答准则');
+      expect(rulesPos).toBeLessThan(customPos);
+      expect(customPos).toBeLessThan(articlePos);
     });
 
     it('defaults to zh when lang is omitted', () => {
