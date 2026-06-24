@@ -1,7 +1,9 @@
 import { t } from '../../../shared/i18n.js';
+import { getCurrentLang } from '../../../shared/i18n.js';
+import { getPrompt } from '../../../shared/prompts';
 import { stripMarkdownFence, extractJsonObject, repairLLMJson } from '../../../shared/json-repair';
 import * as state from '../../state';
-import { PODCAST_PROMPT, SPEAKER_MAP, DEFAULT_SPEAKER } from './constants';
+import { SPEAKER_MAP, DEFAULT_SPEAKER } from './constants';
 import { renderTranscript, resetHighlightState } from './ui';
 import { setPodcastTitle, resetRoundTimings, generatePodcastAudio } from './audio';
 
@@ -50,7 +52,7 @@ export function validateAndMapRounds(parsed: any): NlpRound[] {
     if (!round.speaker || !round.text) throw new Error('Missing speaker or text in round');
     const speakerLabel = round.speaker.toUpperCase();
     const speaker = SPEAKER_MAP[round.speaker] || SPEAKER_MAP[speakerLabel] || DEFAULT_SPEAKER;
-    const text = (round.text || '').slice(0, 300);
+    const text = (round.text || '').slice(0, 280);
     return { speaker, text, speakerLabel };
   });
 }
@@ -73,7 +75,7 @@ export function extractRoundsFallback(jsonStr: string): NlpRound[] {
     }
     text = text.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     const speaker = SPEAKER_MAP[letter] || DEFAULT_SPEAKER;
-    text = text.slice(0, 300);
+    text = text.slice(0, 280);
     if (text) rounds.push({ speaker, text, speakerLabel: letter });
   }
   return rounds;
@@ -123,7 +125,7 @@ async function generatePodcastScript(card: HTMLElement, textContent: string): Pr
   const port = chrome.runtime.connect({ name: 'podcast-llm' });
   podcastLlmPort = port;
   let fullScript = '';
-  port.postMessage({ type: 'generate', prompt: PODCAST_PROMPT, text: textContent });
+  port.postMessage({ type: 'generate', prompt: getPrompt('podcast.system', getCurrentLang()), text: textContent });
   return new Promise((resolve) => {
     port.onMessage.addListener((msg: { type: string; content?: string; error?: string; errorKey?: string }) => {
       if (msg.type === 'chunk' && msg.content) fullScript += msg.content;

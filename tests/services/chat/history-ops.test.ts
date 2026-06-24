@@ -34,8 +34,6 @@ function makeTabState(history: ChatMessage[]): TabState {
     selectedText: '',
     isGenerating: false,
     isPodcastGenerating: false,
-    isChartGenerating: false,
-    detectedCharts: [],
     ocrRunning: 0,
     ocrResults: [],
     imageIndex: 0,

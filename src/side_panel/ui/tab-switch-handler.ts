@@ -11,9 +11,6 @@ export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): v
   const existingPodcast = els.chatArea.querySelector('.podcast-card');
   if (existingPodcast) existingPodcast.remove();
   if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
-  const existingChart = els.chatArea.querySelector('.chart-card');
-  if (existingChart) existingChart.remove();
-  if (state.getIsChartGenerating()) state.setIsChartGenerating(false);
 }
 
 export function handleLoadChat(els: UIElements, deps: GlobalEventDeps, chatData: {

@@ -2,6 +2,11 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
+  getCurrentLang: () => 'zh',
+}));
+
+vi.mock('../../src/shared/prompts', () => ({
+  getPrompt: (key) => `[${key}]`,
 }));
 
 vi.mock('../../src/side_panel/events.js', () => ({
@@ -104,7 +109,7 @@ describe('handleQuickAction', () => {
   it('calls sendToAI with full summarize prompt when no selection', async () => {
     await handleQuickAction('summarize');
     expect(sendToAI).toHaveBeenCalledWith(
-      '[prompt.summarize.full]',
+      '[summarize.full]',
       '[action.summarize]',
       undefined,
       '',
@@ -116,7 +121,7 @@ describe('handleQuickAction', () => {
     stateMock.getSelectedText.mockReturnValue('some selected text');
     await handleQuickAction('summarize');
     expect(sendToAI).toHaveBeenCalledWith(
-      '[prompt.summarize.quote]',
+      '[summarize.quote]',
       '[action.summarize]',
       undefined,
       '',
@@ -127,7 +132,7 @@ describe('handleQuickAction', () => {
   it('calls sendToAI with translate prompts', async () => {
     await handleQuickAction('translate');
     expect(sendToAI).toHaveBeenCalledWith(
-      '[prompt.translate.full]',
+      '[translate.full]',
       '[action.translate]',
       undefined,
       '',
@@ -138,7 +143,7 @@ describe('handleQuickAction', () => {
   it('calls sendToAI with keyInfo prompts', async () => {
     await handleQuickAction('keyInfo');
     expect(sendToAI).toHaveBeenCalledWith(
-      '[prompt.keyInfo.full]',
+      '[keyInfo.full]',
       '[action.keyInfo]',
       undefined,
       '',
@@ -151,7 +156,7 @@ describe('handleQuickAction', () => {
     ocrMock.collectImageDataUris.mockReturnValue(['data:image/png;base64,abc']);
     await handleQuickAction('summarize');
     expect(sendToAI).toHaveBeenCalledWith(
-      '[prompt.summarize.full]',
+      '[summarize.full]',
       '[action.summarize]',
       undefined,
       'OCR result text',
@@ -164,7 +169,7 @@ describe('handleQuickAction', () => {
     stateMock.getSelectedText.mockReturnValue('   ');
     await handleQuickAction('summarize');
     expect(sendToAI).toHaveBeenCalledWith(
-      '[prompt.summarize.full]',
+      '[summarize.full]',
       '[action.summarize]',
       undefined,
       '',

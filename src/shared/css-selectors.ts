@@ -29,9 +29,6 @@ export const CSS = {
   PODCAST_CARD: '.podcast-card',
   PODCAST_PLAY_BTN: '.podcast-play-btn',
 
-  // Chart
-  CHART_CARD: '.chart-card',
-
   // Common
   WELCOME_MSG: '.welcome-msg',
   THINKING_CONTENT: '.thinking-response-content',

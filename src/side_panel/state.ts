@@ -1,4 +1,4 @@
-import type { TabState, ChatMessage, OcrResult, ChartInfo } from '../shared/types';
+import type { TabState, ChatMessage, OcrResult } from '../shared/types';
 
 const listeners = new Map<string, Set<(value: unknown) => void>>();
 
@@ -26,8 +26,6 @@ function createFreshTabState(): TabState {
     selectedText: '',
     isGenerating: false,
     isPodcastGenerating: false,
-    isChartGenerating: false,
-    detectedCharts: [],
     ocrRunning: 0,
     ocrResults: [],
     imageIndex: 0,
@@ -169,8 +167,6 @@ defineTabField('ocrRunning', 0);
 defineTabField('ocrResults', [] as OcrResult[]);
 defineTabField('imageIndex', 0);
 defineTabField('isPodcastGenerating', false);
-defineTabField('isChartGenerating', false);
-defineTabField('detectedCharts', [] as ChartInfo[]);
 
 defineTabField('conversationHistory', [] as ChatMessage[]);
 (_generated as Record<string, (msg: ChatMessage) => void>).pushConversation = (msg: ChatMessage) => {
@@ -195,8 +191,6 @@ export const {
   getOcrResults, setOcrResults,
   getImageIndex, setImageIndex,
   getIsPodcastGenerating, setIsPodcastGenerating,
-  getIsChartGenerating, setIsChartGenerating,
-  getDetectedCharts, setDetectedCharts,
   getConversationHistory, setConversationHistory,
   pushConversation, spliceConversation, clearConversation,
 } = _generated as {
@@ -220,10 +214,6 @@ export const {
   setImageIndex: (v: number) => void;
   getIsPodcastGenerating: () => boolean;
   setIsPodcastGenerating: (v: boolean) => void;
-  getIsChartGenerating: () => boolean;
-  setIsChartGenerating: (v: boolean) => void;
-  getDetectedCharts: () => ChartInfo[];
-  setDetectedCharts: (v: ChartInfo[]) => void;
   getConversationHistory: () => ChatMessage[];
   setConversationHistory: (v: ChatMessage[]) => void;
   pushConversation: (msg: ChatMessage) => void;

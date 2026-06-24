@@ -90,7 +90,7 @@ describe('shared/i18n', () => {
 
     it('handles params with special regex characters in values', () => {
       setLanguage('zh');
-      const result = t('prompt.default', { title: 'test$title', content: 'content' });
+      const result = t('related.daysAgo', { n: 'test$title' });
       expect(result).toContain('test$title');
     });
   });

@@ -54,24 +54,9 @@ export interface TabState {
   selectedText: string;
   isGenerating: boolean;
   isPodcastGenerating: boolean;
-  isChartGenerating: boolean;
-  detectedCharts: ChartInfo[];
   ocrRunning: number;
   ocrResults: OcrResult[];
   imageIndex: number;
-}
-
-export interface ChartInfo {
-  type: string;
-  index: number;
-  width: number;
-  height: number;
-  thumbnail?: string;
-  src?: string;
-  pageX: number;
-  pageY: number;
-  pageW: number;
-  pageH: number;
 }
 
 export interface OcrResult {

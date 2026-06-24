@@ -1,18 +1,7 @@
 import { safePostMessage } from './sw-utils';
 import type { Annotation, AnnotationPerspective, AnnotationResult } from '../shared/types';
-
-export const ANNOTATION_SYSTEM_PROMPT = `你是一位严谨、犀利但不刻薄的阅读批注员。你的任务是对用户提供的文章段落提供三类深度视角的批注，帮助读者看到字面之外的东西。
-
-三类视角：
-- critique（批判）：质疑数据来源、样本、基线、因果关系等。只批真正有问题的，不为了批而批。
-- counterpoint（反方）：提出作者忽略或回避的对立观点、利益相关方视角。
-- flaw（逻辑漏洞）：指出推理跳步、前后矛盾、偷换概念、循环论证。
-
-要求：
-1. 只批真正有价值的点——宁缺毋滥。没有值得批的句子就不要硬凑。
-2. 每条批注的 quote 必须是段落中真实存在的连续句子（原样引用，不可改写或缩写）。
-3. comment 控制在 1-2 句，锋利、具体、有信息量，不要空话套话。
-4. 返回 JSON，不要任何额外文字。`;
+import { getPrompt } from '../shared/prompts';
+import type { Lang } from '../shared/prompts';
 
 interface BuildArgs {
   fullArticle: string;
@@ -21,7 +10,10 @@ interface BuildArgs {
 }
 
 /** Assemble system + user messages for one chunk annotation request. */
-export function buildAnnotationMessages({ fullArticle, chunkIndex, chunkText }: BuildArgs): { role: 'system' | 'user'; content: string }[] {
+export function buildAnnotationMessages(
+  { fullArticle, chunkIndex, chunkText }: BuildArgs,
+  lang: Lang = 'zh',
+): { role: 'system' | 'user'; content: string }[] {
   const userPrompt = `以下是完整文章作为上下文：
 
 <full_article>
@@ -48,7 +40,7 @@ ${chunkText}
 如果该段没有值得批注的点，返回 {"annotations": []}。`;
 
   return [
-    { role: 'system', content: ANNOTATION_SYSTEM_PROMPT },
+    { role: 'system', content: getPrompt('annotation.system', lang) },
     { role: 'user', content: userPrompt },
   ];
 }
@@ -120,9 +112,10 @@ interface ChatCompletionResponse {
  * Aborts the request if the port disconnects.
  */
 export async function annotateChunk(args: AnnotateArgs, port: chrome.runtime.Port): Promise<void> {
-  const { apiKey, apiBase, modelName } = (await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName'])) as {
-    apiKey?: string; apiBase?: string; modelName?: string;
+  const { apiKey, apiBase, modelName, language } = (await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'language'])) as {
+    apiKey?: string; apiBase?: string; modelName?: string; language?: string;
   };
+  const lang: Lang = language === 'en' ? 'en' : 'zh';
   if (!apiKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noApiKey' }); return; }
 
   const baseUrl = apiBase || 'https://api.deepseek.com';
@@ -131,7 +124,7 @@ export async function annotateChunk(args: AnnotateArgs, port: chrome.runtime.Por
   port.onDisconnect.addListener(onDisconnect);
 
   try {
-    const messages = buildAnnotationMessages(args);
+    const messages = buildAnnotationMessages(args, lang);
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },

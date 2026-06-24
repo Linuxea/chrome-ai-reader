@@ -1,7 +1,7 @@
 /**
  * Tests for side_panel/ui/tab-switch-handler.ts — feature cleanup + UI reset.
  *
- * cleanupActiveFeatures(): stops TTS, removes podcast/chart cards, resets flags.
+ * cleanupActiveFeatures(): stops TTS, removes podcast cards, resets flags.
  * handleLoadChat(): restores state from saved chat data.
  * resetUIForTabSwitch(): re-renders conversation history or welcome message.
  */
@@ -11,8 +11,6 @@ vi.mock('../../../src/shared/i18n.js', () => ({ t: (k: string) => `[${k}]` }));
 vi.mock('../../../src/side_panel/state.js', () => ({
   getIsPodcastGenerating: vi.fn(() => false),
   setIsPodcastGenerating: vi.fn(),
-  getIsChartGenerating: vi.fn(() => false),
-  setIsChartGenerating: vi.fn(),
   setCurrentChatId: vi.fn(),
   setPageTitle: vi.fn(),
   setPageContent: vi.fn(),
@@ -99,22 +97,10 @@ describe('ui/tab-switch-handler', () => {
       expect(els.chatArea.querySelector('.podcast-card')).toBeNull();
     });
 
-    it('removes existing chart card', () => {
-      const chartCard = document.createElement('div');
-      chartCard.className = 'chart-card';
-      els.chatArea.appendChild(chartCard);
-
-      cleanupActiveFeatures(els, deps);
-
-      expect(els.chatArea.querySelector('.chart-card')).toBeNull();
-    });
-
-    it('resets podcast and chart generating flags when active', () => {
+    it('resets podcast generating flag when active', () => {
       stateMock.getIsPodcastGenerating.mockReturnValue(true);
-      stateMock.getIsChartGenerating.mockReturnValue(true);
       cleanupActiveFeatures(els, deps);
       expect(stateMock.setIsPodcastGenerating).toHaveBeenCalledWith(false);
-      expect(stateMock.setIsChartGenerating).toHaveBeenCalledWith(false);
     });
   });
 

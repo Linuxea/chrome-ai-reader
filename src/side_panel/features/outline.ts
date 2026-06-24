@@ -1,4 +1,6 @@
 import { t } from '../../shared/i18n.js';
+import { getCurrentLang } from '../../shared/i18n.js';
+import { getPrompt } from '../../shared/prompts';
 import type { Result } from '../../shared/types';
 import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants';
 import { stripMarkdownFence } from '../../shared/json-repair';
@@ -216,16 +218,17 @@ function doGenerateOutline(): void {
 
   const messages: { role: 'system' | 'user'; content: string }[] = [];
   const context = safeTruncate(state.getPageContent(), TRUNCATE_LIMITS.CONTEXT);
-  messages.push({ role: 'system', content: t('prompt.outline') });
-
   const customSystemPrompt = state.getCustomSystemPrompt();
-  if (customSystemPrompt) messages.push({ role: 'system', content: customSystemPrompt });
+  const systemContent = getPrompt('outline', getCurrentLang())
+    + (customSystemPrompt ? '\n\n' + customSystemPrompt : '');
+  messages.push({ role: 'system', content: systemContent });
 
   messages.push({ role: 'user', content: context! });
 
   const port = chrome.runtime.connect({ name: 'ai-chat' });
 
-  port.postMessage({ type: 'chat', messages, response_format: { type: 'json_object' } });
+  // Lower temperature for structured JSON output — improves format stability.
+  port.postMessage({ type: 'chat', messages, response_format: { type: 'json_object' }, temperature: 0.3 });
 
   let fullText = '';
 

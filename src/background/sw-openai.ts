@@ -2,7 +2,7 @@ import { safePostMessage } from './sw-utils';
 
 interface ChatMessage { role: string; content: string; [key: string]: unknown; }
 
-export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.Port, options?: { response_format?: Record<string, unknown> }): Promise<void> {
+export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.Port, options?: { response_format?: Record<string, unknown>; temperature?: number }): Promise<void> {
   const { apiKey, apiBase, modelName } = await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']) as { apiKey?: string; apiBase?: string; modelName?: string };
   if (!apiKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noApiKey' }); return; }
 
@@ -14,7 +14,9 @@ export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.P
     // AGENT TODO: when tool calling is introduced, accept an optional `tools`
     // array here and add it to requestBody. The SSE parser below must then
     // also read delta.tool_calls (currently only reasoning_content + content).
-    const requestBody: Record<string, unknown> = { model: modelName || 'deepseek-chat', messages, stream: true, temperature: 0.7 };
+    // Temperature defaults to 0.7 (conversational). Callers doing structured
+    // JSON work (e.g. outline) pass a lower value for format stability.
+    const requestBody: Record<string, unknown> = { model: modelName || 'deepseek-chat', messages, stream: true, temperature: options?.temperature ?? 0.7 };
     if (options?.response_format) requestBody.response_format = options.response_format;
 
     const response = await fetch(`${baseUrl}/chat/completions`, {

@@ -1,15 +1,8 @@
 import { handleExtract } from './page-extractor';
-import { handleDetectCharts, handleCaptureChart } from './chart-detector';
 import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS } from './annotation';
 
 chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => {
-  const handlers: Record<string, (msg: unknown, sendResponse: (r?: unknown) => void) => true | void> = {
-    extract: handleExtract,
-    detectCharts: handleDetectCharts,
-    captureChart: handleCaptureChart as (msg: unknown, sendResponse: (r?: unknown) => void) => true,
-  };
-  const handler = handlers[request.action || ''];
-  if (handler) return handler(request, sendResponse);
+  if (request.action === 'extract') return handleExtract(request, sendResponse);
 
   // Annotation actions are fire-and-forget (no response payload needed).
   if (request.action === 'startAnnotation') {

@@ -1,7 +1,12 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { buildAnnotationMessages, parseAnnotationResponse, ANNOTATION_SYSTEM_PROMPT, annotateChunk } from '../../src/background/sw-annotation.js';
+import { buildAnnotationMessages, parseAnnotationResponse, annotateChunk } from '../../src/background/sw-annotation.js';
+import { getPrompt } from '../../src/shared/prompts';
 import { safePostMessage } from '../../src/background/sw-utils.js';
 import type { Annotation } from '../../src/shared/types';
+
+// The system prompt now lives in src/shared/prompts.ts; re-derive it for the
+// content-quality assertions below.
+const ANNOTATION_SYSTEM_PROMPT = getPrompt('annotation.system', 'zh');
 
 // --- Mock chrome.storage.sync (for annotateChunk config read) ---
 const annotationStore: Record<string, unknown> = {

@@ -1,4 +1,6 @@
 import { t } from '../../shared/i18n.js';
+import { getCurrentLang } from '../../shared/i18n.js';
+import { getPrompt } from '../../shared/prompts';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
 import type { ChatMessage } from '../../shared/types';
@@ -66,13 +68,14 @@ export async function sendToAI(
     const pageContent = tabState.pageContent || '';
     if (pageContent) {
       const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
-      const systemContent = t('prompt.default', { title: tabState.pageTitle, content: context });
-      messages.push({ role: 'system', content: systemContent });
-
+      // Single system message: base prompt (instructions + article) with the
+      // user's optional custom prompt appended. Keeping it to one message is
+      // idiomatic for OpenAI-compatible consumers — some ignore a second
+      // trailing system message entirely.
       const customSystemPrompt = state.getCustomSystemPrompt();
-      if (customSystemPrompt) {
-        messages.push({ role: 'system', content: customSystemPrompt });
-      }
+      const systemContent = getPrompt('default', getCurrentLang(), { title: tabState.pageTitle, content: context ?? '' })
+        + (customSystemPrompt ? '\n\n' + customSystemPrompt : '');
+      messages.push({ role: 'system', content: systemContent });
     }
 
     const conversationHistory = tabState.conversationHistory || [];
@@ -144,7 +147,6 @@ export async function retryMessage(
   emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
 
   if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;
-  if (tabState.isChartGenerating) tabState.isChartGenerating = false;
   state.persistForTab(startTabId!);
 
   const children = [..._chatArea.children];

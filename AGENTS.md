@@ -30,7 +30,7 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 - **strict: true** — all `.ts` files are strict-mode TypeScript
 - `tsconfig.json` — `noEmit: true`, `allowJs: true` (JS/TS coexist)
 - Only `src/shared/i18n.js` and `src/shared/types.js` remain as JS (JSDoc typedefs for legacy consumers; TS types are in `types.ts`)
-- Type definitions: `src/shared/types.ts` (TabState, ChatMessage, ChartInfo, OcrResult, ToolCall)
+- Type definitions: `src/shared/types.ts` (TabState, ChatMessage, OcrResult, ToolCall)
 - Error handling: `src/shared/result.ts` (Result<T,E>, ok(), err())
 - `ChatMessage.role` includes reserved `'tool'` + optional `tool_calls`/`tool_call_id` fields — **reserved for future agent architecture, not yet wired** (see sw-openai.ts AGENT TODO markers)
 
@@ -88,11 +88,15 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
 ## i18n
 
-Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `data-i18n` / `data-i18n-html` / `data-i18n-placeholder` / `data-i18n-title` attributes. Default prompts for built-in quick actions are always Chinese regardless of UI language.
+Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `data-i18n` / `data-i18n-html` / `data-i18n-placeholder` / `data-i18n-title` attributes.
+
+## LLM Prompts
+
+All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts are semantically distinct from UI strings (they never bind to `data-i18n`) and `i18n.js` is unsafe to import from the service worker (it touches `document`). `prompts.ts` is pure data + a pure `getPrompt(key, lang?, params?)` getter, importable from both the SW (`sw-annotation.ts`) and the side panel. Keys are typed (`PromptKey`); zh is complete, en is partial (podcast is zh-only because its TTS voices are Chinese). Side-panel callers pass `getCurrentLang()` from `i18n.js`; the SW reads `language` from `chrome.storage.sync` and normalizes to `'zh'|'en'`. Built-in quick-action prompts follow the UI language (zh + en both defined).
 
 ## Testing
 
-- **Vitest** with jsdom environment, 829 tests across 58 files
+- **Vitest** with jsdom environment, 814 tests across 56 files
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
 - Coverage: ~30% overall, core modules 80%+ (dom-helpers 98%, theme 100%, sw-openai 91%, page-extractor 88%)

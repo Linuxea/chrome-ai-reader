@@ -102,17 +102,17 @@ describe('validateAndMapRounds', () => {
       .toThrow('Missing speaker or text in round');
   });
 
-  it('truncates text to 300 characters', () => {
+  it('truncates text to 280 characters', () => {
     const longText = 'x'.repeat(500);
     const input = {
       rounds: [{ speaker: 'A', text: longText }],
     };
     const result = validateAndMapRounds(input);
-    expect(result[0].text).toHaveLength(300);
-    expect(result[0].text).toBe('x'.repeat(300));
+    expect(result[0].text).toHaveLength(280);
+    expect(result[0].text).toBe('x'.repeat(280));
   });
 
-  it('preserves text under 300 characters unchanged', () => {
+  it('preserves text under 280 characters unchanged', () => {
     const shortText = 'short';
     const input = {
       rounds: [{ speaker: 'B', text: shortText }],
@@ -228,12 +228,12 @@ describe('extractRoundsFallback', () => {
     expect(result).toEqual([]);
   });
 
-  it('truncates text to 300 characters', () => {
+  it('truncates text to 280 characters', () => {
     const longText = 'a'.repeat(500);
     const jsonStr = `{"speaker":"A","text":"${longText}"}`;
     const result = extractRoundsFallback(jsonStr);
     expect(result).toHaveLength(1);
-    expect(result[0].text).toHaveLength(300);
+    expect(result[0].text).toHaveLength(280);
   });
 
   it('maps speaker letters to correct SPEAKER_MAP values', () => {

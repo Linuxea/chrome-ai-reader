@@ -22,6 +22,18 @@ vi.mock('../../src/shared/i18n.js', () => ({
       .join(',');
     return `[${key}:{${paramStr}}]`;
   },
+  getCurrentLang: () => 'zh',
+}));
+
+vi.mock('../../src/shared/prompts', () => ({
+  // Mirror the i18n mock's interpolation so prompt params are observable.
+  getPrompt: (key: string, _lang?: string, params?: Record<string, unknown>) => {
+    if (!params) return `[${key}]`;
+    const paramStr = Object.entries(params)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(',');
+    return `[${key}:{${paramStr}}]`;
+  },
 }));
 
 vi.mock('../../src/shared/constants.js', () => ({
@@ -118,7 +130,6 @@ describe('services/message-sender', () => {
       pageTitle: 'Test Page',
       selectedText: '',
       isPodcastGenerating: false,
-      isChartGenerating: false,
     };
 
     // Re-establish ALL mock implementations — clearAllMocks only clears
@@ -177,14 +188,16 @@ describe('services/message-sender', () => {
       expect(messages[0].content).toContain('Existing page content');
     });
 
-    it('includes custom system prompt when configured', async () => {
+    it('merges custom system prompt into the single system message', async () => {
       stateMock.getCustomSystemPrompt.mockReturnValue('Be concise');
       await sendToAI('q', 'q');
 
       const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      // Should have system prompt, custom system prompt, then user
+      // Custom prompt is folded into the same system message (not a separate
+      // one) so all OpenAI-compatible consumers honor it.
       const systemMsgs = messages.filter((m: { role: string }) => m.role === 'system');
-      expect(systemMsgs).toHaveLength(2);
+      expect(systemMsgs).toHaveLength(1);
+      expect(systemMsgs[0].content).toContain('Be concise');
     });
 
     it('includes conversation history in messages', async () => {
@@ -412,16 +425,14 @@ describe('services/message-sender', () => {
       expect(callAI).toHaveBeenCalled();
     });
 
-    it('clears podcast and chart generating flags', async () => {
+    it('clears podcast generating flag', async () => {
       tabState.isPodcastGenerating = true;
-      tabState.isChartGenerating = true;
 
       const wrapper = document.createElement('div');
       chatArea.appendChild(wrapper);
       await retryMessage(wrapper, 'text', 'display');
 
       expect(tabState.isPodcastGenerating).toBe(false);
-      expect(tabState.isChartGenerating).toBe(false);
     });
   });
 });

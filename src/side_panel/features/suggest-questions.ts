@@ -1,4 +1,6 @@
 import { t } from '../../shared/i18n.js';
+import { getCurrentLang } from '../../shared/i18n.js';
+import { getPrompt } from '../../shared/prompts';
 import { onSyncChange } from '../../platform/storage';
 import * as state from '../state';
 import { smartScrollToBottom } from '../ui/dom-helpers';
@@ -54,18 +56,18 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
 
   let userContent = '';
   const lastUser = userMessages[userMessages.length - 1];
-  if (lastUser) userContent += t('prompt.suggestUser') + lastUser.content + '\n\n';
+  if (lastUser) userContent += getPrompt('suggest.userLabel', getCurrentLang()) + lastUser.content + '\n\n';
 
   const lastAssistant = assistantMessages[assistantMessages.length - 1];
   if (lastAssistant) {
     const truncated = lastAssistant.content.length > 2000
       ? lastAssistant.content.slice(0, 2000) + '...'
       : lastAssistant.content;
-    userContent += t('prompt.suggestAI') + truncated;
+    userContent += getPrompt('suggest.aiLabel', getCurrentLang()) + truncated;
   }
 
   const messages = [
-    { role: 'system' as const, content: t('prompt.suggest') },
+    { role: 'system' as const, content: getPrompt('suggest', getCurrentLang()) },
     { role: 'user' as const, content: userContent },
   ];
 

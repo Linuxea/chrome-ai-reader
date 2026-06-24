@@ -2,6 +2,11 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
+  getCurrentLang: () => 'zh',
+}));
+
+vi.mock('../../src/shared/prompts', () => ({
+  getPrompt: (key) => `[${key}]`,
 }));
 
 vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
@@ -156,7 +161,7 @@ describe('generateSuggestions', () => {
     expect(currentPort.postMessage).toHaveBeenCalledWith({
       type: 'suggest',
       messages: expect.arrayContaining([
-        { role: 'system', content: '[prompt.suggest]' },
+        { role: 'system', content: '[suggest]' },
         expect.objectContaining({ role: 'user' }),
       ]),
     });
@@ -254,7 +259,7 @@ describe('generateSuggestions', () => {
 
     const posted = currentPort.postMessage.mock.calls[0][0];
     const userMsg = posted.messages[1];
-    expect(userMsg.content).toContain('[prompt.suggestAI]');
+    expect(userMsg.content).toContain('[suggest.aiLabel]');
     expect(userMsg.content).toContain('...');
     expect(userMsg.content.length).toBeLessThan(longContent.length + 100);
   });

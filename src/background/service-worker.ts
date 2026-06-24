@@ -1,7 +1,6 @@
 import { callOpenAI, callSuggestQuestions, callEmbedding } from './sw-openai';
 import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
-import { handleChartVision, handleChartAnalysis, handleChartScreenshot } from './sw-chart';
 import { handleOcrParse } from './sw-ocr';
 import { annotateChunk } from './sw-annotation';
 import { PORT_NAMES } from '../shared/protocol';
@@ -13,7 +12,7 @@ chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
 chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   if (port.name === 'ai-chat') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'chat') await callOpenAI(msg.messages as { role: string; content: string }[], port, { response_format: msg.response_format as Record<string, unknown> | undefined });
+      if (msg.type === 'chat') await callOpenAI(msg.messages as { role: string; content: string }[], port, { response_format: msg.response_format as Record<string, unknown> | undefined, temperature: msg.temperature as number | undefined });
     });
   } else if (port.name === 'tts' || port.name === 'tts-download') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
@@ -68,8 +67,5 @@ chrome.runtime.onMessage.addListener((msg: Record<string, unknown>, sender: chro
     return true;
   }
 
-  if (msg.action === 'analyzeChartVision') return handleChartVision(msg as Parameters<typeof handleChartVision>[0], sendResponse);
-  if (msg.action === 'analyzeChart') return handleChartAnalysis(msg as Parameters<typeof handleChartAnalysis>[0], sendResponse);
-  if (msg.action === 'captureChartScreenshot') return handleChartScreenshot(msg as Parameters<typeof handleChartScreenshot>[0], sendResponse);
   if (msg.action === 'ocrParse') return handleOcrParse(msg as Parameters<typeof handleOcrParse>[0], sendResponse);
 });

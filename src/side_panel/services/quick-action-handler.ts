@@ -1,4 +1,6 @@
 import { t } from '../../shared/i18n.js';
+import { getCurrentLang } from '../../shared/i18n.js';
+import { getPrompt } from '../../shared/prompts';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import { appendMessage } from '../ui/dom-helpers';
@@ -44,9 +46,9 @@ export async function handleQuickAction(action: string): Promise<void> {
   const hasSelection = selectedText && selectedText.trim().length > 0;
 
   const actionPrompts: Record<string, string> = {
-    summarize: hasSelection ? t('prompt.summarize.quote') : t('prompt.summarize.full'),
-    translate: hasSelection ? t('prompt.translate.quote') : t('prompt.translate.full'),
-    keyInfo: hasSelection ? t('prompt.keyInfo.quote') : t('prompt.keyInfo.full'),
+    summarize: hasSelection ? getPrompt('summarize.quote', getCurrentLang()) : getPrompt('summarize.full', getCurrentLang()),
+    translate: hasSelection ? getPrompt('translate.quote', getCurrentLang()) : getPrompt('translate.full', getCurrentLang()),
+    keyInfo: hasSelection ? getPrompt('keyInfo.quote', getCurrentLang()) : getPrompt('keyInfo.full', getCurrentLang()),
   };
 
   const actionNames: Record<string, string> = {

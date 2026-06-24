@@ -62,11 +62,6 @@ vi.mock('../../src/background/sw-openai.js', () => ({
 }));
 vi.mock('../../src/background/sw-tts.js', () => ({ callTTS: vi.fn() }));
 vi.mock('../../src/background/sw-podcast.js', () => ({ callPodcast: vi.fn() }));
-vi.mock('../../src/background/sw-chart.js', () => ({
-  handleChartVision: vi.fn(() => true),
-  handleChartAnalysis: vi.fn(() => true),
-  handleChartScreenshot: vi.fn(() => true),
-}));
 vi.mock('../../src/background/sw-ocr.js', () => ({
   handleOcrParse: vi.fn(() => true),
 }));
@@ -76,11 +71,6 @@ import '../../src/background/service-worker.js';
 import { callOpenAI, callSuggestQuestions, callEmbedding } from '../../src/background/sw-openai.js';
 import { callTTS } from '../../src/background/sw-tts.js';
 import { callPodcast } from '../../src/background/sw-podcast.js';
-import {
-  handleChartVision,
-  handleChartAnalysis,
-  handleChartScreenshot,
-} from '../../src/background/sw-chart.js';
 import { handleOcrParse } from '../../src/background/sw-ocr.js';
 
 // --- Helper: create a mock port for onConnect tests ---
@@ -332,39 +322,6 @@ describe('background/service-worker', () => {
           error: expect.stringContaining('401'),
         }),
       );
-    });
-
-    it('routes analyzeChartVision to handleChartVision', () => {
-      const sendResponse = vi.fn();
-      const result = onMessageListener()!(
-        { action: 'analyzeChartVision', apiKey: 'k', messages: [] },
-        {},
-        sendResponse,
-      );
-      expect(result).toBe(true);
-      expect(handleChartVision).toHaveBeenCalled();
-    });
-
-    it('routes analyzeChart to handleChartAnalysis', () => {
-      const sendResponse = vi.fn();
-      const result = onMessageListener()!(
-        { action: 'analyzeChart', apiKey: 'k', messages: [] },
-        {},
-        sendResponse,
-      );
-      expect(result).toBe(true);
-      expect(handleChartAnalysis).toHaveBeenCalled();
-    });
-
-    it('routes captureChartScreenshot to handleChartScreenshot', () => {
-      const sendResponse = vi.fn();
-      const result = onMessageListener()!(
-        { action: 'captureChartScreenshot', scrollX: 0, scrollY: 0, pageX: 0, pageY: 0, pageW: 100, pageH: 100 },
-        {},
-        sendResponse,
-      );
-      expect(result).toBe(true);
-      expect(handleChartScreenshot).toHaveBeenCalled();
     });
 
     it('routes ocrParse to handleOcrParse', () => {
