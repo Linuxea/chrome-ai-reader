@@ -14,6 +14,8 @@ import type { ChatMessage } from '../../../shared/types';
 import * as state from '../../state';
 import type { TabState } from '../../../shared/types';
 
+export { stripImagesForPersistence } from './strip-images';
+
 /**
  * Remove the trailing message if it is a user turn (a failed/aborted send).
  * Used by stream-handler (error + disconnect) and message-sender (catch).

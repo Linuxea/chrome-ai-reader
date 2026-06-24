@@ -1,4 +1,5 @@
 import type { TabState, ChatMessage, OcrResult } from '../shared/types';
+import { stripImagesForPersistence } from './services/chat/strip-images';
 
 const listeners = new Map<string, Set<(value: unknown) => void>>();
 
@@ -128,7 +129,12 @@ export function getStateForTab(tabId: number): TabState | null {
 
 export function persistForTab(tabId: number): void {
   const ts = _tabStates.get(tabId);
-  if (ts) chrome.storage.session.set({ [`tabState_${tabId}`]: ts });
+  if (!ts) return;
+  const persistable: TabState = {
+    ...ts,
+    conversationHistory: ts.conversationHistory.map(stripImagesForPersistence),
+  };
+  chrome.storage.session.set({ [`tabState_${tabId}`]: persistable });
 }
 
 // --- Per-tab state fields (DRY via factory) ---

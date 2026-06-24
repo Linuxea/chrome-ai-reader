@@ -18,6 +18,7 @@ import {
   rollbackTrailingUserMessage,
   truncateHistoryFromUserContent,
   appendMessage,
+  stripImagesForPersistence,
 } from '../../../src/side_panel/services/chat/history-ops';
 import * as stateMock from '../../../src/side_panel/state.js';
 import type { TabState, ChatMessage } from '../../../src/shared/types';
@@ -183,6 +184,79 @@ describe('services/chat/history-ops', () => {
       appendMessage(ts, { role: 'user', content: 'first' }, TAB_ID);
 
       expect(ts.conversationHistory).toEqual([{ role: 'user', content: 'first' }]);
+    });
+  });
+
+  // ==========================================================================
+  // stripImagesForPersistence
+  // ==========================================================================
+  describe('stripImagesForPersistence', () => {
+    it('returns string-content messages unchanged', () => {
+      const msg = { role: 'user' as const, content: 'hello' };
+      expect(stripImagesForPersistence(msg)).toEqual(msg);
+    });
+
+    it('strips image_url blocks from array content, keeps text joined by newline', () => {
+      const msg = {
+        role: 'user' as const,
+        content: [
+          { type: 'text', text: '分析这张图' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,def' } },
+        ],
+        hadImages: true,
+      };
+      const out = stripImagesForPersistence(msg);
+      expect(typeof out.content).toBe('string');
+      expect(out.content).toBe('分析这张图');
+      expect(out.hadImages).toBe(true);
+    });
+
+    it('joins multiple text blocks with newline', () => {
+      const msg = {
+        role: 'user' as const,
+        content: [
+          { type: 'text', text: '第一句' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,x' } },
+          { type: 'text', text: '第二句' },
+        ],
+      };
+      const out = stripImagesForPersistence(msg);
+      expect(out.content).toBe('第一句\n第二句');
+    });
+
+    it('returns empty string content when array has no text blocks', () => {
+      const msg = {
+        role: 'user' as const,
+        content: [
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,only' } },
+        ],
+      };
+      const out = stripImagesForPersistence(msg);
+      expect(out.content).toBe('');
+    });
+  });
+
+  // ==========================================================================
+  // appendMessage — vision message persistence (memory keeps originals)
+  // ==========================================================================
+  describe('appendMessage — vision message persistence', () => {
+    it('keeps image_url blocks in memory conversationHistory', () => {
+      const ts = makeTabState([]);
+      const visionMsg = {
+        role: 'user' as const,
+        content: [
+          { type: 'text', text: '看图' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,zzz' } },
+        ],
+        hadImages: true,
+      };
+
+      appendMessage(ts, visionMsg, TAB_ID);
+
+      expect(ts.conversationHistory).toHaveLength(1);
+      expect(Array.isArray(ts.conversationHistory[0].content)).toBe(true);
+      expect(stateMock.persistForTab).toHaveBeenCalledWith(TAB_ID);
     });
   });
 });
