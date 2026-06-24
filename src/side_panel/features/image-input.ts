@@ -12,7 +12,7 @@ export function initImageInput({ userInput }: { userInput: HTMLElement }): void 
     const imageFiles = extractImageFilesFromItems(items);
     if (imageFiles.length > 0) {
       e.preventDefault();
-      ingestImages(imageFiles);
+      void ingestImages(imageFiles);
     }
   }
 
@@ -35,7 +35,7 @@ export function initImageInput({ userInput }: { userInput: HTMLElement }): void 
     e.preventDefault();
     document.body.classList.remove('drag-over');
     const imageFiles = extractImageFilesFromFileList(e.dataTransfer!.files);
-    if (imageFiles.length > 0) ingestImages(imageFiles);
+    if (imageFiles.length > 0) void ingestImages(imageFiles);
   }
 }
 

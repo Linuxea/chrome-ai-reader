@@ -20,6 +20,10 @@ vi.mock('../../src/side_panel/state.js', () => ({
   setOcrRunning: vi.fn(),
 }));
 
+vi.mock('../../src/platform/storage.js', () => ({
+  getSync: vi.fn(() => Promise.resolve({})),
+}));
+
 // Chrome mock
 vi.hoisted(() => {
   globalThis.chrome = {
@@ -30,9 +34,12 @@ vi.hoisted(() => {
 });
 
 import * as stateMock from '../../src/side_panel/state.js';
+import { getSync } from '../../src/platform/storage.js';
 import {
   initOCR,
   runOCR,
+  ingestImages,
+  addImageDataUri,
   buildOcrContext,
   hasImageErrors,
   getOcrRunning,
@@ -248,6 +255,63 @@ describe('OCR service', () => {
 
       const results = stateMock.setOcrResults.mock.calls[0][0];
       expect(results[0].text).toBe('');
+    });
+  });
+
+  describe('ingestImages — vision toggle', () => {
+    it('does NOT run OCR when visionEnabled is true', async () => {
+      getSync.mockResolvedValue({ visionEnabled: true });
+      const bar = document.getElementById('imagePreviewBar');
+      bar.classList.add('hidden');
+
+      const file = new File(['dummy'], 'test.png', { type: 'image/png' });
+      await ingestImages([file]);
+
+      expect(bar.classList.contains('hidden')).toBe(false);
+      expect(bar.querySelectorAll('.image-preview-item').length).toBe(1);
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('runs OCR when visionEnabled is false', async () => {
+      getSync.mockResolvedValue({ visionEnabled: false });
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, data: { text: 'ok' } });
+      const bar = document.getElementById('imagePreviewBar');
+      bar.classList.add('hidden');
+
+      const file = new File(['dummy'], 'test.png', { type: 'image/png' });
+      await ingestImages([file]);
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'ocrParse',
+        file: expect.stringContaining('data:image/'),
+      });
+    });
+
+    it('runs OCR when visionEnabled is absent (default off)', async () => {
+      getSync.mockResolvedValue({});
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, data: { text: 'ok' } });
+      const bar = document.getElementById('imagePreviewBar');
+      bar.classList.add('hidden');
+
+      const file = new File(['dummy'], 'test.png', { type: 'image/png' });
+      await ingestImages([file]);
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalled();
+    });
+  });
+
+  describe('addImageDataUri — direct injection', () => {
+    it('adds a screenshot data URI to preview bar without OCR', async () => {
+      const bar = document.getElementById('imagePreviewBar');
+      bar.classList.add('hidden');
+
+      await addImageDataUri('data:image/png;base64,XXXX', '截图 2026-06-24 12:00');
+
+      expect(bar.classList.contains('hidden')).toBe(false);
+      expect(bar.querySelectorAll('.image-preview-item').length).toBe(1);
+      const img = bar.querySelector('.image-thumb');
+      expect(img.src).toBe('data:image/png;base64,XXXX');
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
     });
   });
 });

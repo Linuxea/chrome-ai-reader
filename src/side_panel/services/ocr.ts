@@ -1,6 +1,7 @@
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
 import { CSS } from '../../shared/css-selectors';
+import { getSync } from '../../platform/storage';
 import * as state from '../state';
 
 let _imageUploadBtn: HTMLElement;
@@ -21,33 +22,55 @@ export function initOCR(): void {
     const files = Array.from(_imageFileInput.files || []);
     if (files.length === 0) return;
     _imageFileInput.value = '';
-    ingestImages(files);
+    void ingestImages(files);
   });
 }
 
 /**
  * Shared image intake: assigns each file an incrementing index, reads it as a
- * data URI, then adds a preview thumbnail and kicks off OCR.
+ * data URI, then adds a preview thumbnail. When `visionEnabled` is true (the
+ * model supports vision), OCR is skipped — the image will be sent to the model
+ * as an `image_url` block instead. When false, OCR runs as before.
  *
  * Used by both the upload button (initOCR) and the paste/drag-drop handler
  * (features/image-input). Extracted to eliminate duplicated index+FileReader
  * loops that had drifted in parallel.
  */
-export function ingestImages(files: File[]): void {
+export async function ingestImages(files: File[]): Promise<void> {
   if (files.length === 0) return;
   _imagePreviewBar.classList.remove('hidden');
-  files.forEach(file => {
+  const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
+  const visionOn = visionEnabled === true;
+  for (const file of files) {
     let idx = state.getImageIndex();
     idx++;
     state.setImageIndex(idx);
+    const dataUri = await readAsDataURL(file);
+    addImagePreview(idx, file.name, dataUri);
+    if (!visionOn) runOCR(idx, file.name, dataUri);
+  }
+}
+
+function readAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUri = e.target?.result as string;
-      addImagePreview(idx, file.name, dataUri);
-      runOCR(idx, file.name, dataUri);
-    };
+    reader.onload = (e) => resolve(e.target?.result as string);
+    reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Add a screenshot (or any pre-decoded image data URI) directly to the preview
+ * bar without triggering OCR. Used by the "视觉分析" capture button —
+ * screenshots are meant for the vision model, never for OCR.
+ */
+export async function addImageDataUri(dataUri: string, name: string): Promise<void> {
+  _imagePreviewBar.classList.remove('hidden');
+  let idx = state.getImageIndex();
+  idx++;
+  state.setImageIndex(idx);
+  addImagePreview(idx, name, dataUri);
 }
 
 export function addImagePreview(index: number, fileName: string, dataUri: string): void {
