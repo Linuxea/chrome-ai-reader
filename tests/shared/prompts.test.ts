@@ -9,32 +9,60 @@ import { getPrompt } from '../../src/shared/prompts';
 
 describe('shared/prompts', () => {
   describe('getPrompt', () => {
-    it('substitutes {param} placeholders', () => {
-      const out = getPrompt('default', 'zh', { title: 'MyTitle', content: 'BodyText', custom: 'MyCustom' });
+    it('substitutes {custom} in the default rule prompt', () => {
+      const out = getPrompt('default', 'zh', { custom: 'MyCustom' });
+      expect(out).toContain('MyCustom');
+      expect(out).not.toContain('{custom}');
+    });
+
+    it('substitutes {title}/{content} in the default.article prompt', () => {
+      const out = getPrompt('default.article', 'zh', { title: 'MyTitle', content: 'BodyText' });
       expect(out).toContain('MyTitle');
       expect(out).toContain('BodyText');
-      expect(out).toContain('MyCustom');
       expect(out).not.toContain('{title}');
       expect(out).not.toContain('{content}');
-      expect(out).not.toContain('{custom}');
     });
 
     it('leaves a blank line when {custom} is empty (no raw token leak)', () => {
-      const out = getPrompt('default', 'zh', { title: 't', content: 'c', custom: '' });
+      const out = getPrompt('default', 'zh', { custom: '' });
       expect(out).not.toContain('{custom}');
     });
 
-    it('places the {custom} block between answering rules and the article', () => {
-      const out = getPrompt('default', 'zh', { title: 'TITLE', content: 'BODY', custom: '【补充要求】\nNEVER' });
-      const customPos = out.indexOf('NEVER');
-      const articlePos = out.indexOf('BODY');
-      const rulesPos = out.indexOf('回答准则');
-      expect(rulesPos).toBeLessThan(customPos);
-      expect(customPos).toBeLessThan(articlePos);
+    it('keeps the article OUT of the rule prompt', () => {
+      // The rule message must be short and free of article text, so the custom
+      // prompt is not buried under thousands of characters of content.
+      const rules = getPrompt('default', 'zh', { custom: '' });
+      expect(rules).not.toContain('【文章内容】');
+      expect(rules).not.toContain('【文章标题】');
+      const article = getPrompt('default.article', 'zh', { title: 'T', content: 'BODY' });
+      expect(article).toContain('【文章内容】');
+      expect(article).toContain('BODY');
+    });
+
+    it('the rule prompt is purely format/language (no grounding/content rules)', () => {
+      // Rules must NOT dictate content judgments (no-fabrication, "not
+      // mentioned", verbatim-quote) — those conflict with the user's custom
+      // prompt and are weak anyway. Only format + language shells belong here.
+      const zh = getPrompt('default', 'zh', { custom: '' });
+      const en = getPrompt('default', 'en', { custom: '' });
+      expect(zh).not.toMatch(/不要编造|超出文章范围|文章中未提及|原样引用|宁缺毋滥/);
+      expect(en).not.toMatch(/do not fabricate|out of scope|not mentioned|verbatim/i);
+    });
+
+    it('pins the output language', () => {
+      expect(getPrompt('default', 'zh', { custom: '' })).toContain('中文');
+      expect(getPrompt('default', 'en', { custom: '' })).toMatch(/English/i);
+    });
+
+    it('requests Markdown formatting', () => {
+      const zh = getPrompt('default', 'zh', { custom: '' });
+      const en = getPrompt('default', 'en', { custom: '' });
+      expect(zh).toMatch(/Markdown|无序列表/);
+      expect(en).toMatch(/Markdown/i);
     });
 
     it('defaults to zh when lang is omitted', () => {
-      expect(getPrompt('default', undefined, { title: 't', content: 'c' })).toContain('阅读助手');
+      expect(getPrompt('default', undefined, { custom: '' })).toContain('阅读助手');
     });
 
     it('falls back to zh when the en variant is missing (e.g. podcast)', () => {
@@ -49,27 +77,6 @@ describe('shared/prompts', () => {
     it('normalizes any non-"en" lang string to zh', () => {
       expect(getPrompt('summarize.full', 'fr')).toBe(getPrompt('summarize.full', 'zh'));
       expect(getPrompt('summarize.full', '')).toBe(getPrompt('summarize.full', 'zh'));
-    });
-  });
-
-  describe('default (main chat) prompt', () => {
-    it('has a grounding / no-fabrication rule', () => {
-      const zh = getPrompt('default', 'zh', { title: 't', content: 'c' });
-      const en = getPrompt('default', 'en', { title: 't', content: 'c' });
-      expect(zh).toMatch(/不要编造|超出文章范围|文章中未提及/);
-      expect(en).toMatch(/do not fabricate|out of scope|not mentioned in the article/i);
-    });
-
-    it('pins the output language', () => {
-      expect(getPrompt('default', 'zh', { title: 't', content: 'c' })).toContain('中文');
-      expect(getPrompt('default', 'en', { title: 't', content: 'c' })).toMatch(/English/i);
-    });
-
-    it('requests Markdown formatting', () => {
-      const zh = getPrompt('default', 'zh', { title: 't', content: 'c' });
-      const en = getPrompt('default', 'en', { title: 't', content: 'c' });
-      expect(zh).toMatch(/Markdown|无序列表/);
-      expect(en).toMatch(/Markdown/i);
     });
   });
 
@@ -148,17 +155,34 @@ describe('shared/prompts', () => {
   });
 
   describe('quick-action prompts', () => {
-    it('all four action prompt keys exist for both languages', () => {
+    it('all six action prompt keys exist for both languages', () => {
       const keys = ['summarize.full', 'summarize.quote', 'translate.full', 'translate.quote', 'keyInfo.full', 'keyInfo.quote'] as const;
       for (const k of keys) {
-        expect(getPrompt(k, 'zh').length).toBeGreaterThan(20);
-        expect(getPrompt(k, 'en').length).toBeGreaterThan(20);
+        expect(getPrompt(k, 'zh').length).toBeGreaterThan(8);
+        expect(getPrompt(k, 'en').length).toBeGreaterThan(8);
       }
     });
 
-    it('summarize pins Markdown list format', () => {
-      expect(getPrompt('summarize.full', 'zh')).toMatch(/无序列表|Markdown/);
-      expect(getPrompt('summarize.full', 'en')).toMatch(/Markdown unordered list/i);
+    it('quick-action prompts are terse (state the goal, not the process)', () => {
+      // These ride on top of the default system message (which carries
+      // grounding/language/format rules), so they must NOT restate those
+      // generic rules — restating them is exactly what conflicts with the
+      // user's custom prompt.
+      for (const k of ['summarize.full', 'translate.full', 'keyInfo.full'] as const) {
+        const zh = getPrompt(k, 'zh');
+        const en = getPrompt(k, 'en');
+        expect(zh).not.toMatch(/Markdown|无序列表|用中文回答/);
+        expect(en).not.toMatch(/Markdown unordered|Reply in English/i);
+      }
+    });
+
+    it('translate stays bidirectional despite being terse', () => {
+      const zh = getPrompt('translate.full', 'zh');
+      expect(zh).toMatch(/中文/);
+      expect(zh).toMatch(/英文/);
+      const en = getPrompt('translate.full', 'en');
+      expect(en).toMatch(/English/i);
+      expect(en).toMatch(/Chinese/i);
     });
   });
 });

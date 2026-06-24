@@ -19,6 +19,7 @@ export type Lang = 'zh' | 'en';
 
 export type PromptKey =
   | 'default'
+  | 'default.article'
   | 'summarize.full'
   | 'summarize.quote'
   | 'translate.full'
@@ -36,15 +37,18 @@ type PromptTable = Record<PromptKey, string>;
 
 const ZH: PromptTable = {
   'default': [
-    '你是一个 AI 阅读助手。用户正在阅读一篇网页文章，请严格基于下方提供的文章内容回答用户的问题。',
+    '你是一个 AI 阅读助手。用户正在阅读一篇网页文章，请基于下方提供的文章内容回答用户的问题。',
     '',
-    '【回答准则】',
-    '1. 仅依据文章内容作答，不要编造或用文章之外的知识补充；引用具体事实或数据时，尽量附上简短的原文摘录（原样引用，不可改写）。',
-    '2. 如果问题超出文章范围或文中没有相关内容，请直接说明"文章中未提及"，不要猜测。',
-    '3. 用中文回答，除非用户明确要求其他语言。',
-    '4. 使用 Markdown 格式：要点用无序列表（- ），关键信息可**加粗**，避免无意义的标题层级。',
-    '5. 保持简洁、聚焦；用户问什么答什么，不主动铺陈无关背景。',
+    '【回答要求】',
+    '1. 用中文回答，除非用户明确要求其他语言。',
+    '2. 使用 Markdown 格式：要点用无序列表（- ），关键信息可**加粗**，避免无意义的标题层级。',
     '{custom}',
+  ].join('\n'),
+
+  // The article is delivered as a SEPARATE system message (see
+  // message-sender.ts) so the rule message stays short and the custom prompt
+  // is not buried under thousands of characters of article text.
+  'default.article': [
     '【文章标题】',
     '{title}',
     '',
@@ -52,69 +56,14 @@ const ZH: PromptTable = {
     '{content}',
   ].join('\n'),
 
-  'summarize.full': [
-    '请总结这篇网页内容。',
-    '',
-    '要求：',
-    '1. 用 3-5 个要点概括核心内容；每点以一句话为主，必要时补一句说明。',
-    '2. 严格基于原文，不添加原文没有的信息或主观判断。',
-    '3. 用中文回答，使用 Markdown 无序列表（- ）。',
-    '4. 可在末尾附一句整体概述（不超过 30 字）。',
-  ].join('\n'),
+  'summarize.full': '请总结这篇文章的内容。',
+  'summarize.quote': '请总结用户引用的这段内容。',
 
-  'summarize.quote': [
-    '请总结用户引用的这段内容。',
-    '',
-    '要求：',
-    '1. 用 3-5 个要点概括核心内容；每点以一句话为主，必要时补一句说明。',
-    '2. 严格基于原文，不添加原文没有的信息或主观判断。',
-    '3. 用中文回答，使用 Markdown 无序列表（- ）。',
-    '4. 可在末尾附一句整体概述（不超过 30 字）。',
-  ].join('\n'),
+  'translate.full': '请将这篇文章翻译为中文；若原文已是中文，则翻译为英文。',
+  'translate.quote': '请将用户引用的这段内容翻译为中文；若原文已是中文，则翻译为英文。',
 
-  'translate.full': [
-    '请将这篇网页内容翻译。',
-    '',
-    '要求：',
-    '1. 目标语言：中文。若原文已经是中文，则改译为英文。',
-    '2. 准确传达原文含义，不增译、不漏译、不解释。',
-    '3. 语言通顺自然，符合目标语言的表达习惯。',
-    '4. 专业术语保留原文，并在首次出现时附上目标语言的释义。',
-    '5. 保持原文的段落结构与格式。',
-  ].join('\n'),
-
-  'translate.quote': [
-    '请将用户引用的这段内容翻译。',
-    '',
-    '要求：',
-    '1. 目标语言：中文。若原文已经是中文，则改译为英文。',
-    '2. 准确传达原文含义，不增译、不漏译、不解释。',
-    '3. 语言通顺自然，符合目标语言的表达习惯。',
-    '4. 专业术语保留原文，并在首次出现时附上目标语言的释义。',
-    '5. 保持原文的段落结构与格式。',
-  ].join('\n'),
-
-  'keyInfo.full': [
-    '请提取这篇网页内容的关键信息。',
-    '',
-    '要求：',
-    '1. 列出所有重要的事实、数据、结论与观点（不包含细节铺陈）。',
-    '2. 按重要性从高到低排序。',
-    '3. 用中文回答，使用 Markdown 无序列表（- ）。',
-    '4. 每条采用「**主题词**：说明」的形式，简洁明了。',
-    '5. 数字、日期、名称等关键数据须保留原文的精确表述。',
-  ].join('\n'),
-
-  'keyInfo.quote': [
-    '请提取用户引用的这段内容的关键信息。',
-    '',
-    '要求：',
-    '1. 列出所有重要的事实、数据、结论与观点（不包含细节铺陈）。',
-    '2. 按重要性从高到低排序。',
-    '3. 用中文回答，使用 Markdown 无序列表（- ）。',
-    '4. 每条采用「**主题词**：说明」的形式，简洁明了。',
-    '5. 数字、日期、名称等关键数据须保留原文的精确表述。',
-  ].join('\n'),
+  'keyInfo.full': '请列出这篇文章的关键信息（重要事实、数据、结论与观点）。',
+  'keyInfo.quote': '请列出用户引用的这段内容的关键信息（重要事实、数据、结论与观点）。',
 
   'suggest': [
     '你是一个阅读助手。基于对话历史，生成 3 个有深度的后续问题，帮助用户更深入地理解文章内容。',
@@ -230,15 +179,18 @@ const ZH: PromptTable = {
 
 const EN: Partial<PromptTable> = {
   'default': [
-    'You are an AI reading assistant. The user is reading a webpage article. Answer the user\'s questions strictly based on the article content below.',
+    'You are an AI reading assistant. The user is reading a webpage article. Answer the user\'s questions based on the article content below.',
     '',
-    '[Answering rules]',
-    '1. Answer only from the article content. Do not fabricate or supplement with outside knowledge; when citing specific facts or data, attach a short verbatim excerpt from the original (never rewrite).',
-    '2. If the question is out of scope or the text contains nothing relevant, say so explicitly ("not mentioned in the article") — do not guess.',
-    '3. Reply in English unless the user explicitly asks for another language.',
-    '4. Use Markdown: bullet points (- ) for lists, **bold** for key info; avoid pointless heading levels.',
-    '5. Be concise and focused; answer what is asked without unrelated preamble.',
+    '[Answering requirements]',
+    '1. Reply in English unless the user explicitly asks for another language.',
+    '2. Use Markdown: bullet points (- ) for lists, **bold** for key info; avoid pointless heading levels.',
     '{custom}',
+  ].join('\n'),
+
+  // The article is delivered as a SEPARATE system message (see
+  // message-sender.ts) so the rule message stays short and the custom prompt
+  // is not buried under thousands of characters of article text.
+  'default.article': [
     '[Article title]',
     '{title}',
     '',
@@ -246,69 +198,14 @@ const EN: Partial<PromptTable> = {
     '{content}',
   ].join('\n'),
 
-  'summarize.full': [
-    'Please summarize this webpage content.',
-    '',
-    'Requirements:',
-    '1. Summarize the core content in 3-5 bullet points; one sentence each, with an optional clarifying sentence.',
-    '2. Stay strictly within the source; do not add information or subjective judgments not in the text.',
-    '3. Reply in English, using a Markdown unordered list (- ).',
-    '4. You may end with a one-sentence overall summary (max ~20 words).',
-  ].join('\n'),
+  'summarize.full': 'Please summarize this article.',
+  'summarize.quote': 'Please summarize the content the user quoted.',
 
-  'summarize.quote': [
-    'Please summarize the content the user quoted.',
-    '',
-    'Requirements:',
-    '1. Summarize the core content in 3-5 bullet points; one sentence each, with an optional clarifying sentence.',
-    '2. Stay strictly within the source; do not add information or subjective judgments not in the text.',
-    '3. Reply in English, using a Markdown unordered list (- ).',
-    '4. You may end with a one-sentence overall summary (max ~20 words).',
-  ].join('\n'),
+  'translate.full': 'Translate this article into English; if the source is already in English, translate into Chinese.',
+  'translate.quote': 'Translate the content the user quoted into English; if the source is already in English, translate into Chinese.',
 
-  'translate.full': [
-    'Please translate this webpage content.',
-    '',
-    'Requirements:',
-    '1. Target language: English. If the source is already in English, translate into Chinese instead.',
-    '2. Convey the original meaning accurately — no additions, omissions, or commentary.',
-    '3. Use natural, fluent phrasing that fits the target language.',
-    '4. Keep technical terms in the source language, with a target-language gloss on first occurrence.',
-    '5. Preserve the original paragraph structure and formatting.',
-  ].join('\n'),
-
-  'translate.quote': [
-    'Please translate the content the user quoted.',
-    '',
-    'Requirements:',
-    '1. Target language: English. If the source is already in English, translate into Chinese instead.',
-    '2. Convey the original meaning accurately — no additions, omissions, or commentary.',
-    '3. Use natural, fluent phrasing that fits the target language.',
-    '4. Keep technical terms in the source language, with a target-language gloss on first occurrence.',
-    '5. Preserve the original paragraph structure and formatting.',
-  ].join('\n'),
-
-  'keyInfo.full': [
-    'Please extract the key information from this webpage content.',
-    '',
-    'Requirements:',
-    '1. List all important facts, data, conclusions, and viewpoints (skip narrative detail).',
-    '2. Order by importance, high to low.',
-    '3. Reply in English, using a Markdown unordered list (- ).',
-    '4. Use the form "**keyword**: explanation" for each item; keep it concise.',
-    '5. Preserve the exact original wording of numbers, dates, and names.',
-  ].join('\n'),
-
-  'keyInfo.quote': [
-    'Please extract the key information from the content the user quoted.',
-    '',
-    'Requirements:',
-    '1. List all important facts, data, conclusions, and viewpoints (skip narrative detail).',
-    '2. Order by importance, high to low.',
-    '3. Reply in English, using a Markdown unordered list (- ).',
-    '4. Use the form "**keyword**: explanation" for each item; keep it concise.',
-    '5. Preserve the exact original wording of numbers, dates, and names.',
-  ].join('\n'),
+  'keyInfo.full': 'List the key information from this article (important facts, data, conclusions, and viewpoints).',
+  'keyInfo.quote': 'List the key information from the content the user quoted (important facts, data, conclusions, and viewpoints).',
 
   'suggest': [
     'You are a reading assistant. Based on the conversation history, generate 3 in-depth follow-up questions to help the user better understand the article.',

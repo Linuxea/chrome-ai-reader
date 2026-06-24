@@ -68,20 +68,23 @@ export async function sendToAI(
     const pageContent = tabState.pageContent || '';
     if (pageContent) {
       const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
-      // The custom prompt is injected into the {custom} slot INSIDE the base
-      // template (between the answering rules and the article), so user
-      // overrides sit in the instruction region instead of being stranded
-      // after the article content. Empty custom leaves a blank line.
+      const lang = getCurrentLang();
+      // Two system messages: [1] rules + custom (short, ~200 chars), [2] the
+      // article as reference data. Splitting them keeps the custom prompt in a
+      // short instruction message where the model still attends to it, instead
+      // of being buried under thousands of characters of article text. OpenAI
+      // and DeepSeek both honor multiple system messages correctly.
       const customSystemPrompt = state.getCustomSystemPrompt();
       const customBlock = customSystemPrompt
         ? `【补充要求】\n${customSystemPrompt}`
         : '';
-      const systemContent = getPrompt('default', getCurrentLang(), {
+      const ruleContent = getPrompt('default', lang, { custom: customBlock });
+      const articleContent = getPrompt('default.article', lang, {
         title: tabState.pageTitle,
         content: context ?? '',
-        custom: customBlock,
       });
-      messages.push({ role: 'system', content: systemContent });
+      messages.push({ role: 'system', content: ruleContent });
+      messages.push({ role: 'system', content: articleContent });
     }
 
     const conversationHistory = tabState.conversationHistory || [];

@@ -177,27 +177,32 @@ describe('services/message-sender', () => {
       expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(true);
     });
 
-    it('assembles system prompt from page content', async () => {
+    it('splits the system into a rules message and an article message', async () => {
       await sendToAI('question', 'question');
 
       expect(callAI).toHaveBeenCalled();
       const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      // First message should be system with page context
-      expect(messages[0].role).toBe('system');
-      expect(messages[0].content).toContain('Test Page');
-      expect(messages[0].content).toContain('Existing page content');
+      // Two system messages: [0] rules (short), [1] article (data).
+      const systemMsgs = messages.filter((m: { role: string }) => m.role === 'system');
+      expect(systemMsgs).toHaveLength(2);
+      // Rules message must NOT contain the article text.
+      expect(systemMsgs[0].content).not.toContain('Existing page content');
+      // Article message carries the title + content.
+      expect(systemMsgs[1].content).toContain('Test Page');
+      expect(systemMsgs[1].content).toContain('Existing page content');
     });
 
-    it('merges custom system prompt into the single system message', async () => {
+    it('places the custom prompt in the short rules message, not the article', async () => {
       stateMock.getCustomSystemPrompt.mockReturnValue('Be concise');
       await sendToAI('q', 'q');
 
       const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      // Custom prompt is folded into the same system message (not a separate
-      // one) so all OpenAI-compatible consumers honor it.
       const systemMsgs = messages.filter((m: { role: string }) => m.role === 'system');
-      expect(systemMsgs).toHaveLength(1);
+      expect(systemMsgs).toHaveLength(2);
+      // Custom rides in the rules message (where the model attends) — never
+      // in the long article message where it would be buried.
       expect(systemMsgs[0].content).toContain('Be concise');
+      expect(systemMsgs[1].content).not.toContain('Be concise');
     });
 
     it('includes conversation history in messages', async () => {
