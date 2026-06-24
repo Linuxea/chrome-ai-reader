@@ -21,7 +21,7 @@ vi.mock('../../../../src/side_panel/ui/dom-helpers.js', () => ({
   appendMessage: vi.fn(),
 }));
 vi.mock('../../../../src/side_panel/services/page-extractor.js', () => ({
-  extractPageContent: vi.fn(() => Promise.resolve({ ok: true, value: { textContent: 'page text' } })),
+  ensurePageContent: vi.fn(() => Promise.resolve({ ok: true, value: null })),
 }));
 vi.mock('../../../../src/side_panel/services/tts/index.js', () => ({
   isTTSPlaying: vi.fn(() => false),
@@ -53,7 +53,7 @@ vi.mock('../../../../src/side_panel/features/podcast/script.js', () => ({
 
 import { initPodcast, handlePodcastClick } from '../../../../src/side_panel/features/podcast/index';
 import * as stateMock from '../../../../src/side_panel/state.js';
-import { extractPageContent } from '../../../../src/side_panel/services/page-extractor.js';
+import { ensurePageContent } from '../../../../src/side_panel/services/page-extractor.js';
 import { generatePodcastScript } from '../../../../src/side_panel/features/podcast/script.js';
 import { appendMessage } from '../../../../src/side_panel/ui/dom-helpers.js';
 import { createPodcastCard } from '../../../../src/side_panel/features/podcast/ui.js';
@@ -67,8 +67,8 @@ describe('features/podcast/index', () => {
     stateMock.getSelectedText.mockReturnValue('');
     stateMock.getOcrResults.mockReturnValue([]);
     stateMock.getPageContent.mockReturnValue('');
-    (extractPageContent as ReturnType<typeof vi.fn>).mockReturnValue(
-      Promise.resolve({ ok: true, value: { textContent: 'page text' } }),
+    (ensurePageContent as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ ok: true, value: null }),
     );
     (generatePodcastScript as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (createPodcastCard as ReturnType<typeof vi.fn>).mockReturnValue(document.createElement('div'));
@@ -99,23 +99,29 @@ describe('features/podcast/index', () => {
     expect(stateMock.setIsPodcastGenerating).toHaveBeenCalledWith(true);
   });
 
-  it('uses selected text when available', async () => {
+  it('uses selected text when available (but still extracts the page)', async () => {
     stateMock.getSelectedText.mockReturnValue('Selected content here');
+    stateMock.getPageContent.mockReturnValue('cached page content');
     await handlePodcastClick();
 
+    // Extraction is never skipped, even with a selection — the article must
+    // be cached for the chat feature. Selection still drives the podcast source.
+    expect(ensurePageContent).toHaveBeenCalled();
     expect(generatePodcastScript).toHaveBeenCalled();
     const [, textContent] = vi.mocked(generatePodcastScript).mock.calls[0];
     expect(textContent).toContain('Selected content here');
   });
 
-  it('falls back to page content extraction when no selection', async () => {
+  it('uses cached page content when no selection', async () => {
     stateMock.getSelectedText.mockReturnValue('');
     stateMock.getPageContent.mockReturnValue('page content');
 
     await handlePodcastClick();
 
-    expect(extractPageContent).toHaveBeenCalled();
+    expect(ensurePageContent).toHaveBeenCalled();
     expect(generatePodcastScript).toHaveBeenCalled();
+    const [, textContent] = vi.mocked(generatePodcastScript).mock.calls[0];
+    expect(textContent).toBe('page content');
   });
 
   it('merges OCR results into text content', async () => {
@@ -137,10 +143,6 @@ describe('features/podcast/index', () => {
   it('shows error when no content available', async () => {
     stateMock.getSelectedText.mockReturnValue('');
     stateMock.getPageContent.mockReturnValue('');
-    (extractPageContent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      value: { textContent: '' },
-    });
 
     await handlePodcastClick();
 

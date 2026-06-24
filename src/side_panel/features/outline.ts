@@ -1,21 +1,6 @@
 import { t } from '../../shared/i18n.js';
-import { getCurrentLang } from '../../shared/i18n.js';
-import { getPrompt } from '../../shared/prompts';
-import type { Result } from '../../shared/types';
-import { TRUNCATE_LIMITS, safeTruncate, escapeHtml } from '../../shared/constants';
 import { stripMarkdownFence } from '../../shared/json-repair';
 import { downloadFile } from '../../shared/download';
-import { marked } from 'marked';
-import * as state from '../state';
-import { emit, EVENTS } from '../events';
-import { appendMessage, scrollToBottom, setButtonsDisabled } from '../ui/dom-helpers';
-import { stopTTS } from '../services/tts/index.js';
-
-let _extractPageContent: () => Promise<Result<{ textContent: string }>>;
-
-export function initOutline(deps: { onExtractPageContent: () => Promise<Result<{ textContent: string }>> }): void {
-  _extractPageContent = deps.onExtractPageContent;
-}
 
 interface OutlineSection {
   heading: string;
@@ -169,115 +154,6 @@ function renderOutline(data: OutlineData): HTMLDivElement {
   container.appendChild(footer);
 
   return container;
-}
-
-function renderOutlineSkeleton(): HTMLDivElement {
-  const skeleton = document.createElement('div');
-  skeleton.className = 'outline-skeleton';
-  for (let i = 0; i < 5; i++) {
-    const line = document.createElement('div'); line.className = 'outline-skeleton-line';
-    skeleton.appendChild(line);
-  }
-  return skeleton;
-}
-
-export function generateOutline(): void {
-  if (state.getIsGenerating()) return;
-
-  const pageContent = state.getPageContent();
-
-  if (!pageContent) {
-    _extractPageContent().then((result) => {
-      if (state.getIsGenerating()) return;
-      if (!result.ok || !state.getPageContent()) { appendMessage('error', t('outline.noContent')); return; }
-      if (state.getPageContent().trim().length < 200) { appendMessage('error', t('outline.tooShort')); return; }
-      doGenerateOutline();
-    });
-    return;
-  }
-
-  if (pageContent.trim().length < 200) { appendMessage('error', t('outline.tooShort')); return; }
-
-  doGenerateOutline();
-}
-
-function doGenerateOutline(): void {
-  state.setIsGenerating(true);
-  setButtonsDisabled(true);
-
-  stopTTS();
-  emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
-
-  const chatArea = document.getElementById('chatArea')!;
-  const welcome = chatArea.querySelector('.welcome-msg');
-  if (welcome) welcome.remove();
-
-  const msgEl = appendMessage('ai', '');
-  msgEl.appendChild(renderOutlineSkeleton());
-  scrollToBottom();
-
-  const messages: { role: 'system' | 'user'; content: string }[] = [];
-  const context = safeTruncate(state.getPageContent(), TRUNCATE_LIMITS.CONTEXT);
-  const customSystemPrompt = state.getCustomSystemPrompt();
-  const systemContent = getPrompt('outline', getCurrentLang())
-    + (customSystemPrompt ? '\n\n' + customSystemPrompt : '');
-  messages.push({ role: 'system', content: systemContent });
-
-  messages.push({ role: 'user', content: context! });
-
-  const port = chrome.runtime.connect({ name: 'ai-chat' });
-
-  // Lower temperature for structured JSON output — improves format stability.
-  port.postMessage({ type: 'chat', messages, response_format: { type: 'json_object' }, temperature: 0.3 });
-
-  let fullText = '';
-
-  port.onDisconnect.addListener(() => {
-    if (state.getIsGenerating()) {
-      if (!fullText) {
-        msgEl.className = 'message message-error';
-        msgEl.innerHTML = escapeHtml(t('error.apiFailed'))!;
-      }
-      state.setIsGenerating(false);
-      setButtonsDisabled(false);
-    }
-  });
-
-  port.onMessage.addListener((msg: { type: string; content?: string; error?: string; errorKey?: string }) => {
-    if (msg.type === 'thinking') {
-      // Ignore
-    } else if (msg.type === 'chunk') {
-      fullText += msg.content || '';
-    } else if (msg.type === 'done') {
-      port.disconnect();
-      msgEl.innerHTML = '';
-
-      const data = parseOutlineResponse(fullText);
-      if (data) {
-        msgEl.appendChild(renderOutline(data));
-        msgEl.dataset.type = 'outline';
-        msgEl.dataset.json = fullText;
-        state.pushConversation({ role: 'user', content: '[大纲请求] ' + context!.slice(0, 100) });
-        state.pushConversation({ role: 'assistant', content: fullText, type: 'outline' });
-      } else {
-        msgEl.innerHTML = marked.parse(fullText) as string;
-        state.pushConversation({ role: 'assistant', content: fullText });
-      }
-
-      state.setIsGenerating(false);
-      setButtonsDisabled(false);
-      emit(EVENTS.ADD_TTS_BUTTON, { msgEl });
-      emit(EVENTS.SAVE_CURRENT_CHAT);
-      scrollToBottom();
-    } else if (msg.type === 'error') {
-      port.disconnect();
-      const errorText = msg.errorKey ? t(msg.errorKey) : (msg.error || '');
-      msgEl.className = 'message message-error';
-      msgEl.innerHTML = escapeHtml(errorText)!;
-      state.setIsGenerating(false);
-      setButtonsDisabled(false);
-    }
-  });
 }
 
 export function renderOutlineFromJSON(jsonString: string): HTMLDivElement | null {

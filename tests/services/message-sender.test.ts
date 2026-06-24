@@ -92,7 +92,7 @@ vi.mock('../../src/side_panel/services/ocr.js', () => ({
 }));
 
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
-  extractPageContent: vi.fn(() => Promise.resolve({ ok: true, value: { textContent: 'page text' } })),
+  ensurePageContent: vi.fn(() => Promise.resolve({ ok: true, value: null })),
 }));
 
 vi.mock('../../src/side_panel/services/stream-handler.js', () => ({
@@ -110,7 +110,7 @@ import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
 import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
 import * as ocrMock from '../../src/side_panel/services/ocr.js';
-import { extractPageContent } from '../../src/side_panel/services/page-extractor.js';
+import { ensurePageContent } from '../../src/side_panel/services/page-extractor.js';
 import { callAI } from '../../src/side_panel/services/stream-handler.js';
 
 describe('services/message-sender', () => {
@@ -139,8 +139,8 @@ describe('services/message-sender', () => {
     stateMock.getActiveTabId.mockReturnValue(1);
     stateMock.getIsGenerating.mockReturnValue(false);
     stateMock.getCustomSystemPrompt.mockReturnValue('');
-    (extractPageContent as ReturnType<typeof vi.fn>).mockReturnValue(
-      Promise.resolve({ ok: true, value: { textContent: 'page text' } }),
+    (ensurePageContent as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ ok: true, value: null }),
     );
     (callAI as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     ocrMock.hasImageErrors.mockReturnValue(false);
@@ -228,22 +228,25 @@ describe('services/message-sender', () => {
       });
     });
 
-    it('extracts page content when conversation is empty or pageContent missing', async () => {
+    it('calls ensurePageContent to guarantee extraction before sending', async () => {
       tabState.conversationHistory = [];
       tabState.pageContent = '';
 
       await sendToAI('first question', 'first question');
 
-      expect(extractPageContent).toHaveBeenCalledWith(1);
+      expect(ensurePageContent).toHaveBeenCalledWith(1);
     });
 
-    it('skips extraction when page content already exists', async () => {
+    it('still calls ensurePageContent even when pageContent is cached', async () => {
+      // The gate is now single-source: ensurePageContent is always called;
+      // it internally no-ops when pageContent is present. This replaces the
+      // old scattered "if (!conv || !pageContent)" checks.
       tabState.pageContent = 'already have content';
       tabState.conversationHistory = [{ role: 'user', content: 'prev' }];
 
       await sendToAI('next', 'next');
 
-      expect(extractPageContent).not.toHaveBeenCalled();
+      expect(ensurePageContent).toHaveBeenCalled();
     });
 
     it('appends user message with quote prefix when quoteForContext provided', async () => {
@@ -300,10 +303,10 @@ describe('services/message-sender', () => {
       expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
     });
 
-    it('rolls back on extractPageContent failure', async () => {
+    it('rolls back on ensurePageContent failure', async () => {
       tabState.pageContent = '';
       tabState.conversationHistory = [];
-      (extractPageContent as ReturnType<typeof vi.fn>).mockReturnValue(
+      (ensurePageContent as ReturnType<typeof vi.fn>).mockReturnValue(
         Promise.resolve({ ok: false, error: new Error('extract failed') }),
       );
 

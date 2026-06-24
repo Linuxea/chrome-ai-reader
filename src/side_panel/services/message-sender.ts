@@ -12,7 +12,7 @@ import {
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
-import { extractPageContent } from './page-extractor';
+import { ensurePageContent } from './page-extractor';
 import { callAI } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
 
@@ -59,10 +59,11 @@ export async function sendToAI(
   }
 
   try {
-    if (!tabState.conversationHistory.length || !tabState.pageContent) {
-      const extractResult = await extractPageContent(startTabId);
-      if (!extractResult.ok) throw extractResult.error;
-    }
+    // Ensure the page has been extracted at least once for this tab. This is
+    // the single entry point for extraction — history state is irrelevant;
+    // only the pageContent cache decides whether to actually extract.
+    const extractResult = await ensurePageContent(startTabId);
+    if (!extractResult.ok) throw extractResult.error;
 
     const messages: ChatMessage[] = [];
     const pageContent = tabState.pageContent || '';

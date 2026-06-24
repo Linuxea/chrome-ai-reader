@@ -705,3 +705,29 @@ body.drag-over::after {
   z-index: 1001;
   pointer-events: none;
 }
+
+/* ===== Toast ===== */
+
+.reader-toast {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  padding: 6px 14px;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  font-size: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1000;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.reader-toast-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}

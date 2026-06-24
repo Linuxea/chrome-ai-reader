@@ -173,6 +173,7 @@ const TRANSLATIONS = {
     'ai.quoteTruncated': '[引用内容过长，已截断]',
     'ai.quotePrefix': '以下是用户从页面中引用的内容：',
     'ai.ocrContext': '第{n}张图片的内容是：\n',
+    'toast.extracting': '正在提取页面内容…',
 
     // Podcast
     'podcast.button': '播客',
@@ -401,6 +402,7 @@ const TRANSLATIONS = {
     'ai.quoteTruncated': '[Quote too long, truncated]',
     'ai.quotePrefix': 'The following is content quoted by the user from the page:',
     'ai.ocrContext': 'Content of image #{n}:\n',
+    'toast.extracting': 'Extracting page content…',
 
     // Podcast
     'podcast.button': 'Podcast',

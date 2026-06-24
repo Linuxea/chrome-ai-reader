@@ -3,11 +3,35 @@ import type { Result } from '../../shared/types';
 import { ok, err } from '../../shared/result.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
+import { showExtractingToast } from '../ui/toast';
 
 export interface ExtractResult {
   textContent: string;
   excerpt: string;
   title: string;
+}
+
+/**
+ * Single entry point for "make sure this tab's page content has been
+ * extracted at least once". Every feature (chat, podcast, quick actions)
+ * calls this instead of calling extractPageContent directly, so the
+ * "extract once, then reuse the cache" rule lives in one place.
+ *
+ * - If pageContent is already cached for the active/expected tab → no-op (ok).
+ * - Otherwise → show a brief toast, extract, return the result.
+ *
+ * The `|| conversationHistory.length` re-extraction that used to live in
+ * message-sender is gone: history state is irrelevant — only the pageContent
+ * cache decides whether to extract.
+ */
+export async function ensurePageContent(expectTabId?: number | null): Promise<Result<ExtractResult | null>> {
+  const tabId = expectTabId || state.getActiveTabId();
+  const tabState = tabId ? state.getStateForTab(tabId) : null;
+  if (tabState?.pageContent) {
+    return ok(null);
+  }
+  showExtractingToast();
+  return extractPageContent(expectTabId);
 }
 
 /**
