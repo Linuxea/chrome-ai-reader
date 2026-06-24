@@ -1,7 +1,7 @@
 /* 小🍐子阅读助手 — 侧边栏样式 */
 
 body {
-  font-family: 'DM Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -58,7 +58,7 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 7px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,7 +92,7 @@ body {
   padding: 8px 10px;
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   font-size: 12px;
   font-family: inherit;
@@ -117,7 +117,9 @@ body {
 }
 
 .action-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 /* ===== Chat Area ===== */
@@ -190,7 +192,7 @@ body {
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 8px 10px 8px 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -225,7 +227,7 @@ body {
   background: var(--primary);
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -254,7 +256,7 @@ body {
   padding: 8px 12px;
   margin-bottom: 8px;
   background: var(--primary-light);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -269,7 +271,7 @@ body {
   flex-shrink: 0;
   width: 56px;
   height: 56px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: visible;
   border: 2px solid var(--border);
   transition: border-color 0.2s ease;
@@ -287,7 +289,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .image-status {
@@ -384,7 +386,7 @@ body {
   padding: 8px 12px;
   background: var(--primary-light);
   border-left: 3px solid var(--primary);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
@@ -407,7 +409,7 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   transition: color 0.15s, background 0.15s;
@@ -443,7 +445,7 @@ body {
   width: 80px;
   height: 80px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -464,7 +466,7 @@ body {
 .thinking-block {
   background: var(--thinking-bg);
   border: 1px solid var(--thinking-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
   font-size: 12px;
   line-height: 1.6;
@@ -527,7 +529,7 @@ body {
   cursor: pointer;
   padding: 2px 4px;
   margin-top: 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   line-height: 1;
   opacity: 0.6;
@@ -602,7 +604,7 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   line-height: 1;
   opacity: 0.6;
   transition: all 0.15s ease;
@@ -633,7 +635,7 @@ body {
 .suggest-item {
   padding: 5px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-message);
   color: var(--text-secondary);
   font-size: 12px;
@@ -664,7 +666,7 @@ body {
 
 .suggest-loading-bar {
   height: 14px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--border);
   animation: suggest-pulse 1.5s ease-in-out infinite;
 }
@@ -686,7 +688,7 @@ body.drag-over::before {
   inset: 0;
   background: rgba(var(--primary-rgb), 0.1);
   border: 2px dashed var(--primary);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   pointer-events: none;
   z-index: 1000;
 }
@@ -700,7 +702,7 @@ body.drag-over::after {
   padding: 12px 24px;
   background: var(--primary);
   color: white;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   z-index: 1001;
   pointer-events: none;
@@ -717,9 +719,9 @@ body.drag-over::after {
   background: var(--card-bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   font-size: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-lg);
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.2s ease;
   z-index: 1000;

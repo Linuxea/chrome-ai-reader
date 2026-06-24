@@ -6,7 +6,7 @@
 }
 .outline-skeleton-line {
   height: 14px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(90deg, var(--border) 25%, var(--hover-overlay) 50%, var(--border) 75%);
   background-size: 200% 100%;
   animation: outline-shimmer 1.5s infinite;
@@ -27,7 +27,7 @@
 .outline-container {
   margin: 4px 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -159,7 +159,7 @@
   color: var(--text-secondary);
   font-style: italic;
   background: rgba(var(--primary-rgb), 0.05);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 /* === Outline footer (action buttons) === */
@@ -175,7 +175,7 @@
   padding: 4px 12px;
   font-size: 12px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--card-bg);
   color: var(--text);
   cursor: pointer;

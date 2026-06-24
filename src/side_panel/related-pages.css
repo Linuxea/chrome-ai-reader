@@ -28,7 +28,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #e74c3c;
+  background: var(--error-text);
   flex-shrink: 0;
 }
 
@@ -43,11 +43,11 @@
   cursor: pointer;
   font-size: 10px;
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .related-toggle:hover {
-  background: var(--hover-bg);
+  background: var(--bg-hover);
 }
 
 .related-list {
@@ -89,15 +89,15 @@
 }
 
 .related-state--warn .related-state-title {
-  color: var(--accent, #e6a700);
+  color: var(--accent);
 }
 
 .related-state--error .related-state-title {
-  color: #e74c3c;
+  color: var(--error-text);
 }
 
 .related-state--error .related-state-hint {
-  color: #e74c3c;
+  color: var(--error-text);
   opacity: 0.85;
   word-break: break-word;
 }
@@ -105,10 +105,10 @@
 .related-retry-btn,
 .related-settings-link {
   display: inline-block;
-  background: var(--accent, #4a90d9);
-  color: #fff;
+  background: var(--primary);
+  color: var(--user-text);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   padding: 4px 10px;
   cursor: pointer;
@@ -135,8 +135,8 @@
 .related-spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid var(--border, #ccc);
-  border-top-color: var(--accent, #4a90d9);
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
   border-radius: 50%;
   display: inline-block;
   animation: related-spin 0.8s linear infinite;
@@ -154,7 +154,7 @@
 }
 
 .related-item:hover {
-  background: var(--hover-bg);
+  background: var(--bg-hover);
 }
 
 .related-item-title {
@@ -174,7 +174,7 @@
 }
 
 .related-similarity {
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 500;
 }
 

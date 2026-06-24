@@ -1,6 +1,6 @@
 .podcast-card {
   background: var(--card-bg);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   margin: 8px 0;
   padding: 16px;
   border: 1px solid var(--border);
@@ -28,7 +28,7 @@
   margin-bottom: 12px;
   padding: 12px;
   background: var(--bg);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: none;
 }
 
@@ -56,7 +56,7 @@
   padding: 8px 12px;
   border-left: 3px solid var(--primary);
   background: var(--primary-light);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.5;
@@ -70,7 +70,7 @@
   border: none;
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -210,7 +210,7 @@
 .podcast-action-btn {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 4px 12px;
   font-size: 12px;
   color: var(--primary);
@@ -254,7 +254,7 @@
   max-height: 280px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -270,7 +270,7 @@
   display: flex;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border-left: 3px solid transparent;
   transition: background 0.2s, border-color 0.2s;
   line-height: 1.5;
@@ -293,19 +293,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
   margin-top: 1px;
 }
 
 .podcast-round-speaker.speaker-A {
-  background: #dbeafe;
-  color: #2563eb;
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 .podcast-round-speaker.speaker-B {
-  background: #f3e8ff;
-  color: #9333ea;
+  background: var(--speaker-b-bg);
+  color: var(--speaker-b-text);
 }
 
 .podcast-round-text {

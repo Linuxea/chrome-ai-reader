@@ -1,7 +1,7 @@
 .message {
   max-width: 88%;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   line-height: 1.75;
   word-wrap: break-word;
   animation: msg-in 0.25s ease;
@@ -34,7 +34,7 @@
 .message-user {
   background: var(--user-bg);
   color: var(--user-text);
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: var(--radius-sm);
 }
 
 .message-ai {
@@ -42,7 +42,7 @@
   background: var(--ai-bg);
   color: var(--ai-text);
   border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: var(--radius-sm);
   box-shadow: var(--shadow);
 }
 
@@ -70,7 +70,7 @@
 .message-ai code {
   background: var(--bg);
   padding: 2px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   color: var(--primary);
@@ -79,7 +79,7 @@
 .message-ai pre {
   background: var(--bg);
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   margin: 6px 0;
   border: 1px solid var(--border);

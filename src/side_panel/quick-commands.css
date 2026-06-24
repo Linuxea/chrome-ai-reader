@@ -7,16 +7,12 @@
   right: 0;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(120, 100, 80, 0.12);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   max-height: 240px;
   overflow-y: auto;
   z-index: 20;
   margin-bottom: 4px;
-}
-
-[data-theme="dark"] .command-popup {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 .command-popup.hidden {
@@ -46,11 +42,11 @@
 }
 
 .command-popup-item:first-child {
-  border-radius: 10px 10px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .command-popup-item:last-child {
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .command-popup-item:hover,
