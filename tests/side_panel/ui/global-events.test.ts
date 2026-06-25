@@ -15,9 +15,6 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   setPageContent: vi.fn(),
   setPageExcerpt: vi.fn(),
   setPageTitle: vi.fn(),
-  setArticleSummary: vi.fn(),
-  setArticleSummaryStatus: vi.fn(),
-  setArticleSummaryUrl: vi.fn(),
   clearConversation: vi.fn(),
   setCurrentChatId: vi.fn(),
   setCustomSystemPrompt: vi.fn(),
@@ -27,7 +24,7 @@ vi.mock('../../../src/side_panel/state.js', () => ({
 }));
 vi.mock('../../../src/side_panel/events.js', () => ({
   emit: vi.fn(),
-  EVENTS: { SHOW_RELATED_PAGES: 'showRelatedPages', TAB_CHANGED: 'tabChanged' },
+  EVENTS: { SHOW_RELATED_PAGES: 'showRelatedPages' },
 }));
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   setButtonsDisabled: vi.fn(),
@@ -148,9 +145,6 @@ describe('ui/global-events', () => {
 
       expect(stateMock.clearConversation).toHaveBeenCalled();
       expect(stateMock.setPageContent).toHaveBeenCalledWith('');
-      expect(stateMock.setArticleSummary).toHaveBeenCalledWith('');
-      expect(stateMock.setArticleSummaryStatus).toHaveBeenCalledWith('idle');
-      expect(stateMock.setArticleSummaryUrl).toHaveBeenCalledWith('');
       expect(deps.removeSuggestQuestions).toHaveBeenCalled();
       expect(els.chatArea.innerHTML).toContain('welcome-msg');
     });
@@ -207,17 +201,6 @@ describe('ui/global-events', () => {
     it('registers chrome.tabs.onActivated listener', () => {
       bindGlobalEvents(els, deps);
       expect(chrome.tabs.onActivated.addListener).toHaveBeenCalled();
-    });
-
-    it('emits tabChanged after activation switches tab state', async () => {
-      let listener: (info: { tabId: number }) => void | Promise<void> = () => undefined;
-      chrome.tabs.onActivated.addListener = vi.fn((fn) => { listener = fn; });
-      bindGlobalEvents(els, deps);
-
-      await listener({ tabId: 7 });
-
-      expect(stateMock.switchToTab).toHaveBeenCalledWith(7);
-      expect(eventsMock.emit).toHaveBeenCalledWith('tabChanged', { tabId: 7 });
     });
 
     it('registers chrome.runtime.onMessage listener', () => {

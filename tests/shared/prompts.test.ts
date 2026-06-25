@@ -78,18 +78,6 @@ describe('shared/prompts', () => {
       expect(getPrompt('summarize.full', 'fr')).toBe(getPrompt('summarize.full', 'zh'));
       expect(getPrompt('summarize.full', '')).toBe(getPrompt('summarize.full', 'zh'));
     });
-
-    it('defines a compact auto-summary card prompt in both languages', () => {
-      const zh = getPrompt('summary.card', 'zh');
-      expect(zh).toContain('本页速读');
-      expect(zh).toMatch(/一句话|关键点|追问/);
-      expect(zh).toMatch(/不要.*聊天回复|阅读简报/);
-
-      const en = getPrompt('summary.card', 'en');
-      expect(en).toMatch(/page brief/i);
-      expect(en).toMatch(/one-sentence|key points|follow-up/i);
-      expect(en).toMatch(/not.*chat reply|reading brief/i);
-    });
   });
 
   describe('translate prompts are bidirectional', () => {

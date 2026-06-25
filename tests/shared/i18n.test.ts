@@ -63,16 +63,6 @@ describe('shared/i18n', () => {
       expect(t('action.translate')).toBe('Translate');
     });
 
-    it('contains auto summary card labels in both languages', () => {
-      setLanguage('zh');
-      expect(t('summary.title')).toBe('本页速读');
-      expect(t('summary.generating')).toContain('正在生成');
-
-      setLanguage('en');
-      expect(t('summary.title')).toBe('Page Brief');
-      expect(t('summary.generating')).toContain('Generating');
-    });
-
     it('interpolates {param} placeholders', () => {
       setLanguage('zh');
       const result = t('status.modelsLoaded', { n: 5 });

@@ -184,11 +184,6 @@ const TRANSLATIONS = {
     'ai.ocrContext': '第{n}张图片的内容是：\n',
     'toast.extracting': '正在提取页面内容…',
 
-    'summary.title': '本页速读',
-    'summary.generating': '正在生成速读…',
-    'summary.error': '速读生成失败',
-    'summary.retry': '重试',
-
     // Podcast
     'podcast.button': '播客',
     'podcast.cardTitle': '播客',
@@ -428,11 +423,6 @@ const TRANSLATIONS = {
     'ai.quotePrefix': 'The following is content quoted by the user from the page:',
     'ai.ocrContext': 'Content of image #{n}:\n',
     'toast.extracting': 'Extracting page content…',
-
-    'summary.title': 'Page Brief',
-    'summary.generating': 'Generating brief…',
-    'summary.error': 'Brief failed',
-    'summary.retry': 'Retry',
 
     // Podcast
     'podcast.button': 'Podcast',

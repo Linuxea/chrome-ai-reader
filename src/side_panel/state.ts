@@ -1,4 +1,4 @@
-import type { TabState, ChatMessage, OcrResult, ArticleSummaryStatus } from '../shared/types';
+import type { TabState, ChatMessage, OcrResult } from '../shared/types';
 import { stripImagesForPersistence } from './services/chat/strip-images';
 
 const listeners = new Map<string, Set<(value: unknown) => void>>();
@@ -22,9 +22,6 @@ function createFreshTabState(): TabState {
     pageContent: '',
     pageTitle: '',
     pageExcerpt: '',
-    articleSummary: '',
-    articleSummaryStatus: 'idle',
-    articleSummaryUrl: '',
     conversationHistory: [],
     currentChatId: null,
     selectedText: '',
@@ -173,9 +170,6 @@ function defineTabField<T>(
 defineTabField('pageContent', '');
 defineTabField('pageExcerpt', '');
 defineTabField('pageTitle', '');
-defineTabField('articleSummary', '');
-defineTabField('articleSummaryStatus', 'idle' as ArticleSummaryStatus);
-defineTabField('articleSummaryUrl', '');
 defineTabField('isGenerating', false, { notify: true });
 defineTabField('currentChatId', null as string | null);
 defineTabField('selectedText', '');
@@ -200,9 +194,6 @@ export const {
   getPageContent, setPageContent,
   getPageExcerpt, setPageExcerpt,
   getPageTitle, setPageTitle,
-  getArticleSummary, setArticleSummary,
-  getArticleSummaryStatus, setArticleSummaryStatus,
-  getArticleSummaryUrl, setArticleSummaryUrl,
   getIsGenerating, setIsGenerating,
   getCurrentChatId, setCurrentChatId,
   getSelectedText, setSelectedText,
@@ -219,12 +210,6 @@ export const {
   setPageExcerpt: (v: string) => void;
   getPageTitle: () => string;
   setPageTitle: (v: string) => void;
-  getArticleSummary: () => string;
-  setArticleSummary: (v: string) => void;
-  getArticleSummaryStatus: () => ArticleSummaryStatus;
-  setArticleSummaryStatus: (v: ArticleSummaryStatus) => void;
-  getArticleSummaryUrl: () => string;
-  setArticleSummaryUrl: (v: string) => void;
   getIsGenerating: () => boolean;
   setIsGenerating: (v: boolean) => void;
   getCurrentChatId: () => string | null;

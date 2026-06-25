@@ -15,13 +15,8 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   setPageTitle: vi.fn(),
   setPageContent: vi.fn(),
   setPageExcerpt: vi.fn(),
-  setArticleSummary: vi.fn(),
-  setArticleSummaryStatus: vi.fn(),
-  setArticleSummaryUrl: vi.fn(),
   setConversationHistory: vi.fn(),
   getConversationHistory: vi.fn(() => []),
-  getArticleSummary: vi.fn(() => ''),
-  getArticleSummaryStatus: vi.fn(() => 'idle'),
 }));
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   appendMessage: vi.fn(() => {
@@ -122,18 +117,12 @@ describe('ui/tab-switch-handler', () => {
         pageTitle: 'Test Page',
         pageContent: 'Content',
         pageExcerpt: 'Excerpt',
-        articleSummary: 'Brief',
-        articleSummaryStatus: 'done',
-        articleSummaryUrl: 'https://example.com',
         messages: [{ role: 'user', content: 'hi' }],
       });
 
       expect(stateMock.setCurrentChatId).toHaveBeenCalledWith('chat-123');
       expect(stateMock.setPageTitle).toHaveBeenCalledWith('Test Page');
       expect(stateMock.setPageContent).toHaveBeenCalledWith('Content');
-      expect(stateMock.setArticleSummary).toHaveBeenCalledWith('Brief');
-      expect(stateMock.setArticleSummaryStatus).toHaveBeenCalledWith('done');
-      expect(stateMock.setArticleSummaryUrl).toHaveBeenCalledWith('https://example.com');
       expect(stateMock.setConversationHistory).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
     });
 
@@ -142,9 +131,6 @@ describe('ui/tab-switch-handler', () => {
 
       expect(stateMock.setPageTitle).toHaveBeenCalledWith('');
       expect(stateMock.setPageContent).toHaveBeenCalledWith('');
-      expect(stateMock.setArticleSummary).toHaveBeenCalledWith('');
-      expect(stateMock.setArticleSummaryStatus).toHaveBeenCalledWith('idle');
-      expect(stateMock.setArticleSummaryUrl).toHaveBeenCalledWith('');
       expect(stateMock.setConversationHistory).toHaveBeenCalledWith([]);
     });
 
@@ -171,22 +157,10 @@ describe('ui/tab-switch-handler', () => {
 
     it('shows welcome message when no history', () => {
       stateMock.getConversationHistory.mockReturnValue([]);
-      stateMock.getArticleSummary.mockReturnValue('');
-      stateMock.getArticleSummaryStatus.mockReturnValue('idle');
 
       resetUIForTabSwitch(els, deps);
 
       expect(els.chatArea.innerHTML).toContain('welcome-msg');
-    });
-
-    it('does not show welcome when an article summary exists without chat history', () => {
-      stateMock.getConversationHistory.mockReturnValue([]);
-      stateMock.getArticleSummary.mockReturnValue('Brief');
-      stateMock.getArticleSummaryStatus.mockReturnValue('done');
-
-      resetUIForTabSwitch(els, deps);
-
-      expect(els.chatArea.innerHTML).not.toContain('welcome-msg');
     });
 
     it('clears suggest questions and image previews', () => {

@@ -22,7 +22,6 @@ export type PromptKey =
   | 'default.article'
   | 'summarize.full'
   | 'summarize.quote'
-  | 'summary.card'
   | 'translate.full'
   | 'translate.quote'
   | 'keyInfo.full'
@@ -59,16 +58,6 @@ const ZH: PromptTable = {
 
   'summarize.full': '请总结这篇文章的内容。',
   'summarize.quote': '请总结用户引用的这段内容。',
-
-  'summary.card': [
-    '请为当前文章生成一张「本页速读」阅读简报，不要写成聊天回复。',
-    '',
-    '输出要求：',
-    '1. 第一行是一句话总结，控制在 35 字以内。',
-    '2. 然后列出 3 个关键点，每点 18 字以内。',
-    '3. 最后给出 1 个值得继续追问的问题。',
-    '4. 使用简洁 Markdown，不要寒暄，不要解释你的生成过程。',
-  ].join('\n'),
 
   'translate.full': '请将这篇文章翻译为中文；若原文已是中文，则翻译为英文。',
   'translate.quote': '请将用户引用的这段内容翻译为中文；若原文已是中文，则翻译为英文。',
@@ -228,16 +217,6 @@ const EN: Partial<PromptTable> = {
 
   'summarize.full': 'Please summarize this article.',
   'summarize.quote': 'Please summarize the content the user quoted.',
-
-  'summary.card': [
-    'Generate a compact "Page Brief" reading brief for the current article, not a chat reply.',
-    '',
-    'Output requirements:',
-    '1. Start with a one-sentence summary under 25 words.',
-    '2. Then list 3 key points, each under 14 words.',
-    '3. End with 1 worthwhile follow-up question.',
-    '4. Use concise Markdown. No greeting and no explanation of your process.',
-  ].join('\n'),
 
   'translate.full': 'Translate this article into English; if the source is already in English, translate into Chinese.',
   'translate.quote': 'Translate the content the user quoted into English; if the source is already in English, translate into Chinese.',
