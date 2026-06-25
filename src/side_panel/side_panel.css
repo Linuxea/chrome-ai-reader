@@ -9,10 +9,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Pin the viewport chain so NO scrollbar can ever appear on html/body.
+   Without this, a 100vh mismatch (Chrome side-panel resize/zoom quirk) or
+   non-shrinkable flex siblings overflowing .container would surface a
+   body-level "phantom" scrollbar — it looks like the sidebar scrollbar but
+   dragging it just translates the fixed-size .container instead of scrolling
+   chat content (the "looks scrollable but can't scroll" bug). With the chain
+   pinned, the ONLY scrollable element is .chat-area, which min-height:0
+   already makes scroll correctly. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* Derive from the pinned html/body chain instead of 100vh — sidesteps the
+     side-panel 100vh-vs-viewport quirk that produces phantom scrollbars. */
+  height: 100%;
 }
 
 /* ===== Header ===== */
@@ -25,6 +41,9 @@ body {
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   position: relative;
+  /* Don't shrink; only the chat-area should flex when space is tight.
+     Completes the invariant established for .quick-actions / .input-area. */
+  flex-shrink: 0;
 }
 
 .header::after {
