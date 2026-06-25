@@ -175,6 +175,21 @@ describe('services/stream-handler', () => {
       expect(marked.parse).toHaveBeenCalledWith('Let me think more');
       expect(domMock.removeTypingIndicator).toHaveBeenCalled();
     });
+
+    it('shows elapsed time from first thinking token to first answer chunk', async () => {
+      const nowSpy = vi.spyOn(globalThis.performance, 'now');
+      nowSpy.mockReturnValue(1000);
+      await callAI([], 1);
+
+      port._simulateMessage({ type: 'thinking', content: 'Reasoning' });
+      expect(document.querySelector('.thinking-summary')?.textContent).toBe('[ai.thinking]');
+
+      nowSpy.mockReturnValue(3456);
+      port._simulateMessage({ type: 'chunk', content: 'Answer' });
+
+      expect(document.querySelector('.thinking-summary')?.textContent).toBe('[ai.thinking] · 2.5s');
+      nowSpy.mockRestore();
+    });
   });
 
   // ==========================================================================

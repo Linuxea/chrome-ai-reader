@@ -40,7 +40,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   let fullText = '';
   let thinkingText = '';
   let thinkingEl: HTMLDetailsElement | null = null;
+  let thinkingSummaryEl: HTMLElement | null = null;
   let thinkingContentEl: HTMLDivElement | null = null;
+  let thinkingStartedAt: number | null = null;
   let contentEl: HTMLDivElement | null = null;
 
   const port = chrome.runtime.connect({ name: 'ai-chat' });
@@ -61,6 +63,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   port.onMessage.addListener((msg: StreamMessage) => {
     if (msg.type === 'thinking') {
+      thinkingStartedAt ??= performance.now();
       thinkingText += msg.content || '';
       if (isCurrentTab() && msgEl.isConnected) removeTypingIndicator(typingEl);
 
@@ -71,6 +74,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         const summary = document.createElement('summary');
         summary.className = 'thinking-summary';
         summary.textContent = t('ai.thinking');
+        thinkingSummaryEl = summary;
         thinkingEl.appendChild(summary);
         thinkingContentEl = document.createElement('div');
         thinkingContentEl.className = 'thinking-content';
@@ -84,6 +88,11 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       }
     } else if (msg.type === 'chunk') {
       const isFirstChunk = fullText === '';
+      if (thinkingStartedAt !== null && thinkingSummaryEl) {
+        const elapsedSeconds = (performance.now() - thinkingStartedAt) / 1000;
+        thinkingSummaryEl.textContent = `${t('ai.thinking')} · ${elapsedSeconds.toFixed(1)}s`;
+        thinkingStartedAt = null;
+      }
       if (thinkingEl) thinkingEl.open = false;
 
       fullText += msg.content || '';
