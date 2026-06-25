@@ -152,6 +152,17 @@ body {
      stops working because nothing overflows. */
   min-height: 0;
   overflow-y: auto;
+  /* Disable Chrome's scroll anchoring. During streaming we rebuild
+     contentEl.innerHTML every chunk (anchor element is deleted/recreated),
+     and toggling the thinking <details> shifts content above the viewport.
+     Scroll anchoring tries to compensate for both, but the unstable anchor
+     makes it snap scrollTop to a wrong non-bottom position. smartScrollToBottom
+     then sees distanceToBottom > 80 and refuses to scroll — so the user sees
+     new content appearing but the view never follows ("looks scrollable but
+     can't scroll"). Reproduced specifically by clicking the thinking bubble
+     during streaming (details toggle triggers anchoring). overflow-anchor:none
+     hands full scrollTop control back to our own scroll helpers. */
+  overflow-anchor: none;
   padding: 16px;
   display: flex;
   flex-direction: column;

@@ -4,7 +4,7 @@ import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
   appendMessage, addTypingIndicator,
-  removeTypingIndicator, smartScrollToBottom,
+  removeTypingIndicator, scrollToBottom, smartScrollToBottom,
   setButtonsDisabled,
 } from '../ui/dom-helpers';
 import {
@@ -83,6 +83,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         smartScrollToBottom();
       }
     } else if (msg.type === 'chunk') {
+      const isFirstChunk = fullText === '';
       if (thinkingEl) thinkingEl.open = false;
 
       fullText += msg.content || '';
@@ -96,7 +97,15 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
       if (isCurrentTab() && msgEl.isConnected && contentEl) {
         contentEl.innerHTML = marked.parse(fullText) as string;
-        smartScrollToBottom();
+        /* Force-scroll on the first answer chunk: the thinking <details> just
+           got collapsed above, which (together with overflow-anchor) is the
+           exact trigger for the scroll-stops-following bug. Even with
+           overflow-anchor:none, pinning scrollTop to the bottom at the
+           thinking→answer handoff guarantees the view starts tracking the
+           answer from its first character. Subsequent chunks use the
+           smart variant so users can scroll up to read without fighting it. */
+        if (isFirstChunk) scrollToBottom();
+        else smartScrollToBottom();
       }
       if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');

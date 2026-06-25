@@ -49,6 +49,7 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
     return el;
   }),
   removeTypingIndicator: vi.fn(),
+  scrollToBottom: vi.fn(),
   smartScrollToBottom: vi.fn(),
   setButtonsDisabled: vi.fn(),
 }));
