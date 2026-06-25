@@ -13,9 +13,11 @@ export const EVENTS = {
   SAVE_CURRENT_CHAT: 'saveCurrentChat',
   RENDER_HISTORY_LIST: 'renderHistoryList',
   SHOW_RELATED_PAGES: 'showRelatedPages',
+  /** Fired after the active tab state has changed and UI was reset. */
+  TAB_CHANGED: 'tabChanged',
   /** Fired by services/page-extractor after a successful extraction. The
    *  related-pages feature subscribes to it instead of being imported upward
-   *  by the service layer. Payload: excerpt + url + title of the extracted page. */
+   *  by the service layer. Payload: extracted page data + tab/url metadata. */
   PAGE_EXTRACTED: 'pageExtracted',
 } as const;
 
@@ -33,7 +35,8 @@ interface EventMap {
   [EVENTS.SAVE_CURRENT_CHAT]: () => void;
   [EVENTS.RENDER_HISTORY_LIST]: () => void;
   [EVENTS.SHOW_RELATED_PAGES]: () => void;
-  [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string }) => void;
+  [EVENTS.TAB_CHANGED]: (args: { tabId: number; url?: string }) => void;
+  [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string; content: string; tabId: number }) => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();

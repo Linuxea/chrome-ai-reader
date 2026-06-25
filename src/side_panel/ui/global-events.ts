@@ -55,6 +55,9 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     state.setPageContent('');
     state.setPageExcerpt('');
     state.setPageTitle('');
+    state.setArticleSummary('');
+    state.setArticleSummaryStatus('idle');
+    state.setArticleSummaryUrl('');
     state.clearConversation();
     state.setCurrentChatId(null);
     updateQuotePreview(els, '');
@@ -90,6 +93,7 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     await state.switchToTab(activeInfo.tabId);
     setButtonsDisabled(false);
     resetUIForTabSwitch(els, deps);
+    emit(EVENTS.TAB_CHANGED, { tabId: activeInfo.tabId });
     emit(EVENTS.SHOW_RELATED_PAGES);
   });
 

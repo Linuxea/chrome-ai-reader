@@ -6,7 +6,7 @@ import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
 import { stripImagesForPersistence } from '../services/chat/strip-images';
 import { marked } from 'marked';
-import type { ChatMessage } from '../../shared/types';
+import type { ChatMessage, ArticleSummaryStatus } from '../../shared/types';
 
 const STORAGE_KEY = 'chatHistories';
 const MAX_HISTORIES = 50;
@@ -28,6 +28,9 @@ interface ChatHistoryEntry {
   id: string;
   title: string;
   pageTitle?: string;
+  articleSummary?: string;
+  articleSummaryStatus?: ArticleSummaryStatus;
+  articleSummaryUrl?: string;
   messages: DisplayMessage[];
   conversationHistory: ChatMessage[];
   createdAt: number;
@@ -39,6 +42,9 @@ interface ChatLoadData {
   pageTitle: string;
   pageContent: string;
   pageExcerpt: string;
+  articleSummary?: string;
+  articleSummaryStatus?: ArticleSummaryStatus;
+  articleSummaryUrl?: string;
   messages: ChatMessage[];
   displayMessages: DisplayMessage[];
 }
@@ -107,6 +113,9 @@ export async function saveCurrentChat(): Promise<void> {
   const currentChatId = state.getCurrentChatId();
   const conversationHistory = state.getConversationHistory();
   const pageTitle = state.getPageTitle();
+  const articleSummary = state.getArticleSummary();
+  const articleSummaryStatus = state.getArticleSummaryStatus();
+  const articleSummaryUrl = state.getArticleSummaryUrl();
 
   if (currentChatId) {
     const histories = await getChatHistories();
@@ -117,6 +126,9 @@ export async function saveCurrentChat(): Promise<void> {
         .filter(m => m.role !== 'system')
         .map(stripImagesForPersistence);
       histories[idx].pageTitle = pageTitle;
+      histories[idx].articleSummary = articleSummary;
+      histories[idx].articleSummaryStatus = articleSummaryStatus;
+      histories[idx].articleSummaryUrl = articleSummaryUrl;
       histories[idx].updatedAt = now;
       await saveChatHistories(histories);
     }
@@ -126,6 +138,9 @@ export async function saveCurrentChat(): Promise<void> {
       id: 'chat_' + now,
       title,
       pageTitle,
+      articleSummary,
+      articleSummaryStatus,
+      articleSummaryUrl,
       messages,
       conversationHistory: conversationHistory
         .filter(m => m.role !== 'system')
@@ -172,6 +187,9 @@ async function loadChat(id: string): Promise<void> {
       pageTitle: chat.pageTitle || '',
       pageContent: '',
       pageExcerpt: '',
+      articleSummary: chat.articleSummary || '',
+      articleSummaryStatus: chat.articleSummaryStatus || 'idle',
+      articleSummaryUrl: chat.articleSummaryUrl || '',
       messages: chat.conversationHistory || [],
       displayMessages: chat.messages,
     });

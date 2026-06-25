@@ -62,10 +62,15 @@ export interface ToolCall {
   arguments: string;
 }
 
+export type ArticleSummaryStatus = 'idle' | 'generating' | 'done' | 'error';
+
 export interface TabState {
   pageContent: string;
   pageTitle: string;
   pageExcerpt: string;
+  articleSummary: string;
+  articleSummaryStatus: ArticleSummaryStatus;
+  articleSummaryUrl: string;
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
   selectedText: string;

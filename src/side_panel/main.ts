@@ -18,6 +18,7 @@ import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } fro
 import { renderOutlineFromJSON, outlineToMarkdown } from './features/outline';
 import { initImageInput } from './features/image-input';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
+import { initArticleSummary } from './features/article-summary';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
 import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
@@ -92,7 +93,6 @@ async function init(): Promise<void> {
   initQuickCommands({ userInput: els.userInput, commandPopup, onSendToAI: sendToAI });
   initSuggestQuestions({ chatArea: els.chatArea, userInput: els.userInput, onSend: sendMessage });
   initImageInput({ userInput: els.userInput });
-  initPodcast({ chatArea: els.chatArea });
   initRelatedPages({ chatArea: els.chatArea });
   const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');
   if (annotationBtn) {
@@ -131,10 +131,12 @@ async function init(): Promise<void> {
     getCommandSelectedIndex,
     setCommandSelectedIndex,
   });
+  initPodcast({ chatArea: els.chatArea });
+  initArticleSummary({ chatArea: els.chatArea });
 
   bindGlobalEvents(els, deps);
 
-  if (state.getConversationHistory().length > 0) {
+  if (state.getConversationHistory().length > 0 || state.getArticleSummary() || state.getArticleSummaryStatus() === 'generating') {
     resetUIForTabSwitch(els, deps);
   }
 

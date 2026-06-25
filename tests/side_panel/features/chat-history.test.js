@@ -21,6 +21,9 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   getCurrentChatId: vi.fn(() => null),
   getConversationHistory: vi.fn(() => []),
   getPageTitle: vi.fn(() => 'Test Page'),
+  getArticleSummary: vi.fn(() => ''),
+  getArticleSummaryStatus: vi.fn(() => 'idle'),
+  getArticleSummaryUrl: vi.fn(() => ''),
   setCurrentChatId: vi.fn(),
   getIsGenerating: vi.fn(() => false),
 }));

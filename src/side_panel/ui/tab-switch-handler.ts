@@ -3,7 +3,7 @@ import * as state from '../state';
 import { appendMessage, appendMessageFromHistory } from './dom-helpers';
 import { clearImagePreviews } from '../services/ocr.js';
 import { updateQuotePreview } from './global-events';
-import type { ChatMessage } from '../../shared/types';
+import type { ChatMessage, ArticleSummaryStatus } from '../../shared/types';
 import type { UIElements, GlobalEventDeps } from './global-events';
 
 export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): void {
@@ -18,6 +18,9 @@ export function handleLoadChat(els: UIElements, deps: GlobalEventDeps, chatData:
   pageTitle?: string;
   pageContent?: string;
   pageExcerpt?: string;
+  articleSummary?: string;
+  articleSummaryStatus?: ArticleSummaryStatus;
+  articleSummaryUrl?: string;
   messages?: ChatMessage[];
 }): void {
   cleanupActiveFeatures(els, deps);
@@ -27,6 +30,9 @@ export function handleLoadChat(els: UIElements, deps: GlobalEventDeps, chatData:
   state.setPageTitle(chatData.pageTitle || '');
   state.setPageContent(chatData.pageContent || '');
   state.setPageExcerpt(chatData.pageExcerpt || '');
+  state.setArticleSummary(chatData.articleSummary || '');
+  state.setArticleSummaryStatus(chatData.articleSummaryStatus || 'idle');
+  state.setArticleSummaryUrl(chatData.articleSummaryUrl || '');
   state.setConversationHistory(chatData.messages || []);
   updateQuotePreview(els, '');
   clearImagePreviews();
@@ -40,7 +46,10 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
   const history = state.getConversationHistory();
   els.chatArea.innerHTML = '';
 
-  if (history.length > 0) {
+  const summary = state.getArticleSummary();
+  const summaryStatus = state.getArticleSummaryStatus();
+
+  if (history.length > 0 || summary || summaryStatus === 'generating') {
     for (const msg of history) {
       appendMessageFromHistory(msg);
     }

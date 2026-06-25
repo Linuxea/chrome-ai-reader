@@ -14,6 +14,11 @@ vi.mock('../../src/side_panel/state.js', () => ({
   persistForTab: vi.fn(),
 }));
 
+vi.mock('../../src/side_panel/events.js', () => ({
+  emit: vi.fn(),
+  EVENTS: { PAGE_EXTRACTED: 'pageExtracted' },
+}));
+
 // Chrome mock via vi.hoisted so it's available at import time
 vi.hoisted(() => {
   globalThis.chrome = {
@@ -22,6 +27,7 @@ vi.hoisted(() => {
 });
 
 import { extractPageContent } from '../../src/side_panel/services/page-extractor.js';
+import { emit } from '../../src/side_panel/events.js';
 
 describe('extractPageContent', () => {
   const successResponse = {
@@ -92,6 +98,24 @@ describe('extractPageContent', () => {
     const result = await extractPageContent(42);
     expect(result.ok).toBe(true);
     expect(result.value).toEqual(successResponse.data);
+  });
+
+  it('emits extracted content with tab metadata for subscribers', async () => {
+    vi.useFakeTimers();
+    const resultPromise = extractPageContent(42);
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await resultPromise;
+    expect(result.ok).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(emit).toHaveBeenCalledWith('pageExtracted', {
+      excerpt: 'short summary',
+      url: 'https://example.com',
+      title: 'Page Title',
+      content: 'page body text',
+      tabId: 42,
+    });
+    vi.useRealTimers();
   });
 
   it('skips state update when tabState is null (unknown tab)', async () => {

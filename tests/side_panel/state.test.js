@@ -175,6 +175,20 @@ describe('Per-tab state: basic get/set', () => {
     expect(state.getPageTitle()).toBe('My Page');
   });
 
+  it('articleSummary: defaults empty and round-trips per tab', () => {
+    expect(state.getArticleSummary()).toBe('');
+    state.setArticleSummary('Brief text');
+    expect(state.getArticleSummary()).toBe('Brief text');
+  });
+
+  it('articleSummaryStatus: defaults idle and round-trips per tab', () => {
+    expect(state.getArticleSummaryStatus()).toBe('idle');
+    state.setArticleSummaryStatus('generating');
+    expect(state.getArticleSummaryStatus()).toBe('generating');
+    state.setArticleSummaryStatus('done');
+    expect(state.getArticleSummaryStatus()).toBe('done');
+  });
+
   it('isGenerating: defaults to false', () => {
     expect(state.getIsGenerating()).toBe(false);
   });
@@ -308,6 +322,9 @@ describe('switchToTab', () => {
       pageContent: 'preloaded',
       pageTitle: 'Preloaded Title',
       pageExcerpt: '',
+      articleSummary: 'Stored brief',
+      articleSummaryStatus: 'done',
+      articleSummaryUrl: 'https://example.com/stored',
       conversationHistory: [],
       currentChatId: null,
       selectedText: '',
@@ -320,6 +337,9 @@ describe('switchToTab', () => {
     await state.switchToTab(55);
     expect(state.getPageTitle()).toBe('Preloaded Title');
     expect(state.getPageContent()).toBe('preloaded');
+    expect(state.getArticleSummary()).toBe('Stored brief');
+    expect(state.getArticleSummaryStatus()).toBe('done');
+    expect(state.getArticleSummaryUrl()).toBe('https://example.com/stored');
   });
 
   it('no-ops when switching to the same tab', async () => {

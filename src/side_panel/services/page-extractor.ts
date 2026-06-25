@@ -67,7 +67,7 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
     const tab = await chrome.tabs.get(tabId);
     const url = tab.url;
     setTimeout(() => {
-      if (url) emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title });
+      if (url) emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title, content: response.data!.textContent, tabId });
     }, 1500);
   }
 

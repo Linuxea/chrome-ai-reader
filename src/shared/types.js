@@ -42,6 +42,9 @@
  * @property {string} pageContent - Extracted readable text of the current page
  * @property {string} pageTitle - Title of the current page
  * @property {string} pageExcerpt - Short excerpt / meta description
+ * @property {string} articleSummary - Auto-generated page brief for the current page
+ * @property {'idle'|'generating'|'done'|'error'} articleSummaryStatus - Summary card generation status
+ * @property {string} articleSummaryUrl - URL the current summary belongs to
  * @property {ChatMessage[]} conversationHistory - Chat message history
  * @property {string|null} currentChatId - ID of the active chat session
  * @property {string} selectedText - Currently selected text on the page
