@@ -6,6 +6,7 @@ export const textFields: Record<string, HTMLInputElement | HTMLTextAreaElement> 
   ttsAppId: document.getElementById('ttsAppId') as HTMLInputElement,
   ttsAccessKey: document.getElementById('ttsAccessKey') as HTMLInputElement,
   ttsResourceId: document.getElementById('ttsResourceId') as HTMLInputElement,
+  podcastResourceId: document.getElementById('podcastResourceId') as HTMLInputElement,
   ttsSpeaker: document.getElementById('ttsSpeaker') as HTMLInputElement,
   ocrApiKey: document.getElementById('ocrApiKey') as HTMLInputElement,
   embeddingApiKey: document.getElementById('embeddingApiKey') as HTMLInputElement,

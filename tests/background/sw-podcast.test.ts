@@ -13,7 +13,7 @@ const store: Record<string, unknown> = {
   sync: {
     ttsAppId: 'pod-app-id',
     ttsAccessKey: 'pod-access-key',
-    ttsResourceId: 'volc.service_type.10050',
+    podcastResourceId: 'volc.service_type.10050',
   },
 };
 
@@ -85,7 +85,7 @@ describe('background/sw-podcast', () => {
     store.sync = {
       ttsAppId: 'pod-app-id',
       ttsAccessKey: 'pod-access-key',
-      ttsResourceId: 'volc.service_type.10050',
+      podcastResourceId: 'volc.service_type.10050',
     };
   });
 
@@ -136,7 +136,7 @@ describe('background/sw-podcast', () => {
     });
 
     it('uses default resourceId when not configured', async () => {
-      delete (store.sync as Record<string, unknown>).ttsResourceId;
+      delete (store.sync as Record<string, unknown>).podcastResourceId;
 
       const body = createSSEBody([{ event: 'done', data: {} }]);
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({

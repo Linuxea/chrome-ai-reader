@@ -47,6 +47,7 @@ describe('options/tts-settings', () => {
       expect(result.set.ttsAppId).toBe('app-id');
       expect(result.set.ttsAccessKey).toBe('access-key');
       expect(result.remove).toContain('ttsResourceId');
+      expect(result.remove).toContain('podcastResourceId');
       expect(result.remove).toContain('ttsSpeaker');
       expect(result.set.ttsAutoPlay).toBe(true);
     });

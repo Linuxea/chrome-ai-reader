@@ -6,7 +6,7 @@ interface NlpText { speaker: string; text: string; }
 interface AudioConfig { format: string; sample_rate: number; speech_rate: number; }
 
 export async function callPodcast(nlpTexts: NlpText[], audioConfig: AudioConfig, port: chrome.runtime.Port): Promise<void> {
-  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsResourceId']) as { ttsAppId?: string; ttsAccessKey?: string; ttsResourceId?: string };
+  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'podcastResourceId']) as { ttsAppId?: string; ttsAccessKey?: string; podcastResourceId?: string };
   if (!config.ttsAppId || !config.ttsAccessKey) { safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' }); return; }
 
   const connectId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
@@ -14,7 +14,7 @@ export async function callPodcast(nlpTexts: NlpText[], audioConfig: AudioConfig,
   try {
     const response = await fetch(`${PODCAST_PROXY_URL}/podcast`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appId: config.ttsAppId, accessKey: config.ttsAccessKey, resourceId: config.ttsResourceId || 'volc.service_type.10050', connectId, nlpTexts, audioConfig }),
+      body: JSON.stringify({ appId: config.ttsAppId, accessKey: config.ttsAccessKey, resourceId: config.podcastResourceId || 'volc.service_type.10050', connectId, nlpTexts, audioConfig }),
     });
 
     if (!response.ok) { const errText = await response.text().catch(() => ''); throw new Error(`Proxy ${response.status}: ${errText.slice(0, 200)}`); }
