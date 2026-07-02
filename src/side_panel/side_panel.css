@@ -650,6 +650,67 @@ body {
   height: 14px;
 }
 
+/* ===== Inline Message Editor ===== */
+
+.msg-edit-textarea {
+  width: 100%;
+  min-width: 200px;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: none;
+  max-height: 160px;
+  overflow-y: auto;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.msg-edit-textarea:focus {
+  border-color: var(--primary);
+}
+
+.msg-edit-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.msg-edit-btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: all 0.15s ease;
+}
+
+.msg-edit-btn.msg-edit-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.msg-edit-btn.msg-edit-cancel:hover {
+  color: var(--text);
+}
+
+.msg-edit-btn.msg-edit-save {
+  background: var(--primary);
+  color: white;
+}
+
+.msg-edit-btn.msg-edit-save:hover {
+  opacity: 0.9;
+}
+
 /* ===== Suggested Questions ===== */
 
 .suggest-questions {

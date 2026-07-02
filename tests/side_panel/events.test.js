@@ -29,6 +29,7 @@ describe('events', () => {
     it('contains all expected event names', () => {
       const expectedKeys = [
         'RETRY',
+        'EDIT',
         'REMOVE_SUGGEST_QUESTIONS',
         'REQUEST_RERENDER',
         'GENERATE_SUGGESTIONS',
@@ -47,7 +48,7 @@ describe('events', () => {
 
     it('EVENTS object is frozen or sealed to prevent accidental mutation', () => {
       // EVENTS is a plain const object — verify no extra keys sneaked in
-      expect(Object.keys(EVENTS).length).toBe(11);
+      expect(Object.keys(EVENTS).length).toBe(12);
     });
   });
 

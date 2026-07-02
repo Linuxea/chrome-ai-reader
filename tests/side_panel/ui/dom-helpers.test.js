@@ -7,7 +7,7 @@ vi.mock('../../../src/shared/i18n.js', () => ({
 
 vi.mock('../../../src/side_panel/events.js', () => ({
   emit: vi.fn(),
-  EVENTS: { RETRY: 'retry' },
+  EVENTS: { RETRY: 'retry', EDIT: 'edit' },
 }));
 
 import {
@@ -299,10 +299,64 @@ describe('dom-helpers', () => {
   describe('retry button', () => {
     it('emits RETRY event when clicked', () => {
       appendMessage('user', 'retry me');
-      const retryBtn = chatArea.querySelector('.msg-action-btn');
+      const retryBtn = chatArea.querySelector('.msg-action-btn[title="[action.retry]"]');
       expect(retryBtn).not.toBeNull();
       retryBtn.click();
       expect(emit).toHaveBeenCalledWith(EVENTS.RETRY, expect.any(Object));
+    });
+  });
+
+  describe('edit button', () => {
+    it('emits EDIT event with original rawText and edited text on save', () => {
+      const msgEl = appendMessage('user', 'original text');
+      msgEl.dataset.rawText = 'original text';
+      msgEl.dataset.rawDisplay = 'original text';
+
+      const editBtn = chatArea.querySelector('.msg-action-btn[title="[action.edit]"]');
+      expect(editBtn).not.toBeNull();
+      editBtn.click();
+
+      const ta = msgEl.querySelector('.msg-edit-textarea');
+      expect(ta).not.toBeNull();
+      expect(ta.value).toBe('original text');
+
+      ta.value = 'edited text';
+      msgEl.querySelector('.msg-edit-save').click();
+
+      expect(emit).toHaveBeenCalledWith(EVENTS.EDIT, {
+        wrapper: expect.any(HTMLElement),
+        originalRawText: 'original text',
+        editedText: 'edited text',
+        rawQuote: undefined,
+      });
+    });
+
+    it('does not emit EDIT when saving empty text', () => {
+      const msgEl = appendMessage('user', 'keep me');
+      msgEl.dataset.rawDisplay = 'keep me';
+
+      chatArea.querySelector('.msg-action-btn[title="[action.edit]"]').click();
+      const ta = msgEl.querySelector('.msg-edit-textarea');
+      ta.value = '   ';
+      emit.mockClear();
+      msgEl.querySelector('.msg-edit-save').click();
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('restores original bubble on cancel', () => {
+      const msgEl = appendMessage('user', 'restore me');
+      msgEl.dataset.rawDisplay = 'restore me';
+      const originalHtml = msgEl.innerHTML;
+
+      chatArea.querySelector('.msg-action-btn[title="[action.edit]"]').click();
+      expect(msgEl.querySelector('.msg-edit-textarea')).not.toBeNull();
+      msgEl.querySelector('.msg-edit-cancel').click();
+
+      expect(msgEl.querySelector('.msg-edit-textarea')).toBeNull();
+      expect(msgEl.innerHTML).toBe(originalHtml);
+      // actions row re-shown
+      const actions = msgEl.closest('.user-msg-group').querySelector('.msg-actions');
+      expect(actions.style.display).not.toBe('none');
     });
   });
 

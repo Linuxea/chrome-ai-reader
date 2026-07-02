@@ -130,6 +130,7 @@ import {
   sendToAI,
   sendMessage,
   retryMessage,
+  editMessage,
 } from '../../src/side_panel/services/message-sender.js';
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
@@ -138,7 +139,7 @@ import * as ocrMock from '../../src/side_panel/services/ocr.js';
 import { ensurePageContent } from '../../src/side_panel/services/page-extractor.js';
 import { callAI } from '../../src/side_panel/services/stream-handler.js';
 import { getSync } from '../../src/platform/storage.js';
-import { appendMessage as appendHistory } from '../../src/side_panel/services/chat/history-ops.js';
+import { appendMessage as appendHistory, truncateHistoryFromUserContent } from '../../src/side_panel/services/chat/history-ops.js';
 
 describe('services/message-sender', () => {
   let tabState: Record<string, unknown>;
@@ -469,6 +470,92 @@ describe('services/message-sender', () => {
       await retryMessage(wrapper, 'text', 'display');
 
       expect(tabState.isPodcastGenerating).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // editMessage
+  // ==========================================================================
+  describe('editMessage', () => {
+    it('returns early when isGenerating', async () => {
+      tabState.isGenerating = true;
+      const wrapper = document.createElement('div');
+      chatArea.appendChild(wrapper);
+      await editMessage(wrapper, 'orig', 'edited');
+      expect(callAI).not.toHaveBeenCalled();
+    });
+
+    it('truncates history using the ORIGINAL text, not the edited text', async () => {
+      tabState.conversationHistory = [
+        { role: 'user', content: 'orig' },
+        { role: 'assistant', content: 'old answer' },
+      ];
+      const wrapper = document.createElement('div');
+      chatArea.appendChild(wrapper);
+
+      await editMessage(wrapper, 'orig', 'edited');
+
+      // truncateHistoryFromUserContent must be called with the original text
+      expect(truncateHistoryFromUserContent).toHaveBeenCalledWith(
+        tabState,
+        'orig',
+        1,
+      );
+      // The old assistant answer must be gone (tail truncated).
+      expect(tabState.conversationHistory).not.toContainEqual(
+        expect.objectContaining({ content: 'old answer' }),
+      );
+    });
+
+    it('re-sends the EDITED text to the AI', async () => {
+      tabState.conversationHistory = [{ role: 'user', content: 'orig' }];
+      const wrapper = document.createElement('div');
+      chatArea.appendChild(wrapper);
+
+      await editMessage(wrapper, 'orig', 'edited text');
+
+      expect(callAI).toHaveBeenCalled();
+      const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const lastMsg = messages[messages.length - 1];
+      expect(lastMsg.role).toBe('user');
+      expect(lastMsg.content).toBe('edited text');
+    });
+
+    it('removes all DOM messages from wrapper onwards', async () => {
+      const msg1 = document.createElement('div');
+      const wrapper = document.createElement('div');
+      const msg2 = document.createElement('div');
+      chatArea.appendChild(msg1);
+      chatArea.appendChild(wrapper);
+      chatArea.appendChild(msg2);
+
+      await editMessage(wrapper, 'orig', 'edited');
+
+      expect(chatArea.children).toHaveLength(1);
+      expect(chatArea.children[0]).toBe(msg1);
+    });
+
+    it('preserves the quote when re-sending an edited quoted message', async () => {
+      tabState.conversationHistory = [
+        { role: 'user', content: '[ai.quotePrefix]\n\nquote\n\norig' },
+      ];
+      const wrapper = document.createElement('div');
+      chatArea.appendChild(wrapper);
+
+      await editMessage(wrapper, 'orig', 'edited', 'quote');
+
+      // lookup content uses the original text + quote prefix
+      expect(truncateHistoryFromUserContent).toHaveBeenCalledWith(
+        tabState,
+        '[ai.quotePrefix]\n\nquote\n\norig',
+        1,
+      );
+      // the re-sent user message carries the quote prefix + edited text
+      const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const lastMsg = messages[messages.length - 1];
+      expect(lastMsg.content).toContain('[ai.quotePrefix]');
+      expect(lastMsg.content).toContain('quote');
+      expect(lastMsg.content).toContain('edited');
     });
   });
 

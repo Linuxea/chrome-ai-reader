@@ -11,7 +11,7 @@ import { initOCR, clearImagePreviews, addImageDataUri } from './services/ocr.js'
 import { captureVisibleTab } from './services/screenshot';
 import { getSync, onSyncChange } from '../platform/storage';
 import { initAIChat } from './services/ai-chat';
-import { sendToAI, sendMessage, retryMessage } from './services/message-sender';
+import { sendToAI, sendMessage, retryMessage, editMessage } from './services/message-sender';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
 import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands';
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions';
@@ -105,6 +105,7 @@ async function init(): Promise<void> {
   }
 
   on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });
+  on(EVENTS.EDIT, (args) => { const { wrapper, originalRawText, editedText, rawQuote } = args as { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote: string }; editMessage(wrapper, originalRawText, editedText, rawQuote); });
   on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());
   on(EVENTS.REQUEST_RERENDER, () => resetUIForTabSwitch(els, deps));
   on(EVENTS.GENERATE_SUGGESTIONS, (args) => { const { msgEl, history } = args as { msgEl: HTMLElement; history: ChatMessage[] }; generateSuggestions(msgEl, history); saveCurrentChat(); });

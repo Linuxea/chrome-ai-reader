@@ -166,6 +166,37 @@ export async function retryMessage(
   rawDisplay: string,
   rawQuote?: string,
 ): Promise<void> {
+  await resendUserMessage({ wrapper, lookupText: rawText, sendText: rawText, sendDisplay: rawDisplay, rawQuote });
+}
+
+/**
+ * Edit a user message in place and resend. `originalRawText` is used to locate
+ * + truncate the existing history entry (it must match what was originally
+ * sent); `editedText` is the new text to send and display.
+ */
+export async function editMessage(
+  wrapper: HTMLElement,
+  originalRawText: string,
+  editedText: string,
+  rawQuote?: string,
+): Promise<void> {
+  await resendUserMessage({ wrapper, lookupText: originalRawText, sendText: editedText, sendDisplay: editedText, rawQuote });
+}
+
+/**
+ * Shared core for retry (resend original) and edit (resend modified).
+ * Tears down the DOM from `wrapper` onward, truncates conversation history at
+ * the user message identified by `lookupText` (capturing any images first),
+ * then re-sends via sendToAI with `sendText`.
+ */
+async function resendUserMessage(opts: {
+  wrapper: HTMLElement;
+  lookupText: string;
+  sendText: string;
+  sendDisplay: string;
+  rawQuote?: string;
+}): Promise<void> {
+  const { wrapper, lookupText, sendText, sendDisplay, rawQuote } = opts;
   const startTabId = state.getActiveTabId();
   const tabState = state.getStateForTab(startTabId!);
   if (!tabState || tabState.isGenerating) return;
@@ -184,8 +215,8 @@ export async function retryMessage(
   }
 
   const userContent = rawQuote
-    ? t('ai.quotePrefix') + '\n\n' + safeTruncate(rawQuote, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated')) + '\n\n' + rawText
-    : rawText;
+    ? t('ai.quotePrefix') + '\n\n' + safeTruncate(rawQuote, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated')) + '\n\n' + lookupText
+    : lookupText;
 
   // Before truncating, extract any images from the user message being retried
   // (visual messages store image_url blocks in content array). After truncate
@@ -194,7 +225,7 @@ export async function retryMessage(
 
   truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
-  await sendToAI(rawText, rawDisplay, rawQuote, undefined, retriedImages);
+  await sendToAI(sendText, sendDisplay, rawQuote, undefined, retriedImages);
 }
 
 /**
