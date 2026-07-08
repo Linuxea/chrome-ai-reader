@@ -153,7 +153,7 @@ describe('shared/i18n', () => {
 
       applyTranslations();
 
-      expect(input.placeholder).toContain('Ask a question');
+      expect(input.placeholder).toContain('Ask anything');
     });
 
     it('translates elements with data-i18n-title attribute', () => {
