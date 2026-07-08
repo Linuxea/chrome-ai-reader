@@ -33,6 +33,9 @@ export interface NowPlaying {
   originTabTitle: string;
   /** Podcast title (filled in after script parsing / metadata generation). */
   title: string;
+  /** Short summary of the podcast (from metadata generation). Restored on
+   *  card rebuild so it survives tab switches. */
+  description?: string;
   /** Parsed transcript rounds — used to rebuild the full card on return. */
   script: NlpRound[];
   status: PodcastStatus;

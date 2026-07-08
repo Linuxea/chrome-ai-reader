@@ -97,7 +97,7 @@ function generatePodcastMetadata(card: HTMLElement, fullScript: string): void {
       port.disconnect();
       if (_isCancelled?.()) return;
       try { const jm = extractJsonObject(result); if (!jm) return; const data = JSON.parse(jm) as { title?: string; description?: string };
-        if (data.title) { setPodcastTitle(data.title.replace(/[/\\:*?"<>|]/g, '_').trim()); updateNowPlaying({ title: data.title }); const infoEl = card.querySelector('.podcast-info'); const titleEl = card.querySelector('.podcast-info-title'); const descEl = card.querySelector('.podcast-info-desc');
+        if (data.title) { setPodcastTitle(data.title.replace(/[/\\:*?"<>|]/g, '_').trim()); updateNowPlaying({ title: data.title, description: data.description }); const infoEl = card.querySelector('.podcast-info'); const titleEl = card.querySelector('.podcast-info-title'); const descEl = card.querySelector('.podcast-info-desc');
           if (infoEl && titleEl && descEl) { titleEl.textContent = data.title; if (data.description) descEl.textContent = data.description; infoEl.classList.add('active'); } }
       } catch (e) { console.error('[Podcast] Failed to parse metadata:', e); }
     }

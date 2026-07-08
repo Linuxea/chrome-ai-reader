@@ -20,6 +20,7 @@ import {
   updateTranscriptHighlight,
   updateCardStatus,
   restoreWelcomeIfNeeded,
+  rebuildPodcastCard,
 } from '../../../../src/side_panel/features/podcast/ui';
 
 describe('features/podcast/ui', () => {
@@ -248,6 +249,64 @@ describe('features/podcast/ui', () => {
 
       expect(chatArea.children.length).toBe(1); // only the original child
       expect(chatArea.querySelector('.welcome-msg')).toBeNull();
+    });
+  });
+
+  describe('rebuildPodcastCard()', () => {
+    it('restores title and description from now-playing metadata', () => {
+      const np = {
+        originTabId: 1,
+        originTabTitle: '',
+        title: 'My Title',
+        description: 'A short summary',
+        script: [],
+        status: 'playing' as const,
+      };
+      const card = rebuildPodcastCard(np, chatArea);
+      expect(card.querySelector('.podcast-info-title')!.textContent).toBe('My Title');
+      expect(card.querySelector('.podcast-info-desc')!.textContent).toBe('A short summary');
+      expect(card.querySelector('.podcast-info')!.classList.contains('active')).toBe(true);
+    });
+
+    it('does not set description when absent', () => {
+      const np = {
+        originTabId: 1,
+        originTabTitle: '',
+        title: 'T',
+        script: [],
+        status: 'playing' as const,
+      };
+      const card = rebuildPodcastCard(np, chatArea);
+      // default placeholder text from createPodcastCard stays untouched
+      expect(card.querySelector('.podcast-info-desc')!.textContent).toBe('');
+    });
+
+    it('re-renders the transcript rounds', () => {
+      const np = {
+        originTabId: 1,
+        originTabTitle: '',
+        title: 'T',
+        script: [
+          { speaker: 'A', text: 'hello', speakerLabel: 'A' },
+          { speaker: 'B', text: 'world', speakerLabel: 'B' },
+        ],
+        status: 'playing' as const,
+      };
+      const card = rebuildPodcastCard(np, chatArea);
+      expect(card.querySelectorAll('.podcast-round').length).toBe(2);
+    });
+
+    it('restores the done status (wires replay/download buttons)', () => {
+      const np = {
+        originTabId: 1,
+        originTabTitle: '',
+        title: 'T',
+        script: [],
+        status: 'done' as const,
+      };
+      const card = rebuildPodcastCard(np, chatArea);
+      expect(card.querySelector('.podcast-replay-btn')).toBeTruthy();
+      expect(card.querySelector('.podcast-download-btn')).toBeTruthy();
     });
   });
 });

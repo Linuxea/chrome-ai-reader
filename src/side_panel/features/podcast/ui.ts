@@ -120,7 +120,9 @@ export function rebuildPodcastCard(np: NowPlaying, chatArea: HTMLElement): HTMLE
   if (np.title) {
     const infoEl = card.querySelector('.podcast-info');
     const titleEl = card.querySelector('.podcast-info-title');
+    const descEl = card.querySelector('.podcast-info-desc');
     if (infoEl && titleEl) { titleEl.textContent = np.title; infoEl.classList.add('active'); }
+    if (descEl && np.description) descEl.textContent = np.description;
   }
   if (np.script && np.script.length > 0) renderTranscript(card, np.script);
   if (np.status && np.status !== 'generating_script') {
