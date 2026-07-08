@@ -1,5 +1,6 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
+import { emit, EVENTS } from '../events';
 import { appendMessage, appendMessageFromHistory } from './dom-helpers';
 import { clearImagePreviews } from '../services/ocr.js';
 import { updateQuotePreview } from './global-events';
@@ -8,9 +9,12 @@ import type { UIElements, GlobalEventDeps } from './global-events';
 
 export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): void {
   if (deps.isTTSPlaying()) deps.stopTTS();
+  // Podcast audio/state is NOT torn down on tab switch — it is a window-global
+  // single stream that keeps playing in the background (mini-player reflects it).
+  // Only detach the card DOM from the outgoing tab; the now-playing metadata
+  // survives and the full card is rebuilt on return to the origin tab.
   const existingPodcast = els.chatArea.querySelector('.podcast-card');
   if (existingPodcast) existingPodcast.remove();
-  if (state.getIsPodcastGenerating()) state.setIsPodcastGenerating(false);
 }
 
 export function handleLoadChat(els: UIElements, deps: GlobalEventDeps, chatData: {
@@ -47,4 +51,9 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
   } else {
     els.chatArea.innerHTML = `<div class="welcome-msg"><p>${t('sidebar.welcome')}</p></div>`;
   }
+
+  // After the chat area is rebuilt, ask the podcast feature to restore its
+  // full card if the now-playing podcast originated from this tab. Decouples
+  // ui/** from the podcast feature (mirrors the PAGE_EXTRACTED pattern).
+  emit(EVENTS.PODCAST_REBUILD_REQUEST);
 }

@@ -18,6 +18,7 @@ import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } fro
 import { renderOutlineFromJSON, outlineToMarkdown } from './features/outline';
 import { initImageInput } from './features/image-input';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
+import { initMiniPlayer } from './features/podcast/mini-player.js';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
 import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
@@ -93,6 +94,7 @@ async function init(): Promise<void> {
   initSuggestQuestions({ chatArea: els.chatArea, userInput: els.userInput, onSend: sendMessage });
   initImageInput({ userInput: els.userInput });
   initPodcast({ chatArea: els.chatArea });
+  initMiniPlayer();
   initRelatedPages({ chatArea: els.chatArea });
   const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');
   if (annotationBtn) {

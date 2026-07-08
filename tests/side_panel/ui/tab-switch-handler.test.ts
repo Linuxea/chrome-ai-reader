@@ -103,10 +103,13 @@ describe('ui/tab-switch-handler', () => {
       expect(els.chatArea.querySelector('.podcast-card')).toBeNull();
     });
 
-    it('resets podcast generating flag when active', () => {
+    it('does NOT reset podcast generating flag (background playback)', () => {
+      // Podcast audio/state must survive tab switches so it can keep playing in
+      // the background. cleanupActiveFeatures only detaches the card DOM; the
+      // generating flag (and the global now-playing registry) stay intact.
       stateMock.getIsPodcastGenerating.mockReturnValue(true);
       cleanupActiveFeatures(els, deps);
-      expect(stateMock.setIsPodcastGenerating).toHaveBeenCalledWith(false);
+      expect(stateMock.setIsPodcastGenerating).not.toHaveBeenCalled();
     });
   });
 

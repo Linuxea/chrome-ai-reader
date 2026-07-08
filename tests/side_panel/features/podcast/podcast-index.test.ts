@@ -16,6 +16,10 @@ vi.mock('../../../../src/side_panel/state.js', () => ({
   getOcrResults: vi.fn(() => []),
   subscribe: vi.fn(),
   getPageContent: vi.fn(() => ''),
+  getActiveTabId: vi.fn(() => 1),
+  getPageTitle: vi.fn(() => ''),
+  getStateForTab: vi.fn(() => null),
+  persistForTab: vi.fn(),
 }));
 vi.mock('../../../../src/side_panel/ui/dom-helpers.js', () => ({
   appendMessage: vi.fn(),
@@ -34,6 +38,7 @@ vi.mock('../../../../src/side_panel/features/podcast/ui.js', () => ({
   restoreWelcomeIfNeeded: vi.fn(),
   resetHighlightState: vi.fn(),
   initUICallbacks: vi.fn(),
+  rebuildPodcastCard: vi.fn(() => document.createElement('div')),
 }));
 vi.mock('../../../../src/side_panel/features/podcast/audio.js', () => ({
   handlePlayPause: vi.fn(),
@@ -44,6 +49,14 @@ vi.mock('../../../../src/side_panel/features/podcast/audio.js', () => ({
   replayAudio: vi.fn(),
   cleanupPodcastAudio: vi.fn(),
   initAudioCallbacks: vi.fn(),
+  reattachCard: vi.fn(),
+}));
+vi.mock('../../../../src/side_panel/features/podcast/now-playing.js', () => ({
+  setNowPlaying: vi.fn(),
+  updateNowPlaying: vi.fn(),
+  clearNowPlaying: vi.fn(),
+  getNowPlaying: vi.fn(() => null),
+  isNowPlayingGenerating: vi.fn(() => false),
 }));
 vi.mock('../../../../src/side_panel/features/podcast/script.js', () => ({
   generatePodcastScript: vi.fn(() => Promise.resolve()),
@@ -51,8 +64,9 @@ vi.mock('../../../../src/side_panel/features/podcast/script.js', () => ({
   initScriptCallbacks: vi.fn(),
 }));
 
-import { initPodcast, handlePodcastClick } from '../../../../src/side_panel/features/podcast/index';
+import { initPodcast, handlePodcastClick, closePodcast, rebuildCardIfOriginTab } from '../../../../src/side_panel/features/podcast/index';
 import * as stateMock from '../../../../src/side_panel/state.js';
+import * as nowPlayingMock from '../../../../src/side_panel/features/podcast/now-playing.js';
 import { ensurePageContent } from '../../../../src/side_panel/services/page-extractor.js';
 import { generatePodcastScript } from '../../../../src/side_panel/features/podcast/script.js';
 import { appendMessage } from '../../../../src/side_panel/ui/dom-helpers.js';
@@ -156,5 +170,78 @@ describe('features/podcast/index', () => {
 
     expect(createPodcastCard).toHaveBeenCalled();
     expect(generatePodcastScript).toHaveBeenCalled();
+  });
+
+  it('records now-playing with the origin tab id on start', async () => {
+    stateMock.getActiveTabId.mockReturnValue(42);
+    stateMock.getPageTitle.mockReturnValue('Source Page');
+    stateMock.getSelectedText.mockReturnValue('content');
+    await handlePodcastClick();
+
+    expect(nowPlayingMock.setNowPlaying).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originTabId: 42,
+        originTabTitle: 'Source Page',
+        status: 'generating_script',
+      }),
+    );
+  });
+
+  it('blocks start while a podcast is already generating (cross-tab guard)', async () => {
+    nowPlayingMock.isNowPlayingGenerating.mockReturnValue(true);
+    await handlePodcastClick();
+    expect(createPodcastCard).not.toHaveBeenCalled();
+  });
+});
+
+describe('features/podcast/index — closePodcast', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stateMock.getIsGenerating.mockReturnValue(false);
+    stateMock.getIsPodcastGenerating.mockReturnValue(false);
+    document.body.innerHTML = '<button data-action="podcast"></button>';
+    initPodcast({ chatArea: document.createElement('div') });
+  });
+
+  it('clears now-playing and frees audio/script state', () => {
+    closePodcast();
+    expect(nowPlayingMock.clearNowPlaying).toHaveBeenCalled();
+  });
+});
+
+describe('features/podcast/index — rebuildCardIfOriginTab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.innerHTML = '<button data-action="podcast"></button>';
+    initPodcast({ chatArea: document.createElement('div') });
+  });
+
+  it('skips rebuild when nothing is playing', () => {
+    nowPlayingMock.getNowPlaying.mockReturnValue(null);
+    rebuildCardIfOriginTab();
+    expect(createPodcastCard).not.toHaveBeenCalled();
+  });
+
+  it('skips rebuild when origin tab differs from active tab', () => {
+    nowPlayingMock.getNowPlaying.mockReturnValue({
+      originTabId: 5, originTabTitle: '', title: 'T', script: [], status: 'playing',
+    });
+    stateMock.getActiveTabId.mockReturnValue(1);
+    rebuildCardIfOriginTab();
+    expect(createPodcastCard).not.toHaveBeenCalled();
+  });
+
+  it('skips rebuild when a card is already present', () => {
+    const chatArea = document.createElement('div');
+    chatArea.className = 'podcast-card';
+    // re-init with a chatArea that already contains a card
+    document.body.appendChild(chatArea);
+    initPodcast({ chatArea: chatArea });
+    nowPlayingMock.getNowPlaying.mockReturnValue({
+      originTabId: 1, originTabTitle: '', title: 'T', script: [], status: 'playing',
+    });
+    stateMock.getActiveTabId.mockReturnValue(1);
+    rebuildCardIfOriginTab();
+    expect(createPodcastCard).not.toHaveBeenCalled();
   });
 });

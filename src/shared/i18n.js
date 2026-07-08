@@ -211,6 +211,8 @@ const TRANSLATIONS = {
     'podcast.showMore': '展开脚本',
     'podcast.showLess': '收起脚本',
     'podcast.close': '关闭',
+    'podcast.miniGenerating': '正在生成播客…',
+    'podcast.miniBack': '回到源标签页',
 
     'related.title': '相关阅读',
     'related.empty': '暂无相关页面',
@@ -457,6 +459,8 @@ const TRANSLATIONS = {
     'podcast.showMore': 'Show transcript',
     'podcast.showLess': 'Hide transcript',
     'podcast.close': 'Close',
+    'podcast.miniGenerating': 'Generating podcast…',
+    'podcast.miniBack': 'Back to source tab',
 
     'related.title': 'Related Reading',
     'related.empty': 'No related pages yet',

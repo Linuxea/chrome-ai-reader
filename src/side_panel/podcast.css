@@ -334,3 +334,76 @@
 .podcast-transcript-toggle:hover {
   text-decoration: underline;
 }
+
+/* --- Mini player (persistent, cross-tab background playback) --- */
+.podcast-mini {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 0 8px 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.podcast-mini.hidden {
+  display: none;
+}
+
+.podcast-mini-icon {
+  display: flex;
+  align-items: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.podcast-mini-icon .podcast-mini-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: podcast-mini-spin 0.8s linear infinite;
+}
+
+@keyframes podcast-mini-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.podcast-mini-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podcast-mini-play-btn,
+.podcast-mini-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.podcast-mini-play-btn:hover,
+.podcast-mini-close:hover {
+  background: var(--bg);
+  color: var(--primary);
+}
+
+.podcast-mini-play-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

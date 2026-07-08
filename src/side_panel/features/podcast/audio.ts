@@ -2,9 +2,9 @@ import { t } from '../../../shared/i18n.js';
 import { downloadFile } from '../../../shared/download';
 import { formatDuration } from '../../../shared/format';
 import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
-import * as state from '../../state';
 import { MAX_CHUNK_QUEUE_SIZE } from './constants';
 import { updateTranscriptHighlight } from './ui';
+import { isNowPlayingGenerating } from './now-playing';
 
 let podcastPort: chrome.runtime.Port | null = null;
 let podcastAudioEl: HTMLAudioElement | null = null;
@@ -17,6 +17,16 @@ let podcastAudioChunks: ArrayBuffer[] = [];
 let _podcastTitle = '';
 let _roundTimings: { startTime: number; endTime: number }[] = [];
 
+/**
+ * Mutable pointer to the card the audio element currently drives. Decoupled
+ * from closures so a rebuilt card (on return to the origin tab) can be swapped
+ * in without re-adding listeners. Null/!isConnected writes are skipped so a
+ * detached card (tab switched away) costs nothing.
+ */
+let _activeCard: HTMLElement | null = null;
+
+const _playStateCbs = new Set<(playing: boolean) => void>();
+
 let _showStatus: ((card: HTMLElement, status: string, text?: string) => void) | null = null;
 let _resetPodcastState: (() => void) | null = null;
 let _isCancelled: (() => boolean) | null = null;
@@ -28,18 +38,44 @@ export function initAudioCallbacks(deps: { showStatus: (card: HTMLElement, statu
 export function setPodcastTitle(title: string): void { _podcastTitle = title; }
 export function resetRoundTimings(): void { _roundTimings = []; }
 
+/** Subscribe to audio play/pause state changes (drives the mini-player icon). */
+export function onPodcastPlayState(cb: (playing: boolean) => void): () => void {
+  _playStateCbs.add(cb);
+  return () => { _playStateCbs.delete(cb); };
+}
+function notifyPlayState(playing: boolean): void { _playStateCbs.forEach(cb => cb(playing)); }
+
+/** Whether the audio element currently exists and is not paused. */
+export function isPodcastAudioPlaying(): boolean {
+  return !!podcastAudioEl && !podcastAudioEl.paused;
+}
+
+/**
+ * Rebind the live audio stream to a freshly rebuilt card (used when the user
+ * returns to the origin tab). Swaps `_activeCard` and immediately syncs the
+ * progress/play-pause icon into the new card. Does NOT re-add audio listeners
+ * — the persistent audio element's `timeupdate` already references `_activeCard`.
+ */
+export function reattachCard(card: HTMLElement): void {
+  _activeCard = card;
+  if (podcastAudioEl) updatePlayerProgress(card);
+}
+
 export function cleanupPodcastAudio(): void {
   if (podcastAudioEl) { podcastAudioEl.pause(); podcastAudioEl.src = ''; podcastAudioEl = null; }
   if (podcastMediaSource) { safeEndOfStream(podcastMediaSource); podcastMediaSource = null; podcastSourceBuffer = null; }
   safePortDisconnect(podcastPort);
   podcastPort = null;
   podcastChunkQueue = []; podcastAudioChunks = []; podcastBufferAppending = false; _podcastTitle = ''; _roundTimings = [];
+  _activeCard = null;
+  notifyPlayState(false);
 }
 
 function initPodcastPlayback(card: HTMLElement): void {
   if (podcastAudioEl) { podcastAudioEl.pause(); podcastAudioEl.src = ''; podcastAudioEl = null; }
   if (podcastMediaSource) { safeEndOfStream(podcastMediaSource); podcastMediaSource = null; podcastSourceBuffer = null; }
   podcastChunkQueue = []; podcastBufferAppending = false;
+  _activeCard = card;
   const ms = new MediaSource(); podcastMediaSource = ms;
   const audio = new Audio(); audio.src = URL.createObjectURL(ms); podcastAudioEl = audio;
   ms.addEventListener('sourceopen', () => {
@@ -51,8 +87,10 @@ function initPodcastPlayback(card: HTMLElement): void {
       appendPodcastChunk();
     });
   });
-  audio.addEventListener('timeupdate', () => updatePlayerProgress(card));
-  audio.addEventListener('ended', () => _showStatus!(card, 'done'));
+  audio.addEventListener('timeupdate', () => { if (_activeCard) updatePlayerProgress(_activeCard); });
+  audio.addEventListener('ended', () => { if (_activeCard) _showStatus!(_activeCard, 'done'); notifyPlayState(false); });
+  audio.addEventListener('play', () => notifyPlayState(true));
+  audio.addEventListener('pause', () => notifyPlayState(false));
   _showStatus!(card, 'playing');
 }
 
@@ -64,7 +102,7 @@ function appendPodcastChunk(): void {
 }
 
 function updatePlayerProgress(card: HTMLElement): void {
-  if (!podcastAudioEl) return;
+  if (!podcastAudioEl || !card.isConnected) return;
   const fill = card.querySelector('.podcast-progress-fill') as HTMLElement | null;
   const thumb = card.querySelector('.podcast-progress-thumb') as HTMLElement | null;
   const timeEl = card.querySelector('.podcast-time') as HTMLElement | null;
@@ -154,6 +192,7 @@ interface NlpRound { speaker: string; text: string; speakerLabel: string; }
 export async function generatePodcastAudio(card: HTMLElement, nlpTexts: NlpRound[]): Promise<void> {
   if (_isCancelled?.()) return;
   cleanupPodcastAudio();
+  _activeCard = card;
   podcastPort = chrome.runtime.connect({ name: 'podcast-audio' });
   podcastPort.postMessage({ type: 'generate', nlpTexts, audioConfig: { format: 'mp3', sample_rate: 24000, speech_rate: 0 } });
   podcastPort.onMessage.addListener((msg: { type: string; data?: string; audioDuration?: number; startTime?: number; endTime?: number; error?: string; errorKey?: string }) => {
@@ -172,7 +211,7 @@ export async function generatePodcastAudio(card: HTMLElement, nlpTexts: NlpRound
   });
   podcastPort.onDisconnect.addListener(() => {
     if (_isCancelled?.()) return;
-    if (state.getIsPodcastGenerating()) {
+    if (isNowPlayingGenerating()) {
       if (podcastAudioEl && podcastMediaSource) { safeEndOfStream(podcastMediaSource); _resetPodcastState!(); }
       else { _showStatus!(card, 'error', t('podcast.audioError')); _resetPodcastState!(); }
     }

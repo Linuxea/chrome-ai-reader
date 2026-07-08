@@ -18,6 +18,11 @@ export const EVENTS = {
    *  related-pages feature subscribes to it instead of being imported upward
    *  by the service layer. Payload: excerpt + url + title of the extracted page. */
   PAGE_EXTRACTED: 'pageExtracted',
+  /** Fired by ui/tab-switch-handler after the chat area is rebuilt on a tab
+   *  switch / re-render. The podcast feature subscribes to rebuild the full
+   *  card if the now-playing podcast originated from the now-active tab. This
+   *  keeps ui/** from importing the podcast feature directly. */
+  PODCAST_REBUILD_REQUEST: 'podcastRebuildRequest',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -36,6 +41,7 @@ interface EventMap {
   [EVENTS.RENDER_HISTORY_LIST]: () => void;
   [EVENTS.SHOW_RELATED_PAGES]: () => void;
   [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string }) => void;
+  [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();

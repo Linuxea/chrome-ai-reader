@@ -2,10 +2,10 @@ import { t } from '../../../shared/i18n.js';
 import { getCurrentLang } from '../../../shared/i18n.js';
 import { getPrompt } from '../../../shared/prompts';
 import { stripMarkdownFence, extractJsonObject, repairLLMJson } from '../../../shared/json-repair';
-import * as state from '../../state';
 import { SPEAKER_MAP, DEFAULT_SPEAKER } from './constants';
 import { renderTranscript, resetHighlightState } from './ui';
 import { setPodcastTitle, resetRoundTimings, generatePodcastAudio } from './audio';
+import { isNowPlayingGenerating, updateNowPlaying, type NlpRound } from './now-playing';
 
 let podcastLlmPort: chrome.runtime.Port | null = null;
 
@@ -26,8 +26,6 @@ export function initScriptCallbacks({ showStatus, resetPodcastState, isCancelled
 export function cleanupScriptPort(): void {
   if (podcastLlmPort) { try { podcastLlmPort.disconnect(); } catch { /* cleanup */ } podcastLlmPort = null; }
 }
-
-interface NlpRound { speaker: string; text: string; speakerLabel: string; }
 
 export function parsePodcastScript(fullScript: string): NlpRound[] {
   let jsonStr = stripMarkdownFence(fullScript);
@@ -99,7 +97,7 @@ function generatePodcastMetadata(card: HTMLElement, fullScript: string): void {
       port.disconnect();
       if (_isCancelled?.()) return;
       try { const jm = extractJsonObject(result); if (!jm) return; const data = JSON.parse(jm) as { title?: string; description?: string };
-        if (data.title) { setPodcastTitle(data.title.replace(/[/\\:*?"<>|]/g, '_').trim()); const infoEl = card.querySelector('.podcast-info'); const titleEl = card.querySelector('.podcast-info-title'); const descEl = card.querySelector('.podcast-info-desc');
+        if (data.title) { setPodcastTitle(data.title.replace(/[/\\:*?"<>|]/g, '_').trim()); updateNowPlaying({ title: data.title }); const infoEl = card.querySelector('.podcast-info'); const titleEl = card.querySelector('.podcast-info-title'); const descEl = card.querySelector('.podcast-info-desc');
           if (infoEl && titleEl && descEl) { titleEl.textContent = data.title; if (data.description) descEl.textContent = data.description; infoEl.classList.add('active'); } }
       } catch (e) { console.error('[Podcast] Failed to parse metadata:', e); }
     }
@@ -115,6 +113,7 @@ async function onScriptDone(card: HTMLElement, fullScript: string): Promise<void
     _resetPodcastState!(); return;
   }
   setPodcastTitle(extractPodcastTitle(nlpTexts));
+  updateNowPlaying({ script: nlpTexts, status: 'generating_audio' });
   resetRoundTimings(); resetHighlightState(); renderTranscript(card, nlpTexts);
   generatePodcastMetadata(card, fullScript);
   _showStatus!(card, 'generating_audio');
@@ -135,7 +134,7 @@ async function generatePodcastScript(card: HTMLElement, textContent: string): Pr
     port.onDisconnect.addListener(() => {
       podcastLlmPort = null;
       if (_isCancelled?.()) { resolve(); return; }
-      if (state.getIsPodcastGenerating()) {
+      if (isNowPlayingGenerating()) {
         if (!fullScript) { _showStatus!(card, 'error', t('podcast.error')); _resetPodcastState!(); resolve(); }
         else { try { const nlpTexts = parsePodcastScript(fullScript); _showStatus!(card, 'generating_audio'); generatePodcastAudio(card, nlpTexts); } catch { _showStatus!(card, 'error', t('podcast.scriptParseError')); _resetPodcastState!(); } resolve(); }
       }

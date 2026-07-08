@@ -1,6 +1,7 @@
 import { t } from '../../../shared/i18n.js';
 import { escapeHtml } from '../../../shared/constants';
 import { scrollToBottom } from '../../ui/dom-helpers';
+import type { NowPlaying } from './now-playing';
 
 let _lastHighlightIdx = -1;
 let _cardHandlers: { onClose: (card: HTMLElement) => void; onPlayPause: () => void; onSeekMouse: (e: MouseEvent, card: HTMLElement, bar: HTMLElement) => void; onSeekTouch: (e: TouchEvent, card: HTMLElement, bar: HTMLElement) => void } | null = null;
@@ -106,4 +107,25 @@ export function restoreWelcomeIfNeeded(chatArea: HTMLElement): void {
     welcome.innerHTML = `<p data-i18n="sidebar.welcome">${t('sidebar.welcome')}</p>`;
     chatArea.appendChild(welcome);
   }
+}
+
+/**
+ * Rebuild the full podcast card from saved now-playing metadata when the user
+ * returns to the origin tab. Reuses createPodcastCard (which re-wires all
+ * play/seek/close handlers) then restores the title, transcript and status.
+ * Audio progress is re-synced separately by audio.ts `reattachCard`.
+ */
+export function rebuildPodcastCard(np: NowPlaying, chatArea: HTMLElement): HTMLElement {
+  const card = createPodcastCard(np.sourcePreview ?? null, chatArea);
+  if (np.title) {
+    const infoEl = card.querySelector('.podcast-info');
+    const titleEl = card.querySelector('.podcast-info-title');
+    if (infoEl && titleEl) { titleEl.textContent = np.title; infoEl.classList.add('active'); }
+  }
+  if (np.script && np.script.length > 0) renderTranscript(card, np.script);
+  if (np.status && np.status !== 'generating_script') {
+    updateCardStatus(card, np.status, np.statusText);
+  }
+  scrollToBottom();
+  return card;
 }
