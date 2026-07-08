@@ -83,6 +83,26 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
 
   els.quoteClose.addEventListener('click', () => updateQuotePreview(els, ''));
 
+  // Auto-grow the textarea to fit its content up to a cap, then scroll inside.
+  // overflow-y is forced 'hidden' while under the cap so a subpixel rounding
+  // mismatch between scrollHeight and the integer height can't surface a
+  // phantom vertical scrollbar for short/single-line input.
+  const INPUT_MAX_HEIGHT = 120;
+  const autoResize = (): void => {
+    const ta = els.userInput;
+    ta.style.height = 'auto';
+    const capped = Math.min(ta.scrollHeight, INPUT_MAX_HEIGHT);
+    ta.style.height = capped + 'px';
+    ta.style.overflowY = ta.scrollHeight > INPUT_MAX_HEIGHT ? 'auto' : 'hidden';
+  };
+  autoResize();
+  els.userInput.addEventListener('input', () => {
+    autoResize();
+    const value = els.userInput.value;
+    if (value.startsWith('/')) updateCommandPopup(value);
+    else if (isCommandPopupOpen()) hideCommandPopup();
+  });
+
   chrome.tabs.onActivated.addListener(async (activeInfo) => {
     if (activeInfo.tabId === state.getActiveTabId()) return;
     state.setIsGenerating(false);
@@ -106,13 +126,5 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     if (area === 'sync' && changes.systemPrompt) {
       state.setCustomSystemPrompt((changes.systemPrompt.newValue as string) || '');
     }
-  });
-
-  els.userInput.addEventListener('input', () => {
-    els.userInput.style.height = 'auto';
-    els.userInput.style.height = Math.min(els.userInput.scrollHeight, 120) + 'px';
-    const value = els.userInput.value;
-    if (value.startsWith('/')) updateCommandPopup(value);
-    else if (isCommandPopupOpen()) hideCommandPopup();
   });
 }

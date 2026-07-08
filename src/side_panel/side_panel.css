@@ -218,12 +218,12 @@ body {
 .input-wrapper {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 8px 10px 8px 14px;
+  padding: 8px 8px 8px 12px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -234,6 +234,7 @@ body {
 
 #userInput {
   flex: 1;
+  min-height: 22px;
   border: none;
   background: none;
   outline: none;
@@ -241,7 +242,9 @@ body {
   line-height: 1.5;
   resize: none;
   max-height: 120px;
-  overflow-y: auto;
+  /* overflow-y is toggled by JS: 'hidden' while under the cap (kills the
+     subpixel phantom scrollbar), 'auto' only once content exceeds max-height. */
+  overflow-y: hidden;
   font-family: inherit;
   color: var(--text);
 }
