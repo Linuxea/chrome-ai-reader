@@ -17,7 +17,7 @@
  * see Phase 6 of the refactor plan. They are intentionally NOT wired yet.
  */
 
-import type { ChatMessage } from './types';
+import type { ChatMessage, PageRecord, PageRelation } from './types';
 
 // ---------------------------------------------------------------------------
 // Port names — the single registry of long-lived `chrome.runtime.connect` ports
@@ -173,5 +173,34 @@ export interface FetchModelsMessage {
 export interface FetchModelsResponse {
   success: boolean;
   models?: string[];
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// pageRecords:* one-shot messages — related-pages store/find (handled by
+// sw-related-pages.ts; records live in IndexedDB, see shared/page-records-db.ts)
+// ---------------------------------------------------------------------------
+
+export interface PageRecordsStoreMessage {
+  action: 'pageRecords:store';
+  record: Omit<PageRecord, 'id' | 'timestamp'>;
+  maxPages: number;
+}
+
+export interface PageRecordsFindRelatedMessage {
+  action: 'pageRecords:findRelated';
+  normalizedUrl: string;
+  threshold: number;
+  limit: number;
+}
+
+export interface PageRecordsStoreResponse {
+  success: boolean;
+  error?: string;
+}
+
+export interface PageRecordsFindRelatedResponse {
+  success: boolean;
+  relations?: PageRelation[];
   error?: string;
 }

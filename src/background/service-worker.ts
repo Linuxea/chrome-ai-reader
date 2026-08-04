@@ -3,6 +3,7 @@ import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
 import { handleOcrParse } from './sw-ocr';
 import { annotateChunk } from './sw-annotation';
+import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
@@ -68,4 +69,8 @@ chrome.runtime.onMessage.addListener((msg: Record<string, unknown>, sender: chro
   }
 
   if (msg.action === 'ocrParse') return handleOcrParse(msg as Parameters<typeof handleOcrParse>[0], sendResponse);
+
+  if (msg.action === 'pageRecords:store' || msg.action === 'pageRecords:findRelated') {
+    return handlePageRecordsMessage(msg, sendResponse);
+  }
 });

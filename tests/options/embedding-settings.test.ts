@@ -23,7 +23,7 @@ vi.hoisted(() => {
 
 vi.mock('../../src/shared/i18n.js', () => ({ t: (k: string) => `[${k}]` }));
 vi.mock('../../src/shared/constants.js', () => ({ escapeHtml: (s: string) => s }));
-vi.mock('../../src/shared/page-records.js', () => ({
+vi.mock('../../src/shared/page-records-db.js', () => ({
   clearPageRecords: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('../../src/options/status.js', () => ({ showStatus: vi.fn() }));
@@ -33,7 +33,7 @@ import {
   loadEmbeddingValues,
   initEmbeddingSettings,
 } from '../../src/options/embedding-settings';
-import { clearPageRecords } from '../../src/shared/page-records.js';
+import { clearPageRecords } from '../../src/shared/page-records-db.js';
 
 describe('options/embedding-settings', () => {
   let enabledCheckbox: HTMLInputElement;

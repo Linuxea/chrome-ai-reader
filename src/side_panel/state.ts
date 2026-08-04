@@ -1,6 +1,18 @@
 import type { TabState, ChatMessage, OcrResult } from '../shared/types';
 import { stripImagesForPersistence } from './services/chat/strip-images';
 
+/**
+ * Debounce window for field-setter persistence. High-frequency setters
+ * (setPageContent during extraction, OCR progress counters, …) must not
+ * serialize the whole TabState — including conversationHistory — into
+ * chrome.storage.session on every call. Message-boundary writes
+ * (conversation helpers, persistForTab, tab switch) bypass the debounce
+ * and flush immediately.
+ */
+const PERSIST_DEBOUNCE_MS = 250;
+
+// --- Keyed listeners --------------------------------------------------------
+
 const listeners = new Map<string, Set<(value: unknown) => void>>();
 
 export function subscribe(key: string, callback: (value: unknown) => void): () => void {
@@ -13,9 +25,12 @@ function notify(key: string, value: unknown): void {
   listeners.get(key)?.forEach(cb => cb(value));
 }
 
+// --- Per-tab state storage --------------------------------------------------
+
 const _tabStates = new Map<number, TabState>();
 let _activeState: TabState | null = null;
 let _activeTabId: number | null = null;
+let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function createFreshTabState(): TabState {
   return {
@@ -33,19 +48,41 @@ function createFreshTabState(): TabState {
   };
 }
 
-function persistTabState(): void {
-  if (!_activeTabId || !_activeState) return;
+function writeTabState(tabId: number, ts: TabState): void {
   const persistable: TabState = {
-    ..._activeState,
-    conversationHistory: _activeState.conversationHistory.map(stripImagesForPersistence),
+    ...ts,
+    conversationHistory: ts.conversationHistory.map(stripImagesForPersistence),
   };
-  chrome.storage.session.set({ [`tabState_${_activeTabId}`]: persistable });
+  chrome.storage.session.set({ [`tabState_${tabId}`]: persistable });
+}
+
+function cancelScheduledPersist(): void {
+  if (_persistTimer !== null) {
+    clearTimeout(_persistTimer);
+    _persistTimer = null;
+  }
+}
+
+/** Debounced persist for high-frequency field setters. */
+function schedulePersist(): void {
+  if (_activeTabId == null || !_activeState) return;
+  cancelScheduledPersist();
+  _persistTimer = setTimeout(() => {
+    _persistTimer = null;
+    if (_activeTabId != null && _activeState) writeTabState(_activeTabId, _activeState);
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+/** Immediate persist — message boundaries and pre-tab-switch flush. */
+function persistActiveNow(): void {
+  cancelScheduledPersist();
+  if (_activeTabId != null && _activeState) writeTabState(_activeTabId, _activeState);
 }
 
 export async function switchToTab(newTabId: number): Promise<void> {
   if (!newTabId || newTabId === _activeTabId) return;
 
-  persistTabState();
+  persistActiveNow();
   _activeTabId = newTabId;
 
   if (_tabStates.has(newTabId)) {
@@ -91,6 +128,7 @@ function initTabLifecycleListener(): void {
     _tabStates.delete(tabId);
     chrome.storage.session.remove(`tabState_${tabId}`);
     if (tabId === _activeTabId) {
+      cancelScheduledPersist();
       _activeState = null;
       _activeTabId = null;
     }
@@ -104,7 +142,7 @@ if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
   initTabLifecycleListener();
 }
 
-// --- Global state fields ---
+// --- Global state fields ----------------------------------------------------
 
 let _customSystemPrompt = '';
 export function getCustomSystemPrompt(): string { return _customSystemPrompt; }
@@ -131,102 +169,75 @@ export function getStateForTab(tabId: number): TabState | null {
   return _tabStates.get(tabId) || null;
 }
 
+/** Immediate persist of a tab's state — used by history-ops at message boundaries. */
 export function persistForTab(tabId: number): void {
+  if (tabId === _activeTabId) cancelScheduledPersist();
   const ts = _tabStates.get(tabId);
   if (!ts) return;
-  const persistable: TabState = {
-    ...ts,
-    conversationHistory: ts.conversationHistory.map(stripImagesForPersistence),
-  };
-  chrome.storage.session.set({ [`tabState_${tabId}`]: persistable });
+  writeTabState(tabId, ts);
 }
 
-// --- Per-tab state fields (DRY via factory) ---
+// --- Per-tab field accessors ------------------------------------------------
+// Explicit getter/setter pairs — no runtime name synthesis. New fields are
+// added to TabState (shared/types.ts) and get a pair here; grep-able and
+// type-checked end to end.
 
-interface GeneratedAccessors {
-  [key: string]: (...args: unknown[]) => unknown;
+export function getPageContent(): string { return _activeState?.pageContent ?? ''; }
+export function setPageContent(v: string): void { if (!_activeState) return; _activeState.pageContent = v; schedulePersist(); }
+
+export function getPageExcerpt(): string { return _activeState?.pageExcerpt ?? ''; }
+export function setPageExcerpt(v: string): void { if (!_activeState) return; _activeState.pageExcerpt = v; schedulePersist(); }
+
+export function getPageTitle(): string { return _activeState?.pageTitle ?? ''; }
+export function setPageTitle(v: string): void { if (!_activeState) return; _activeState.pageTitle = v; schedulePersist(); }
+
+export function getIsGenerating(): boolean { return _activeState?.isGenerating ?? false; }
+export function setIsGenerating(v: boolean): void {
+  if (!_activeState) return;
+  _activeState.isGenerating = v;
+  schedulePersist();
+  notify('isGenerating', v);
 }
 
-const _generated: GeneratedAccessors = {};
+export function getCurrentChatId(): string | null { return _activeState?.currentChatId ?? null; }
+export function setCurrentChatId(v: string | null): void { if (!_activeState) return; _activeState.currentChatId = v; schedulePersist(); }
 
-function defineTabField<T>(
-  name: keyof TabState,
-  defaultValue: T,
-  options?: { getterName?: string; setterName?: string; notify?: boolean },
-): void {
-  const getterName = options?.getterName || `get${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-  const setterName = options?.setterName || `set${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-  const shouldNotify = options?.notify || false;
+export function getSelectedText(): string { return _activeState?.selectedText ?? ''; }
+export function setSelectedText(v: string): void { if (!_activeState) return; _activeState.selectedText = v; schedulePersist(); }
 
-  (_generated as Record<string, () => T>)[getterName] = () => _activeState?.[name] as T ?? defaultValue;
-  (_generated as Record<string, (v: T) => void>)[setterName] = (v: T) => {
-    if (!_activeState) return;
-    (_activeState as unknown as Record<string, unknown>)[name] = v;
-    persistTabState();
-    if (shouldNotify) notify(name, v);
-  };
+export function getOcrRunning(): number { return _activeState?.ocrRunning ?? 0; }
+export function setOcrRunning(v: number): void { if (!_activeState) return; _activeState.ocrRunning = v; schedulePersist(); }
+
+export function getOcrResults(): OcrResult[] { return _activeState?.ocrResults ?? []; }
+export function setOcrResults(v: OcrResult[]): void { if (!_activeState) return; _activeState.ocrResults = v; schedulePersist(); }
+
+export function getImageIndex(): number { return _activeState?.imageIndex ?? 0; }
+export function setImageIndex(v: number): void { if (!_activeState) return; _activeState.imageIndex = v; schedulePersist(); }
+
+export function getIsPodcastGenerating(): boolean { return _activeState?.isPodcastGenerating ?? false; }
+export function setIsPodcastGenerating(v: boolean): void { if (!_activeState) return; _activeState.isPodcastGenerating = v; schedulePersist(); }
+
+// --- Conversation history ---------------------------------------------------
+// History mutations are message boundaries — they persist immediately rather
+// than going through the debounced setter path.
+
+export function getConversationHistory(): ChatMessage[] { return _activeState?.conversationHistory ?? []; }
+export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = v; persistActiveNow(); }
+
+export function pushConversation(msg: ChatMessage): void {
+  if (!_activeState) return;
+  _activeState.conversationHistory.push(msg);
+  persistActiveNow();
 }
 
-defineTabField('pageContent', '');
-defineTabField('pageExcerpt', '');
-defineTabField('pageTitle', '');
-defineTabField('isGenerating', false, { notify: true });
-defineTabField('currentChatId', null as string | null);
-defineTabField('selectedText', '');
-defineTabField('ocrRunning', 0);
-defineTabField('ocrResults', [] as OcrResult[]);
-defineTabField('imageIndex', 0);
-defineTabField('isPodcastGenerating', false);
+export function spliceConversation(...args: Parameters<Array<ChatMessage>['splice']>): void {
+  if (!_activeState) return;
+  _activeState.conversationHistory.splice(...args);
+  persistActiveNow();
+}
 
-defineTabField('conversationHistory', [] as ChatMessage[]);
-(_generated as Record<string, (msg: ChatMessage) => void>).pushConversation = (msg: ChatMessage) => {
-  if (_activeState) { _activeState.conversationHistory.push(msg); persistTabState(); }
-};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(_generated as any).spliceConversation = (...args: Parameters<Array<ChatMessage>['splice']>) => {
-  if (_activeState) { _activeState.conversationHistory.splice(...args); persistTabState(); }
-};
-(_generated as Record<string, () => void>).clearConversation = () => {
-  if (_activeState) { _activeState.conversationHistory = []; persistTabState(); }
-};
-
-export const {
-  getPageContent, setPageContent,
-  getPageExcerpt, setPageExcerpt,
-  getPageTitle, setPageTitle,
-  getIsGenerating, setIsGenerating,
-  getCurrentChatId, setCurrentChatId,
-  getSelectedText, setSelectedText,
-  getOcrRunning, setOcrRunning,
-  getOcrResults, setOcrResults,
-  getImageIndex, setImageIndex,
-  getIsPodcastGenerating, setIsPodcastGenerating,
-  getConversationHistory, setConversationHistory,
-  pushConversation, spliceConversation, clearConversation,
-} = _generated as {
-  getPageContent: () => string;
-  setPageContent: (v: string) => void;
-  getPageExcerpt: () => string;
-  setPageExcerpt: (v: string) => void;
-  getPageTitle: () => string;
-  setPageTitle: (v: string) => void;
-  getIsGenerating: () => boolean;
-  setIsGenerating: (v: boolean) => void;
-  getCurrentChatId: () => string | null;
-  setCurrentChatId: (v: string | null) => void;
-  getSelectedText: () => string;
-  setSelectedText: (v: string) => void;
-  getOcrRunning: () => number;
-  setOcrRunning: (v: number) => void;
-  getOcrResults: () => OcrResult[];
-  setOcrResults: (v: OcrResult[]) => void;
-  getImageIndex: () => number;
-  setImageIndex: (v: number) => void;
-  getIsPodcastGenerating: () => boolean;
-  setIsPodcastGenerating: (v: boolean) => void;
-  getConversationHistory: () => ChatMessage[];
-  setConversationHistory: (v: ChatMessage[]) => void;
-  pushConversation: (msg: ChatMessage) => void;
-  spliceConversation: (...args: Parameters<Array<ChatMessage>['splice']>) => void;
-  clearConversation: () => void;
-};
+export function clearConversation(): void {
+  if (!_activeState) return;
+  _activeState.conversationHistory = [];
+  persistActiveNow();
+}

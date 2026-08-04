@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { findRelatedRecords } from '../../../src/shared/vector.js';
+
+// --- In-memory fake for the worker side ------------------------------------
+// store/find now go through chrome.runtime.sendMessage to sw-related-pages;
+// this array + the sendMessage mock below emulate the worker (upsert by
+// normalizedUrl, FIFO eviction, real ranking via shared/vector).
+let swRecords = [];
 
 // --- Chrome API mock --------------------------------------------------------
-// The feature now goes through platform/ports + platform/storage, but both
-// ultimately call chrome.* — mocking at the global level still works and
-// matches the convention in tests/platform/*.
-const store = { sync: {}, local: {} };
+const store = { sync: {} };
 
 vi.stubGlobal('chrome', {
   storage: {
@@ -14,16 +18,6 @@ vi.stubGlobal('chrome', {
       )),
       set: vi.fn((items) => { Object.assign(store.sync, items); return Promise.resolve(); }),
     },
-    local: {
-      get: vi.fn((keys) => Promise.resolve(
-        (Array.isArray(keys) ? keys : [keys]).reduce((acc, k) => { acc[k] = store.local[k]; return acc; }, {})
-      )),
-      set: vi.fn((items) => { Object.assign(store.local, items); return Promise.resolve(); }),
-      remove: vi.fn((keys) => {
-        for (const k of (Array.isArray(keys) ? keys : [keys])) delete store.local[k];
-        return Promise.resolve();
-      }),
-    },
   },
   runtime: {
     connect: vi.fn(() => ({
@@ -32,6 +26,20 @@ vi.stubGlobal('chrome', {
       postMessage: vi.fn(),
       disconnect: vi.fn(),
     })),
+    sendMessage: vi.fn(async (msg) => {
+      if (msg.action === 'pageRecords:store') {
+        const { record, maxPages } = msg;
+        const idx = swRecords.findIndex((r) => r.normalizedUrl === record.normalizedUrl);
+        if (idx >= 0) swRecords[idx] = { ...swRecords[idx], ...record, timestamp: Date.now() };
+        else swRecords.push({ ...record, id: `id-${record.normalizedUrl}`, timestamp: Date.now() });
+        if (swRecords.length > maxPages) swRecords.splice(0, swRecords.length - maxPages);
+        return { success: true };
+      }
+      if (msg.action === 'pageRecords:findRelated') {
+        return { success: true, relations: findRelatedRecords(swRecords, msg.normalizedUrl, msg.threshold, msg.limit) };
+      }
+      return { success: false, error: `unknown action: ${msg.action}` };
+    }),
     openOptionsPage: vi.fn(() => Promise.resolve()),
   },
   tabs: {
@@ -39,6 +47,10 @@ vi.stubGlobal('chrome', {
     query: vi.fn(() => Promise.resolve([])),
   },
 });
+
+vi.mock('../../../src/shared/page-records-db.js', () => ({
+  clearPageRecords: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock('../../../src/shared/i18n.js', () => ({
   t: (key, params) => {
@@ -58,16 +70,15 @@ vi.mock('../../../src/side_panel/events.js', () => ({
 }));
 
 import {
-  cosineSimilarity,
   requestEmbedding,
   findRelatedPages,
   clearAllPageRecords,
   renderRelatedPages,
   initRelatedPages,
   resetState,
-  dropLegacyRecords,
   __internals,
 } from '../../../src/side_panel/features/related-pages.js';
+import { clearPageRecords } from '../../../src/shared/page-records-db.js';
 
 // Helper: install a fully-programmable mock port that captures listeners.
 function mockPort() {
@@ -85,9 +96,8 @@ function mockPort() {
 // Reset all state between tests.
 beforeEach(() => {
   vi.clearAllMocks();
-  // Wipe storage.
+  swRecords = [];
   for (const k of Object.keys(store.sync)) delete store.sync[k];
-  for (const k of Object.keys(store.local)) delete store.local[k];
   // Default to a fully-configured, enabled embedding service.
   store.sync.embeddingEnabled = true;
   store.sync.embeddingApiKey = 'sk-emb';
@@ -96,41 +106,6 @@ beforeEach(() => {
   store.sync.embeddingThreshold = 0.7;
   store.sync.embeddingMaxPages = 200;
   resetState();
-});
-
-describe('cosineSimilarity', () => {
-  it('returns 1.0 for identical vectors', () => {
-    const v = [1, 2, 3];
-    expect(cosineSimilarity(v, v)).toBeCloseTo(1.0, 5);
-  });
-
-  it('returns 0.0 for orthogonal vectors', () => {
-    expect(cosineSimilarity([1, 0, 0], [0, 1, 0])).toBeCloseTo(0.0, 5);
-  });
-
-  it('returns ~1.0 for nearly identical vectors', () => {
-    const a = [0.1, 0.2, 0.3, 0.4];
-    const b = [0.15, 0.25, 0.35, 0.45];
-    expect(cosineSimilarity(a, b)).toBeGreaterThan(0.99);
-  });
-
-  it('returns 0 for zero vector', () => {
-    expect(cosineSimilarity([0, 0, 0], [1, 2, 3])).toBe(0);
-  });
-
-  it('returns 0 for empty vectors', () => {
-    expect(cosineSimilarity([], [])).toBe(0);
-  });
-
-  it('returns 0 for different length vectors', () => {
-    expect(cosineSimilarity([1, 2], [1, 2, 3])).toBe(0);
-  });
-
-  it('handles negative values', () => {
-    const a = [-0.5, 0.3, -0.2];
-    const b = [-0.4, 0.4, -0.1];
-    expect(cosineSimilarity(a, b)).toBeGreaterThan(0.9);
-  });
 });
 
 describe('requestEmbedding', () => {
@@ -174,7 +149,7 @@ describe('requestEmbedding', () => {
     await promise;
   });
 
-  it('stores a page record with normalizedUrl on embedding response', async () => {
+  it('stores a page record via pageRecords:store on embedding response', async () => {
     const port = mockPort();
     chrome.runtime.connect.mockReturnValue(port);
 
@@ -183,24 +158,25 @@ describe('requestEmbedding', () => {
 
     await port._listeners.message({ type: 'embedding', embedding: [0.1, 0.2, 0.3] });
 
-    expect(chrome.storage.local.set).toHaveBeenCalled();
-    const setCall = chrome.storage.local.set.mock.calls[0][0];
-    const records = setCall.pageRecords;
-    expect(records).toHaveLength(1);
-    // raw URL preserved
-    expect(records[0].url).toBe('https://example.com/post?utm_source=foo#x');
-    // normalizedUrl used for matching/dedup
-    expect(records[0].normalizedUrl).toBe('https://example.com/post');
-    expect(records[0].title).toBe('Test');
-    expect(records[0].embedding).toEqual([0.1, 0.2, 0.3]);
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'pageRecords:store',
+        maxPages: 200,
+        record: expect.objectContaining({
+          url: 'https://example.com/post?utm_source=foo#x',
+          normalizedUrl: 'https://example.com/post',
+          title: 'Test',
+          embedding: [0.1, 0.2, 0.3],
+        }),
+      })
+    );
+    expect(swRecords).toHaveLength(1);
 
     await promise;
   });
 
   it('does not duplicate records for the same normalizedUrl', async () => {
-    // Seed an existing record for the same normalized URL.
-    // normalizeUrl('https://example.com/post?utm_source=x') === 'https://example.com/post'
-    store.local.pageRecords = [{
+    swRecords = [{
       id: 'old', url: 'https://example.com/post',
       normalizedUrl: 'https://example.com/post',
       title: 'Old', excerpt: 'old', embedding: [1, 0, 0], timestamp: 1000,
@@ -214,11 +190,10 @@ describe('requestEmbedding', () => {
     await new Promise((r) => setTimeout(r, 0));
     await port._listeners.message({ type: 'embedding', embedding: [0.5, 0.5, 0] });
 
-    const setCall = chrome.storage.local.set.mock.calls[0][0];
-    expect(setCall.pageRecords).toHaveLength(1);
+    expect(swRecords).toHaveLength(1);
     // Updated in place (title changed), id preserved.
-    expect(setCall.pageRecords[0].id).toBe('old');
-    expect(setCall.pageRecords[0].title).toBe('New Title');
+    expect(swRecords[0].id).toBe('old');
+    expect(swRecords[0].title).toBe('New Title');
 
     await promise;
   });
@@ -247,7 +222,7 @@ describe('findRelatedPages', () => {
   });
 
   it('returns empty array when current page has no matching normalizedUrl', async () => {
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://other.com', normalizedUrl: 'https://other.com', title: 'Test', excerpt: 'content', id: '1', timestamp: 1000, embedding: [1, 0, 0] },
     ];
     const result = await findRelatedPages('https://example.com');
@@ -255,7 +230,7 @@ describe('findRelatedPages', () => {
   });
 
   it('returns empty array when current page record has no embedding', async () => {
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com', normalizedUrl: 'https://example.com', title: 'Test', excerpt: 'content', id: '1', timestamp: 1000 },
     ];
     const result = await findRelatedPages('https://example.com');
@@ -264,7 +239,7 @@ describe('findRelatedPages', () => {
 
   it('finds related pages above threshold (matched by normalizedUrl)', async () => {
     store.sync.embeddingThreshold = 0.7;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://current.com', normalizedUrl: 'https://current.com', title: 'Current', excerpt: 'c', id: '1', timestamp: 1000, embedding: [1, 0, 0] },
       { url: 'https://related.com', normalizedUrl: 'https://related.com', title: 'Related', excerpt: 'r', id: '2', timestamp: 2000, embedding: [1, 0.1, 0] },
       { url: 'https://unrelated.com', normalizedUrl: 'https://unrelated.com', title: 'Unrelated', excerpt: 'u', id: '3', timestamp: 3000, embedding: [0, 1, 0] },
@@ -276,9 +251,20 @@ describe('findRelatedPages', () => {
     expect(result[0].similarity).toBeGreaterThan(0.9);
   });
 
+  it('passes normalizedUrl + threshold + limit to the worker', async () => {
+    store.sync.embeddingThreshold = 0.42;
+    await findRelatedPages('https://example.com/post?utm_source=news');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      action: 'pageRecords:findRelated',
+      normalizedUrl: 'https://example.com/post',
+      threshold: 0.42,
+      limit: 5,
+    });
+  });
+
   it('sorts results by similarity descending', async () => {
     store.sync.embeddingThreshold = 0.5;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://current.com', normalizedUrl: 'https://current.com', title: 'C', excerpt: 'c', id: '1', timestamp: 1000, embedding: [1, 0, 0] },
       { url: 'https://a.com', normalizedUrl: 'https://a.com', title: 'A', excerpt: 'a', id: '2', timestamp: 2000, embedding: [1, 0.5, 0] },
       { url: 'https://b.com', normalizedUrl: 'https://b.com', title: 'B', excerpt: 'b', id: '3', timestamp: 3000, embedding: [1, 0.2, 0] },
@@ -300,7 +286,7 @@ describe('findRelatedPages', () => {
         id: `${i}`, timestamp: i * 1000, embedding: [1, 0.1 * i, 0],
       });
     }
-    store.local.pageRecords = records;
+    swRecords = records;
 
     const result = await findRelatedPages('https://current.com');
     expect(result.length).toBeLessThanOrEqual(5);
@@ -308,7 +294,7 @@ describe('findRelatedPages', () => {
 
   it('treats the same URL with different utm params as the same page', async () => {
     store.sync.embeddingThreshold = 0.5;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com/post', normalizedUrl: 'https://example.com/post', title: 'Post', excerpt: 'p', id: '1', timestamp: 1000, embedding: [1, 0, 0] },
       { url: 'https://example.com/other', normalizedUrl: 'https://example.com/other', title: 'Other', excerpt: 'o', id: '2', timestamp: 2000, embedding: [1, 0.2, 0] },
     ];
@@ -319,31 +305,10 @@ describe('findRelatedPages', () => {
   });
 });
 
-describe('dropLegacyRecords', () => {
-  it('removes records that lack normalizedUrl', async () => {
-    store.local.pageRecords = [
-      { url: 'https://a.com', normalizedUrl: 'https://a.com', id: '1', title: 'a', excerpt: 'a', embedding: [1], timestamp: 1 },
-      { url: 'https://b.com', id: '2', title: 'b', excerpt: 'b', embedding: [1], timestamp: 2 }, // legacy
-    ];
-    await dropLegacyRecords();
-    expect(store.local.pageRecords).toHaveLength(1);
-    expect(store.local.pageRecords[0].id).toBe('1');
-  });
-
-  it('does nothing when all records are already migrated', async () => {
-    store.local.pageRecords = [
-      { url: 'https://a.com', normalizedUrl: 'https://a.com', id: '1', title: 'a', excerpt: 'a', embedding: [1], timestamp: 1 },
-    ];
-    chrome.storage.local.set.mockClear();
-    await dropLegacyRecords();
-    expect(chrome.storage.local.set).not.toHaveBeenCalled();
-  });
-});
-
 describe('clearAllPageRecords', () => {
-  it('removes the pageRecords key from local storage', async () => {
+  it('delegates to clearPageRecords (IndexedDB store + legacy key)', async () => {
     await clearAllPageRecords();
-    expect(chrome.storage.local.remove).toHaveBeenCalledWith('pageRecords');
+    expect(clearPageRecords).toHaveBeenCalled();
   });
 });
 
@@ -385,14 +350,13 @@ describe('initRelatedPages', () => {
     const list = document.getElementById('relatedList');
 
     // empty → collapsed
-    store.local.pageRecords = [];
     await renderRelatedPages('https://example.com');
     expect(__internals.getState().status).toBe('empty');
     expect(list.classList.contains('collapsed')).toBe(true);
 
     // results → expanded
     store.sync.embeddingThreshold = 0.5;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com', normalizedUrl: 'https://example.com', id: '1', title: 'Current', excerpt: 'c', embedding: [1, 0, 0], timestamp: Date.now() },
       { url: 'https://other.com', normalizedUrl: 'https://other.com', id: '2', title: 'Other', excerpt: 'o', embedding: [1, 0.1, 0], timestamp: Date.now() },
     ];
@@ -436,7 +400,6 @@ describe('renderRelatedPages', () => {
   it('shows loading then empty when there are no matches', async () => {
     document.body.innerHTML = '<div id="chatArea"></div>';
     initRelatedPages({ chatArea: document.getElementById('chatArea') });
-    store.local.pageRecords = [];
 
     await renderRelatedPages('https://example.com');
 
@@ -448,7 +411,7 @@ describe('renderRelatedPages', () => {
     document.body.innerHTML = '<div id="chatArea"></div>';
     initRelatedPages({ chatArea: document.getElementById('chatArea') });
     store.sync.embeddingThreshold = 0.5;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com', normalizedUrl: 'https://example.com', id: '1', title: 'Current', excerpt: 'c', embedding: [1, 0, 0], timestamp: Date.now() },
       { url: 'https://other.com', normalizedUrl: 'https://other.com', id: '2', title: 'Other', excerpt: 'o', embedding: [1, 0.1, 0], timestamp: Date.now() },
     ];
@@ -461,11 +424,23 @@ describe('renderRelatedPages', () => {
     expect(items[0].dataset.url).toBe('https://other.com');
   });
 
+  it('shows error status when the worker call fails', async () => {
+    document.body.innerHTML = '<div id="chatArea"></div>';
+    initRelatedPages({ chatArea: document.getElementById('chatArea') });
+    chrome.runtime.sendMessage.mockResolvedValueOnce({ success: false, error: 'idb down' });
+
+    await renderRelatedPages('https://example.com');
+
+    expect(__internals.getState().status).toBe('error');
+    expect(__internals.getState().errorMessage).toBe('idb down');
+    expect(document.querySelector('.related-retry-btn')).not.toBeNull();
+  });
+
   it('clicking a related item opens the URL in a new tab', async () => {
     document.body.innerHTML = '<div id="chatArea"></div>';
     initRelatedPages({ chatArea: document.getElementById('chatArea') });
     store.sync.embeddingThreshold = 0.5;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com', normalizedUrl: 'https://example.com', id: '1', title: 'Current', excerpt: 'c', embedding: [1, 0, 0], timestamp: Date.now() },
       { url: 'https://other.com', normalizedUrl: 'https://other.com', id: '2', title: 'Other', excerpt: 'o', embedding: [1, 0.1, 0], timestamp: Date.now() },
     ];
@@ -485,7 +460,7 @@ describe('auto-refresh after storePageRecord', () => {
 
     // Current page has a record but no related pages exist yet.
     store.sync.embeddingThreshold = 0.5;
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com', normalizedUrl: 'https://example.com', id: '1', title: 'Current', excerpt: 'c', embedding: [1, 0, 0], timestamp: Date.now() },
     ];
     await renderRelatedPages('https://example.com');
@@ -524,7 +499,7 @@ describe('auto-refresh after storePageRecord', () => {
     // Two related pages already exist; panel shows 1 related item.
     store.sync.embeddingThreshold = 0.5;
     const ts = Date.now();
-    store.local.pageRecords = [
+    swRecords = [
       { url: 'https://example.com', normalizedUrl: 'https://example.com', id: '0', title: 'Current', excerpt: 'c', embedding: [1, 0, 0], timestamp: ts },
       { url: 'https://other.com', normalizedUrl: 'https://other.com', id: '1', title: 'Other', excerpt: 'o', embedding: [1, 0.1, 0], timestamp: ts },
     ];

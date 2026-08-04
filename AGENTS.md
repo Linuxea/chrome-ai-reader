@@ -5,7 +5,7 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (829 tests across 58 files)
+npm run test   # vitest run (935 tests across 63 files)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint src/ proxy/
@@ -96,7 +96,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 814 tests across 56 files
+- **Vitest** with jsdom environment, 935 tests across 63 files
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
 - Coverage: ~30% overall, core modules 80%+ (dom-helpers 98%, theme 100%, sw-openai 91%, page-extractor 88%)
@@ -116,5 +116,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - **Layering guardrail**: ESLint `no-restricted-imports` (warn) prevents `side_panel/ui/**` from importing services/features. Note: ESLint only lints `.js` by default (no typescript-eslint plugin); `.ts` layering is enforced via tsc + review.
 - **Image intake**: `services/ocr.ts` `ingestImages()` is the single entry point for adding images (upload button + paste + drag-drop all funnel through it). Do not re-duplicate the index+FileReader+OCR loop.
 - **History operations**: use `services/chat/history-ops.ts` (`appendMessage`/`rollbackTrailingUserMessage`/`truncateHistoryFromUserContent`) instead of mutating `tabState.conversationHistory` directly — it centralizes persistence + rollback policy.
+- **State persistence**: `state.ts` field setters persist to `chrome.storage.session` debounced (250ms); conversation helpers + `persistForTab()` flush immediately, and `switchToTab()` flushes the outgoing tab. Add new TabState fields as explicit getter/setter pairs — the runtime `defineTabField` name-synthesis was removed.
+- **SW chat streaming**: all chat-completions SSE goes through one pipeline — `streamChatCompletion()` in `sw-openai.ts` (callers: `callOpenAI`, `callSuggestQuestions`, podcast-llm via `callOpenAI`). The delta-parse point for future `tool_calls` is that single function.
 - **Agent Readiness**: `ChatMessage` has reserved `tool_calls`/`tool_call_id`/`name` fields and `role: 'tool'`. `sw-openai.ts` and `shared/protocol.ts` have `AGENT TODO` markers showing where tool-call support plugs in. These are type-only reservations — no runtime tool-calling exists yet.
-- **Related Reading / 知识关联** (`features/related-pages.ts`): page records in `chrome.storage.local['pageRecords']` keyed by `PageRecord.normalizedUrl` (computed via `shared/url-normalize.ts` — strips hash + utm/ref/source/from/gclid/fbclid/spm/share_*, sorts remaining params, lowercases host, drops trailing slash). Embedding config (`embeddingApiKey`/`embeddingApiBase`/`embeddingModel`) must be set **independently** in the options page — there is no fallback to the chat provider, and any missing field surfaces as `not-configured` status (one of the panel's seven states: `idle/loading/results/empty/error/disabled/not-configured`). After each successful `storePageRecord`, the panel auto-refreshes the current URL (debounced 300ms) — no tab switch needed. The legacy circuit breaker (`embeddingFailures`/`embeddingPausedUntil`) was removed in the 2026-06 refactor; on failure the panel shows `error` status + a retry button. `initRelatedPages()` also runs `dropLegacyRecords()` once to clear any pre-`normalizedUrl` records.
+- **Related Reading / 知识关联** (`features/related-pages.ts`): page records live in **IndexedDB** (`shared/page-records-db.ts`, DB `ai-reader`, store `pageRecords`, keyPath `normalizedUrl`; computed via `shared/url-normalize.ts` — strips hash + utm/ref/source/from/gclid/fbclid/spm/share_*, sorts remaining params, lowercases host, drops trailing slash). All record writes (upsert by normalizedUrl + FIFO eviction beyond `embeddingMaxPages`) and cosine-similarity ranking run in the **service worker** (`background/sw-related-pages.ts` + `shared/vector.ts`); the panel only sends one-shot `pageRecords:store` / `pageRecords:findRelated` messages (types in `shared/protocol.ts`). Legacy `chrome.storage.local['pageRecords']` records are migrated to IndexedDB once by the worker (`migrateLegacyPageRecords`, awaited before any store/find). Embedding config (`embeddingApiKey`/`embeddingApiBase`/`embeddingModel`) must be set **independently** in the options page — there is no fallback to the chat provider, and any missing field surfaces as `not-configured` status (one of the panel's seven states: `idle/loading/results/empty/error/disabled/not-configured`). After each successful `pageRecords:store`, the panel auto-refreshes the current URL (debounced 300ms) — no tab switch needed. On failure the panel shows `error` status + a retry button. The options page clears records via `clearPageRecords()` from `shared/page-records-db.ts` (IndexedDB is same-origin across extension contexts).

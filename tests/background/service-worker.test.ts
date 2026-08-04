@@ -65,6 +65,12 @@ vi.mock('../../src/background/sw-podcast.js', () => ({ callPodcast: vi.fn() }));
 vi.mock('../../src/background/sw-ocr.js', () => ({
   handleOcrParse: vi.fn(() => true),
 }));
+vi.mock('../../src/background/sw-related-pages.js', () => ({
+  handlePageRecordsMessage: vi.fn((msg: Record<string, unknown>, sendResponse: (r?: unknown) => void) => {
+    sendResponse({ success: true });
+    return true;
+  }),
+}));
 
 // --- Import after mocks are set up ---
 import '../../src/background/service-worker.js';
@@ -72,6 +78,7 @@ import { callOpenAI, callSuggestQuestions, callEmbedding } from '../../src/backg
 import { callTTS } from '../../src/background/sw-tts.js';
 import { callPodcast } from '../../src/background/sw-podcast.js';
 import { handleOcrParse } from '../../src/background/sw-ocr.js';
+import { handlePageRecordsMessage } from '../../src/background/sw-related-pages.js';
 
 // --- Helper: create a mock port for onConnect tests ---
 function createMockPortForRoute(name: string) {
@@ -333,6 +340,28 @@ describe('background/service-worker', () => {
       );
       expect(result).toBe(true);
       expect(handleOcrParse).toHaveBeenCalled();
+    });
+
+    it('routes pageRecords:store to handlePageRecordsMessage', () => {
+      const sendResponse = vi.fn();
+      const result = onMessageListener()!(
+        { action: 'pageRecords:store', record: {}, maxPages: 200 },
+        {},
+        sendResponse,
+      );
+      expect(result).toBe(true);
+      expect(handlePageRecordsMessage).toHaveBeenCalled();
+    });
+
+    it('routes pageRecords:findRelated to handlePageRecordsMessage', () => {
+      const sendResponse = vi.fn();
+      const result = onMessageListener()!(
+        { action: 'pageRecords:findRelated', normalizedUrl: 'https://a.com', threshold: 0.7, limit: 5 },
+        {},
+        sendResponse,
+      );
+      expect(result).toBe(true);
+      expect(handlePageRecordsMessage).toHaveBeenCalled();
     });
   });
 });

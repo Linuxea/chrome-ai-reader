@@ -1,6 +1,6 @@
 import { t } from '../shared/i18n.js';
 import { showStatus } from './status';
-import { clearPageRecords } from '../shared/page-records';
+import { clearPageRecords } from '../shared/page-records-db';
 
 const embeddingEnabledCheckbox = document.getElementById('embeddingEnabled') as HTMLInputElement;
 const embeddingApiKeyInput = document.getElementById('embeddingApiKey') as HTMLInputElement;

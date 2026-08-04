@@ -1,18 +1,28 @@
 /**
- * Related Pages feature — manages page records with embedding vectors,
- * computes cosine similarity, and renders the "Related Reading" panel.
+ * Related Pages feature — renders the "Related Reading" panel.
  *
  * Flow:
  *   1. extractPageContent() emits PAGE_EXTRACTED → requestEmbedding()
  *   2. requestEmbedding() calls background via openEmbeddingPort()
- *   3. On response, storePageRecord() saves to chrome.storage.local,
- *      then schedules a debounced renderRelatedPages() so the panel
- *      reflects the new entry without requiring a tab switch.
- *   4. On tab switch / page load, renderRelatedPages() computes top-5
- *      and renders UI. Status (loading/error/disabled/not-configured)
- *      is derived from current config + last request outcome.
+ *   3. On response, storePageRecord() sends the record to the service
+ *      worker (pageRecords:store), which upserts it into IndexedDB and
+ *      applies FIFO eviction — then schedules a debounced
+ *      renderRelatedPages() so the panel reflects the new entry without
+ *      requiring a tab switch.
+ *   4. On tab switch / page load, renderRelatedPages() asks the worker
+ *      (pageRecords:findRelated) for the top-5 relations — cosine
+ *      similarity is computed in the worker — and renders UI.
+ *      Status (loading/error/disabled/not-configured) is derived from
+ *      current config + last request outcome.
  *
- * Refactor notes (2026-06):
+ * Refactor notes (2026-08):
+ *   - Records moved from chrome.storage.local (10MB quota, whole-array
+ *     JSON read/write per upsert) to IndexedDB keyed by normalizedUrl
+ *     (shared/page-records-db.ts); all writes + ranking run in the service
+ *     worker (sw-related-pages.ts) via one-shot messages.
+ *   - Legacy storage.local records are migrated once by the worker.
+ *
+ * Earlier notes (2026-06):
  *   - URL normalization prevents duplicate records + missing self-match
  *     when the same page is visited with tracking params or a hash.
  *   - The circuit breaker (FAILURE_KEY / PAUSE_KEY) was removed: every
@@ -22,15 +32,19 @@
  */
 
 import type { PageRecord, PageRelation } from '../../shared/types';
-import type { EmbeddingRequest, EmbeddingResponse } from '../../shared/protocol';
+import type {
+  EmbeddingRequest, EmbeddingResponse,
+  PageRecordsStoreMessage, PageRecordsStoreResponse,
+  PageRecordsFindRelatedMessage, PageRecordsFindRelatedResponse,
+} from '../../shared/protocol';
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
-import { PAGE_RECORDS_KEY, clearPageRecords } from '../../shared/page-records';
+import { clearPageRecords } from '../../shared/page-records-db';
 import { normalizeUrl } from '../../shared/url-normalize';
-import { emit, on, EVENTS } from '../events';
+import { on, EVENTS } from '../events';
 import { openEmbeddingPort } from '../../platform/ports';
-import { getSync, getLocal, setLocal } from '../../platform/storage';
-import { openOptionsPage } from '../../platform/messaging';
+import { getSync } from '../../platform/storage';
+import { openOptionsPage, sendMessage } from '../../platform/messaging';
 
 const MAX_RECORDS_DEFAULT = 200;
 const THRESHOLD_DEFAULT = 0.7;
@@ -75,60 +89,6 @@ let listEl: HTMLElement | null = null;
 let badgeEl: HTMLElement | null = null;
 let lastRenderedUrl = '';
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-
-// --- Storage (via platform layer) -----------------------------------------
-
-async function getPageRecords(): Promise<PageRecord[]> {
-  try {
-    const data = await getLocal<Record<string, PageRecord[]>>([PAGE_RECORDS_KEY]);
-    return data[PAGE_RECORDS_KEY] || [];
-  } catch (e) {
-    console.error('Failed to get page records:', e);
-    return [];
-  }
-}
-
-async function savePageRecords(records: PageRecord[]): Promise<void> {
-  try {
-    await setLocal({ [PAGE_RECORDS_KEY]: records });
-  } catch (e) {
-    console.error('Failed to save page records:', e);
-  }
-}
-
-/**
- * One-shot migration for records written before normalizedUrl existed.
- * Per the 2026-06 refactor decision, records lacking the field are treated
- * as legacy and dropped (clean rebuild) — embeddings were generated against
- * a misconfigured provider in most cases, so re-indexing is preferable.
- */
-export async function dropLegacyRecords(): Promise<void> {
-  const records = await getPageRecords();
-  const kept = records.filter((r) => r && typeof r.normalizedUrl === 'string');
-  if (kept.length !== records.length) await savePageRecords(kept);
-}
-
-// --- Cosine Similarity -----------------------------------------------------
-
-function dotProduct(a: number[], b: number[]): number {
-  let sum = 0;
-  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
-  return sum;
-}
-
-function magnitude(v: number[]): number {
-  let sum = 0;
-  for (let i = 0; i < v.length; i++) sum += v[i] * v[i];
-  return Math.sqrt(sum);
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  const magA = magnitude(a);
-  const magB = magnitude(b);
-  if (magA === 0 || magB === 0) return 0;
-  return dotProduct(a, b) / (magA * magB);
-}
 
 // --- Embedding configuration probe ----------------------------------------
 
@@ -220,29 +180,13 @@ export async function requestEmbedding(text: string, url: string, title: string)
   });
 }
 
-// --- Store Page Record -----------------------------------------------------
+// --- Store Page Record (via service worker) --------------------------------
 
 async function storePageRecord(record: Omit<PageRecord, 'id' | 'timestamp'>): Promise<void> {
-  const records = await getPageRecords();
-
-  // Update existing record for same normalizedUrl rather than creating a
-  // duplicate. This is the fix for the "different utm params → duplicate
-  // entries + self-match failure" bug.
-  const existingIdx = records.findIndex((r) => r.normalizedUrl === record.normalizedUrl);
-  if (existingIdx >= 0) {
-    records[existingIdx] = { ...records[existingIdx], ...record, timestamp: Date.now() };
-  } else {
-    records.push({ ...record, id: crypto.randomUUID(), timestamp: Date.now() });
-  }
-
-  // FIFO cleanup — oldest records evicted when exceeding max.
-  // Use a single splice rather than repeated O(n) shifts.
   const cfg = await loadEmbeddingConfig();
-  if (records.length > cfg.maxPages) {
-    records.splice(0, records.length - cfg.maxPages);
-  }
-
-  await savePageRecords(records);
+  const req: PageRecordsStoreMessage = { action: 'pageRecords:store', record, maxPages: cfg.maxPages };
+  const res = await sendMessage(req) as PageRecordsStoreResponse | undefined;
+  if (!res?.success) throw new Error(res?.error || 'pageRecords:store failed');
 
   state.hasNewRelations = true;
   updateBadge();
@@ -266,28 +210,24 @@ function scheduleAutoRefresh(): void {
   }, REFRESH_DEBOUNCE_MS);
 }
 
-// --- Find Related Pages ----------------------------------------------------
+// --- Find Related Pages (ranked in the service worker) ---------------------
 
 export async function findRelatedPages(currentNormalizedUrl: string): Promise<PageRelation[]> {
   // Idempotent: callers (renderRelatedPages) already normalize, but direct
   // callers (tests, future code) might not. normalizeUrl is stable so this
   // is safe to call on already-normalized input.
   const target = normalizeUrl(currentNormalizedUrl);
-  const records = await getPageRecords();
-  const currentRecord = records.find((r) => r.normalizedUrl === target);
-  if (!currentRecord || !currentRecord.embedding?.length) return [];
-
   const cfg = await loadEmbeddingConfig();
 
-  const relations: PageRelation[] = [];
-  for (const record of records) {
-    if (record.normalizedUrl === target || !record.embedding?.length) continue;
-    const similarity = cosineSimilarity(currentRecord.embedding, record.embedding);
-    if (similarity >= cfg.threshold) relations.push({ record, similarity });
-  }
-
-  relations.sort((a, b) => b.similarity - a.similarity);
-  return relations.slice(0, 5);
+  const req: PageRecordsFindRelatedMessage = {
+    action: 'pageRecords:findRelated',
+    normalizedUrl: target,
+    threshold: cfg.threshold,
+    limit: 5,
+  };
+  const res = await sendMessage(req) as PageRecordsFindRelatedResponse | undefined;
+  if (!res?.success) throw new Error(res?.error || 'pageRecords:findRelated failed');
+  return res.relations ?? [];
 }
 
 // --- Time Formatting -------------------------------------------------------
@@ -493,7 +433,7 @@ async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<vo
   }
 }
 
-// --- Clear All (delegates to shared/page-records) --------------------------
+// --- Clear All (delegates to shared/page-records-db) -----------------------
 
 export async function clearAllPageRecords(): Promise<void> {
   await clearPageRecords();
@@ -543,8 +483,8 @@ export function initRelatedPages(deps: RelatedPagesDeps): void {
     setCollapsed(!listContainer.classList.contains('collapsed'));
   });
 
-  // Drop legacy records (no normalizedUrl) on first init — clean rebuild.
-  void dropLegacyRecords();
+  // Legacy chrome.storage.local records are migrated to IndexedDB by the
+  // service worker (sw-related-pages.ts) before any store/find is served.
 
   // Subscribe to PAGE_EXTRACTED instead of being imported upward by the
   // page-extractor service. This keeps the dependency direction
