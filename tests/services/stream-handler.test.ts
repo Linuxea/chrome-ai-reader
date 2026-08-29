@@ -169,11 +169,15 @@ describe('services/stream-handler', () => {
       await callAI([], 1);
 
       port._simulateMessage({ type: 'thinking', content: 'Let me think' });
-      port._simulateMessage({ type: 'thinking', content: ' more' });
-
-      // marked.parse should have been called with accumulated text
-      expect(marked.parse).toHaveBeenCalledWith('Let me think more');
+      // First token flushes immediately...
+      expect(marked.parse).toHaveBeenCalledWith('Let me think');
       expect(domMock.removeTypingIndicator).toHaveBeenCalled();
+
+      // ...later tokens buffer (throttled) until the final flush on done
+      port._simulateMessage({ type: 'thinking', content: ' more' });
+      expect(marked.parse).not.toHaveBeenCalledWith('Let me think more');
+      port._simulateMessage({ type: 'done' });
+      expect(marked.parse).toHaveBeenLastCalledWith('Let me think more');
     });
 
     it('shows elapsed time from first thinking token to first answer chunk', async () => {
@@ -201,8 +205,11 @@ describe('services/stream-handler', () => {
 
       port._simulateMessage({ type: 'chunk', content: 'Hello' });
       port._simulateMessage({ type: 'chunk', content: ' world' });
+      port._simulateMessage({ type: 'done' });
 
       expect(domMock.removeTypingIndicator).toHaveBeenCalled();
+      // First flush scrolls hard; the final flush (done) uses the smart variant
+      expect(domMock.scrollToBottom).toHaveBeenCalled();
       expect(domMock.smartScrollToBottom).toHaveBeenCalled();
     });
 
@@ -349,6 +356,73 @@ describe('services/stream-handler', () => {
 
       // User message should be removed (no response received)
       expect(tabState.conversationHistory).toHaveLength(0);
+    });
+  });
+
+  // ==========================================================================
+  // stream render throttling
+  // ==========================================================================
+  describe('stream render throttling', () => {
+    it('flushes the first chunk immediately and buffers subsequent chunks until the interval elapses', async () => {
+      // Fake only timers — performance.now stays real, which is fine because
+      // the buffered messages are simulated synchronously (elapsed ≈ 0ms).
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        await callAI([], 1);
+
+        port._simulateMessage({ type: 'chunk', content: 'Hello' });
+        expect(marked.parse).toHaveBeenCalledTimes(1);
+
+        port._simulateMessage({ type: 'chunk', content: ' world' });
+        port._simulateMessage({ type: 'chunk', content: '!' });
+        expect(marked.parse).toHaveBeenCalledTimes(1); // still buffered
+
+        vi.advanceTimersByTime(100);
+        expect(marked.parse).toHaveBeenCalledTimes(2);
+        expect(marked.parse).toHaveBeenLastCalledWith('Hello world!');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('performs a final flush on done with the full text', async () => {
+      await callAI([], 1);
+
+      port._simulateMessage({ type: 'chunk', content: 'par' });
+      port._simulateMessage({ type: 'chunk', content: 'tial answer' });
+      port._simulateMessage({ type: 'done' });
+
+      expect(marked.parse).toHaveBeenLastCalledWith('partial answer');
+    });
+
+    it('closes an unterminated code fence before parsing', async () => {
+      await callAI([], 1);
+
+      port._simulateMessage({ type: 'chunk', content: 'text\n```js\nconst a = 1;' });
+      // one ``` marker → odd → balanced with a closing fence
+      expect(marked.parse).toHaveBeenLastCalledWith('text\n```js\nconst a = 1;\n```');
+
+      // two ``` markers → even → text parsed as-is
+      port._simulateMessage({ type: 'chunk', content: '\n```' });
+      expect(marked.parse).toHaveBeenLastCalledWith('text\n```js\nconst a = 1;\n```');
+    });
+
+    it('does not flush after an error cancels the pending flush', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        await callAI([], 1);
+
+        port._simulateMessage({ type: 'chunk', content: 'Hello' }); // immediate flush
+        marked.parse.mockClear();
+
+        port._simulateMessage({ type: 'chunk', content: ' world' }); // buffered
+        port._simulateMessage({ type: 'error', error: 'boom' });
+
+        vi.advanceTimersByTime(200);
+        expect(marked.parse).not.toHaveBeenCalled(); // canceled with the error path
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

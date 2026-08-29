@@ -13,6 +13,19 @@
   <link rel="stylesheet" href="podcast.css">
   <link rel="stylesheet" href="related-pages.css">
   <link rel="stylesheet" href="annotation.css">
+  <script>
+    /* Re-apply the cached theme before first paint (avoids a light flash in
+       dark mode). chrome.storage is the source of truth; initTheme() corrects
+       this once it resolves and keeps the cache fresh. */
+    try {
+      var c = JSON.parse(localStorage.getItem('themeCache') || 'null');
+      if (c) {
+        var de = document.documentElement;
+        de.setAttribute('data-theme', c.dark ? 'dark' : 'light');
+        de.setAttribute('data-theme-name', c.themeName || 'sujian');
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div class="container">

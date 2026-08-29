@@ -97,10 +97,19 @@ export async function switchToTab(newTabId: number): Promise<void> {
 }
 
 export async function initState(): Promise<void> {
-  const data = await chrome.storage.sync.get(['systemPrompt']);
-  if (data.systemPrompt) _customSystemPrompt = data.systemPrompt as string;
+  // All four reads are independent — start them together. Only the
+  // session.get below depends on tabs.query's result.
+  const [data, tabs, local, syncData] = await Promise.all([
+    chrome.storage.sync.get(['systemPrompt']),
+    chrome.tabs.query({ active: true, currentWindow: true }),
+    chrome.storage.local.get(['quickCommands']),
+    chrome.storage.sync.get(['suggestQuestions']),
+  ]);
 
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (data.systemPrompt) _customSystemPrompt = data.systemPrompt as string;
+  if (local.quickCommands) _quickCommands = local.quickCommands as QuickCommand[];
+  if (syncData.suggestQuestions !== undefined) _suggestQuestionsEnabled = syncData.suggestQuestions as boolean;
+
   if (tabs[0]?.id != null) {
     const tabId = tabs[0].id;
     _activeTabId = tabId;
@@ -108,12 +117,6 @@ export async function initState(): Promise<void> {
     _activeState = (stored[`tabState_${tabId}`] as TabState | undefined) || createFreshTabState();
     _tabStates.set(tabId, _activeState);
   }
-
-  const local = await chrome.storage.local.get(['quickCommands']);
-  if (local.quickCommands) _quickCommands = local.quickCommands as QuickCommand[];
-
-  const syncData = await chrome.storage.sync.get(['suggestQuestions']);
-  if (syncData.suggestQuestions !== undefined) _suggestQuestionsEnabled = syncData.suggestQuestions as boolean;
 
   // Register tab-cleanup listener during init (not at module load) so tests
   // can import state.ts without chrome.tabs being present first.

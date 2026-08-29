@@ -78,6 +78,21 @@ function saveChatHistories(histories: ChatHistoryEntry[]): Promise<void> {
   });
 }
 
+/**
+ * UI chrome injected into live message elements after render — buttons
+ * (copy/TTS/download) and thinking/typing blocks. Stripped before persisting,
+ * and again when loading legacy records that stored it, so saved chats hold
+ * content only and reloads don't resurrect dead buttons.
+ */
+const MESSAGE_CHROME_SELECTOR = '.tts-btn, .tts-download-btn, .ai-action-btn, .thinking-block, .typing-indicator';
+
+export function stripMessageChrome(html: string): string {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  tmp.querySelectorAll(MESSAGE_CHROME_SELECTOR).forEach(el => el.remove());
+  return tmp.innerHTML;
+}
+
 export function getDisplayMessages(): DisplayMessage[] {
   const msgEls = _chatArea.querySelectorAll('.message');
   const messages: DisplayMessage[] = [];
@@ -92,7 +107,7 @@ export function getDisplayMessages(): DisplayMessage[] {
           type: 'outline',
         });
       } else {
-        messages.push({ role: 'assistant', content: el.innerHTML });
+        messages.push({ role: 'assistant', content: stripMessageChrome(el.innerHTML) });
       }
     }
   });
@@ -197,7 +212,8 @@ async function loadChat(id: string): Promise<void> {
           div.innerHTML = marked.parse(msg.content) as string;
         }
       } else {
-        div.innerHTML = msg.content;
+        // Legacy records may contain persisted UI chrome — strip it on the way in.
+        div.innerHTML = stripMessageChrome(msg.content);
       }
     }
     _chatArea.appendChild(div);

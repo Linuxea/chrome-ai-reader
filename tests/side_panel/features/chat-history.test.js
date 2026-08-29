@@ -37,6 +37,9 @@ import {
   generateTitle,
   sanitizeFilename,
   stripHtml,
+  initChatHistory,
+  getDisplayMessages,
+  stripMessageChrome,
 } from '../../../src/side_panel/features/chat-history.js';
 
 describe('generateTitle', () => {
@@ -112,5 +115,54 @@ describe('stripHtml', () => {
 
   it('handles empty string', () => {
     expect(stripHtml('')).toBe('');
+  });
+});
+
+describe('stripMessageChrome / getDisplayMessages', () => {
+  function setupChatArea() {
+    const chatArea = document.createElement('div');
+    initChatHistory({
+      chatArea,
+      historyPanel: document.createElement('div'),
+      historyList: document.createElement('div'),
+      onLoadChat: vi.fn(),
+      onRenderOutline: vi.fn(),
+      onOutlineToMarkdown: vi.fn(),
+    });
+    return chatArea;
+  }
+
+  it('strips persisted UI chrome from legacy HTML', () => {
+    const legacy = '<p>answer</p>' +
+      '<button class="ai-action-btn">copy</button>' +
+      '<button class="tts-btn">tts</button>' +
+      '<button class="tts-download-btn">dl</button>' +
+      '<details class="thinking-block"><summary>thinking</summary><div>reasoning</div></details>' +
+      '<div class="typing-indicator"><span></span></div>';
+    expect(stripMessageChrome(legacy)).toBe('<p>answer</p>');
+  });
+
+  it('leaves content-only HTML untouched', () => {
+    expect(stripMessageChrome('<p>hello <strong>world</strong></p><pre><code>x</code></pre>'))
+      .toBe('<p>hello <strong>world</strong></p><pre><code>x</code></pre>');
+  });
+
+  it('getDisplayMessages persists assistant content without buttons', () => {
+    const chatArea = setupChatArea();
+
+    const ai = document.createElement('div');
+    ai.className = 'message message-ai';
+    ai.innerHTML = '<p>answer</p><button class="tts-btn"></button><details class="thinking-block"><summary>s</summary></details>';
+    chatArea.appendChild(ai);
+
+    const user = document.createElement('div');
+    user.className = 'message message-user';
+    user.textContent = 'question';
+    chatArea.appendChild(user);
+
+    expect(getDisplayMessages()).toEqual([
+      { role: 'assistant', content: '<p>answer</p>' },
+      { role: 'user', content: 'question' },
+    ]);
   });
 });

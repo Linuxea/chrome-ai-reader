@@ -54,6 +54,70 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   function isCurrentTab(): boolean { return state.getActiveTabId() === tabId; }
 
+  // --- Streamed render throttling -------------------------------------------
+  // marked.parse over the full accumulated text is O(n); running it once per
+  // SSE chunk (10–50/s) makes a long answer O(n²) CPU, plus an innerHTML
+  // rebuild and a forced reflow (smartScrollToBottom reads scrollHeight) each
+  // time. Chunks buffer into fullText/thinkingText and the DOM is refreshed at
+  // most once per interval; `done` always performs a final flush.
+  const STREAM_FLUSH_INTERVAL_MS = 80;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFlushAt = 0;
+  let contentFlushCount = 0;
+
+  /** Close an unterminated ``` fence so partially streamed code blocks render stably. */
+  function balanceFences(text: string): string {
+    const fenceCount = text.match(/^\s{0,3}```/gm)?.length ?? 0;
+    return fenceCount % 2 === 1 ? text + '\n```' : text;
+  }
+
+  function flushContent(): void {
+    if (!contentEl || !contentEl.isConnected) return;
+    contentEl.innerHTML = marked.parse(balanceFences(fullText)) as string;
+    /* Force-scroll on the first answer flush: the thinking <details> just
+       got collapsed above, which (together with overflow-anchor) is the
+       exact trigger for the scroll-stops-following bug. Even with
+       overflow-anchor:none, pinning scrollTop to the bottom at the
+       thinking→answer handoff guarantees the view starts tracking the
+       answer from its first character. Subsequent flushes use the
+       smart variant so users can scroll up to read without fighting it. */
+    if (contentFlushCount === 0) scrollToBottom();
+    else smartScrollToBottom();
+    contentFlushCount++;
+  }
+
+  function flushThinking(): void {
+    if (!thinkingContentEl || !thinkingContentEl.isConnected) return;
+    thinkingContentEl.innerHTML = marked.parse(balanceFences(thinkingText)) as string;
+    smartScrollToBottom();
+  }
+
+  function flushNow(): void {
+    lastFlushAt = performance.now();
+    if (thinkingEl && thinkingEl.open) flushThinking();
+    if (contentEl) flushContent();
+  }
+
+  function cancelScheduledFlush(): void {
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+  }
+
+  function scheduleFlush(): void {
+    if (flushTimer !== null) return; // pending timer picks up the buffered text
+    const elapsed = performance.now() - lastFlushAt;
+    if (elapsed >= STREAM_FLUSH_INTERVAL_MS) {
+      flushNow();
+    } else {
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushNow();
+      }, STREAM_FLUSH_INTERVAL_MS - elapsed);
+    }
+  }
+
   interface StreamMessage {
     type: string;
     content?: string;
@@ -83,11 +147,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       }
 
       if (isCurrentTab() && msgEl.isConnected && thinkingContentEl) {
-        thinkingContentEl.innerHTML = marked.parse(thinkingText) as string;
-        smartScrollToBottom();
+        scheduleFlush();
       }
     } else if (msg.type === 'chunk') {
-      const isFirstChunk = fullText === '';
       if (thinkingStartedAt !== null && thinkingSummaryEl) {
         const elapsedSeconds = (performance.now() - thinkingStartedAt) / 1000;
         thinkingSummaryEl.textContent = `${t('ai.thinking')} · ${elapsedSeconds.toFixed(1)}s`;
@@ -105,21 +167,14 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       }
 
       if (isCurrentTab() && msgEl.isConnected && contentEl) {
-        contentEl.innerHTML = marked.parse(fullText) as string;
-        /* Force-scroll on the first answer chunk: the thinking <details> just
-           got collapsed above, which (together with overflow-anchor) is the
-           exact trigger for the scroll-stops-following bug. Even with
-           overflow-anchor:none, pinning scrollTop to the bottom at the
-           thinking→answer handoff guarantees the view starts tracking the
-           answer from its first character. Subsequent chunks use the
-           smart variant so users can scroll up to read without fighting it. */
-        if (isFirstChunk) scrollToBottom();
-        else smartScrollToBottom();
+        scheduleFlush();
       }
       if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
     } else if (msg.type === 'done') {
+      cancelScheduledFlush();
+      flushNow(); // render the complete text before buttons/summary attach
       appendHistory(tabState, { role: 'assistant', content: fullText }, tabId!);
       tabState.isGenerating = false;
       state.persistForTab(tabId!);
@@ -145,6 +200,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         }
       }
     } else if (msg.type === 'error') {
+      cancelScheduledFlush(); // no pending flush may clobber the error bubble
       rollbackTrailingUserMessage(tabState, tabId!);
       tabState.isGenerating = false;
       state.persistForTab(tabId!);
@@ -167,6 +223,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   });
 
   port.onDisconnect.addListener(() => {
+    cancelScheduledFlush();
     if (tabState.isGenerating) {
       if (isCurrentTab() && msgEl.isConnected) {
         removeTypingIndicator(typingEl);

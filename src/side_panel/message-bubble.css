@@ -5,6 +5,10 @@
   line-height: 1.75;
   word-wrap: break-word;
   animation: msg-in 0.25s ease;
+  /* Skip layout/paint for offscreen messages — long conversations scroll and
+     re-render far cheaper. auto keeps the last rendered size once known. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
 }
 
 @keyframes msg-in {

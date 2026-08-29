@@ -68,6 +68,8 @@ export function cleanupPodcastAudio(): void {
   podcastPort = null;
   podcastChunkQueue = []; podcastAudioChunks = []; podcastBufferAppending = false; _podcastTitle = ''; _roundTimings = [];
   _activeCard = null;
+  _progressRefs = null;
+  _lastPlayIconState = null;
   notifyPlayState(false);
 }
 
@@ -89,8 +91,10 @@ function initPodcastPlayback(card: HTMLElement): void {
   });
   audio.addEventListener('timeupdate', () => { if (_activeCard) updatePlayerProgress(_activeCard); });
   audio.addEventListener('ended', () => { if (_activeCard) _showStatus!(_activeCard, 'done'); notifyPlayState(false); });
-  audio.addEventListener('play', () => notifyPlayState(true));
-  audio.addEventListener('pause', () => notifyPlayState(false));
+  /* Icon flips here (event-driven) rather than waiting for the next timeupdate,
+     so the button reacts to play/pause immediately. */
+  audio.addEventListener('play', () => { notifyPlayState(true); if (_activeCard?.isConnected) updatePlayButton(getProgressRefs(_activeCard)); });
+  audio.addEventListener('pause', () => { notifyPlayState(false); if (_activeCard?.isConnected) updatePlayButton(getProgressRefs(_activeCard)); });
   _showStatus!(card, 'playing');
 }
 
@@ -101,22 +105,62 @@ function appendPodcastChunk(): void {
   try { podcastSourceBuffer.appendBuffer(chunk); } catch (e) { console.error('[Podcast] appendBuffer error:', e); podcastBufferAppending = false; }
 }
 
+/**
+ * Cached refs for the active card's player widgets. `timeupdate` fires ~4x/s
+ * and scrubbing fires per mousemove — re-querying four selectors per tick and
+ * swapping the play-button innerHTML each tick is pure waste. The cache is
+ * keyed on card identity, so a rebuilt card (tab switch) re-queries once.
+ */
+interface ProgressRefs {
+  card: HTMLElement;
+  fill: HTMLElement | null;
+  thumb: HTMLElement | null;
+  time: HTMLElement | null;
+  playBtn: HTMLElement | null;
+}
+let _progressRefs: ProgressRefs | null = null;
+let _lastPlayIconState: boolean | null = null;
+
+function getProgressRefs(card: HTMLElement): ProgressRefs {
+  if (!_progressRefs || _progressRefs.card !== card) {
+    _progressRefs = {
+      card,
+      fill: card.querySelector('.podcast-progress-fill'),
+      thumb: card.querySelector('.podcast-progress-thumb'),
+      time: card.querySelector('.podcast-time'),
+      playBtn: card.querySelector('.podcast-play-btn'),
+    };
+    _lastPlayIconState = null;
+  }
+  return _progressRefs;
+}
+
+const PLAY_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+const PAUSE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+
+function updatePlayButton(refs: ProgressRefs): void {
+  if (!refs.playBtn || !podcastAudioEl) return;
+  const playing = !podcastAudioEl.paused;
+  if (playing === _lastPlayIconState) return;
+  _lastPlayIconState = playing;
+  refs.playBtn.innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
+  refs.playBtn.title = playing ? t('podcast.pause') : t('podcast.play');
+}
+
+function setProgressRatio(refs: ProgressRefs, ratio: number): void {
+  const clamped = Math.max(0, Math.min(1, ratio));
+  if (refs.fill) refs.fill.style.transform = `scaleX(${clamped})`;
+  if (refs.thumb) refs.thumb.style.left = (clamped * 100) + '%';
+}
+
 function updatePlayerProgress(card: HTMLElement): void {
   if (!podcastAudioEl || !card.isConnected) return;
-  const fill = card.querySelector('.podcast-progress-fill') as HTMLElement | null;
-  const thumb = card.querySelector('.podcast-progress-thumb') as HTMLElement | null;
-  const timeEl = card.querySelector('.podcast-time') as HTMLElement | null;
-  const playBtn = card.querySelector('.podcast-play-btn') as HTMLElement | null;
+  const refs = getProgressRefs(card);
   if (podcastAudioEl.duration && isFinite(podcastAudioEl.duration)) {
-    const pct = (podcastAudioEl.currentTime / podcastAudioEl.duration) * 100;
-    if (fill) fill.style.width = pct + '%';
-    if (thumb) thumb.style.left = pct + '%';
-    if (timeEl) timeEl.textContent = `${formatDuration(podcastAudioEl.currentTime)} / ${formatDuration(podcastAudioEl.duration)}`;
+    setProgressRatio(refs, podcastAudioEl.currentTime / podcastAudioEl.duration);
+    if (refs.time) refs.time.textContent = `${formatDuration(podcastAudioEl.currentTime)} / ${formatDuration(podcastAudioEl.duration)}`;
   }
-  if (playBtn) {
-    if (podcastAudioEl.paused) { playBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`; playBtn.title = t('podcast.play'); }
-    else { playBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`; playBtn.title = t('podcast.pause'); }
-  }
+  updatePlayButton(refs);
   if (_roundTimings.length > 0 && !podcastAudioEl.paused) {
     const ct = podcastAudioEl.currentTime; let roundIdx = -1;
     for (let i = 0; i < _roundTimings.length; i++) { if (ct >= _roundTimings[i].startTime && ct < _roundTimings[i].endTime) { roundIdx = i; break; } }
@@ -147,11 +191,9 @@ function applySeek(card: HTMLElement, ratio: number): void {
   const targetTime = ratio * podcastAudioEl!.duration;
   if (podcastSourceBuffer && podcastSourceBuffer.buffered.length > 0) podcastAudioEl!.currentTime = Math.min(targetTime, podcastSourceBuffer.buffered.end(podcastSourceBuffer.buffered.length - 1));
   else podcastAudioEl!.currentTime = targetTime;
-  const fill = card.querySelector('.podcast-progress-fill') as HTMLElement | null;
-  const thumb = card.querySelector('.podcast-progress-thumb') as HTMLElement | null;
-  const timeEl = card.querySelector('.podcast-time') as HTMLElement | null;
-  if (fill) fill.style.width = (ratio * 100) + '%'; if (thumb) thumb.style.left = (ratio * 100) + '%';
-  if (timeEl) timeEl.textContent = `${formatDuration(podcastAudioEl!.currentTime)} / ${formatDuration(podcastAudioEl!.duration)}`;
+  const refs = getProgressRefs(card);
+  setProgressRatio(refs, ratio);
+  if (refs.time) refs.time.textContent = `${formatDuration(podcastAudioEl!.currentTime)} / ${formatDuration(podcastAudioEl!.duration)}`;
   syncHighlightToTime(podcastAudioEl!.currentTime, card);
 }
 

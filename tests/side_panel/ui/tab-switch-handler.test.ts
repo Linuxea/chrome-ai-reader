@@ -19,6 +19,7 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   getConversationHistory: vi.fn(() => []),
 }));
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
+  scrollToBottom: vi.fn(),
   appendMessage: vi.fn(() => {
     const el = document.createElement('div');
     return el;
@@ -43,7 +44,7 @@ import {
   type GlobalEventDeps,
 } from '../../../src/side_panel/ui/tab-switch-handler';
 import * as stateMock from '../../../src/side_panel/state.js';
-import { appendMessage, appendMessageFromHistory } from '../../../src/side_panel/ui/dom-helpers.js';
+import { appendMessage, appendMessageFromHistory, scrollToBottom } from '../../../src/side_panel/ui/dom-helpers.js';
 
 function createEls(): UIElements {
   return {
@@ -152,10 +153,18 @@ describe('ui/tab-switch-handler', () => {
 
       resetUIForTabSwitch(els, deps);
 
-      // appendMessageFromHistory called for each message
+      // appendMessageFromHistory called for each message, batched into a
+      // detached fragment with per-message scrolling deferred
       expect(appendMessageFromHistory).toHaveBeenCalledTimes(2);
-      expect(appendMessageFromHistory).toHaveBeenCalledWith({ role: 'user', content: 'question' });
-      expect(appendMessageFromHistory).toHaveBeenCalledWith({ role: 'assistant', content: 'answer' });
+      expect(appendMessageFromHistory).toHaveBeenCalledWith(
+        { role: 'user', content: 'question' },
+        { target: expect.any(DocumentFragment), deferScroll: true },
+      );
+      expect(appendMessageFromHistory).toHaveBeenCalledWith(
+        { role: 'assistant', content: 'answer' },
+        { target: expect.any(DocumentFragment), deferScroll: true },
+      );
+      expect(scrollToBottom).toHaveBeenCalledTimes(1);
     });
 
     it('shows welcome message when no history', () => {

@@ -21,8 +21,17 @@ export function initDOMHelpers({ chatArea, actionBtns, sendBtn }: DOMHelperDeps)
   _sendBtn = sendBtn;
 }
 
-export function appendMessage(role: string, content: string, imageUris?: string[]): HTMLDivElement {
-  const welcome = _chatArea.querySelector(CSS.WELCOME_MSG);
+/** Options for batch rendering (tab switch / history reload). */
+export interface AppendOptions {
+  /** Append into this node instead of the chat area — lets callers build a DocumentFragment. */
+  target?: HTMLElement | DocumentFragment;
+  /** Skip the per-message scroll-to-bottom; batch callers scroll once at the end. */
+  deferScroll?: boolean;
+}
+
+export function appendMessage(role: string, content: string, imageUris?: string[], options?: AppendOptions): HTMLDivElement {
+  const parent = options?.target ?? _chatArea;
+  const welcome = parent.querySelector(CSS.WELCOME_MSG);
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
@@ -41,12 +50,12 @@ export function appendMessage(role: string, content: string, imageUris?: string[
   if (role === 'user') {
     const wrapper = wrapUserMessage(div);
     addUserActions(wrapper, div);
-    _chatArea.appendChild(wrapper);
+    parent.appendChild(wrapper);
   } else {
-    _chatArea.appendChild(div);
+    parent.appendChild(div);
   }
 
-  scrollToBottom();
+  if (!options?.deferScroll) scrollToBottom();
   return div;
 }
 
@@ -260,11 +269,11 @@ export function setButtonsDisabled(disabled: boolean): void {
  * `hadImages: true` with string content means images were stripped at
  * persistence time → show an "image lost" hint.
  */
-export function appendMessageFromHistory(msg: ChatMessage): HTMLDivElement {
+export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptions): HTMLDivElement {
   const imageUris = extractImageUrisFromContent(msg);
   const text = extractTextFromContent(msg);
   const role = msg.role === 'assistant' ? 'ai' : msg.role;
-  const div = appendMessage(role, text, imageUris);
+  const div = appendMessage(role, text, imageUris, options);
 
   if (msg.hadImages && imageUris.length === 0) {
     const hint = document.createElement('div');

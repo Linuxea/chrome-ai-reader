@@ -1,7 +1,7 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
-import { appendMessage, appendMessageFromHistory } from './dom-helpers';
+import { appendMessageFromHistory, scrollToBottom } from './dom-helpers';
 import { clearImagePreviews } from '../services/ocr.js';
 import { updateQuotePreview } from './global-events';
 import type { ChatMessage } from '../../shared/types';
@@ -45,9 +45,14 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
   els.chatArea.innerHTML = '';
 
   if (history.length > 0) {
+    /* Batch render into a detached fragment: no per-message scroll/forced
+       reflow, one repaint when the fragment attaches. */
+    const frag = document.createDocumentFragment();
     for (const msg of history) {
-      appendMessageFromHistory(msg);
+      appendMessageFromHistory(msg, { target: frag, deferScroll: true });
     }
+    els.chatArea.appendChild(frag);
+    scrollToBottom();
   } else {
     els.chatArea.innerHTML = `<div class="welcome-msg"><p>${t('sidebar.welcome')}</p></div>`;
   }
