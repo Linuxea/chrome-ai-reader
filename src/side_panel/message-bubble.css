@@ -147,6 +147,29 @@
   text-align: center;
 }
 
+.error-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.error-action-btn {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 4px);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.error-action-btn:hover {
+  opacity: 1;
+  background: rgba(127, 127, 127, 0.15);
+}
+
 .image-lost-hint {
   font-size: 12px;
   color: var(--text-secondary, #999);

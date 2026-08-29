@@ -7,7 +7,7 @@
  */
 
 import type { Annotation } from '../../shared/types';
-import { ICON_BY_PERSPECTIVE, LABEL_BY_PERSPECTIVE } from '../annotation-meta';
+import { ICON_BY_PERSPECTIVE, getPerspectiveLabel, getBubbleTexts } from '../annotation-meta';
 
 // --- Bubble rendering (Shadow-DOM isolated) ---
 
@@ -92,7 +92,7 @@ export function createIconFor(
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `anno-icon anno-icon-${annotation.perspective}`;
-  button.setAttribute('aria-label', LABEL_BY_PERSPECTIVE[annotation.perspective]);
+  button.setAttribute('aria-label', getPerspectiveLabel(annotation.perspective));
   button.textContent = ICON_BY_PERSPECTIVE[annotation.perspective];
   button.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -114,14 +114,15 @@ function openBubble(anchor: HTMLElement, annotation: Annotation, onFollowUp?: (a
 
   const bubble = document.createElement('div');
   bubble.className = `anno-bubble ${annotation.perspective}`;
+  const texts = getBubbleTexts();
   bubble.innerHTML = `
     <div class="anno-bubble-header">
       <span>${ICON_BY_PERSPECTIVE[annotation.perspective]}</span>
-      <span class="anno-bubble-label">${LABEL_BY_PERSPECTIVE[annotation.perspective]}</span>
-      <button class="anno-bubble-close" type="button" aria-label="close">✕</button>
+      <span class="anno-bubble-label">${getPerspectiveLabel(annotation.perspective)}</span>
+      <button class="anno-bubble-close" type="button" aria-label="${texts.close}">✕</button>
     </div>
     <div class="anno-comment"></div>
-    <button class="anno-followup" type="button">↩ 在对话中追问</button>
+    <button class="anno-followup" type="button">${texts.followUp}</button>
   `;
   // Set comment text safely (avoid HTML injection).
   (bubble.querySelector('.anno-comment') as HTMLElement).textContent = annotation.comment;

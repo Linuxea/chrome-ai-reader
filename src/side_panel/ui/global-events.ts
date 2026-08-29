@@ -1,6 +1,6 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
-import { setButtonsDisabled } from './dom-helpers';
+import { setButtonsDisabled, updateSendButtonDim } from './dom-helpers';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
 import { clearImagePreviews } from '../services/ocr.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
@@ -98,6 +98,7 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
   autoResize();
   els.userInput.addEventListener('input', () => {
     autoResize();
+    updateSendButtonDim();
     const value = els.userInput.value;
     if (value.startsWith('/')) updateCommandPopup(value);
     else if (isCommandPopupOpen()) hideCommandPopup();

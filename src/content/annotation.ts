@@ -25,6 +25,8 @@ export { findAndWrap, MARK_CLASS } from './annotation/quote-wrapper';
 
 export { getBubbleHost, createIconFor, type IconHandle } from './annotation/bubble-ui';
 
+export { initAnnotationLang } from './annotation-meta';
+
 export {
   handleStartAnnotation,
   handleClearAnnotation,

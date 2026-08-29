@@ -9,12 +9,13 @@ import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
   appendMessage, appendMessageWithQuote,
-  removeLastMessage, setButtonsDisabled,
+  appendErrorMessage, emitRetryFromWrapper,
+  setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
 import { ensurePageContent } from './page-extractor';
-import { callAI } from './stream-handler';
+import { callAI, abortGeneration } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
@@ -45,17 +46,18 @@ export async function sendToAI(
 
   const quoteForContext = retryQuote || tabState.selectedText;
 
+  let userMsgEl: HTMLDivElement;
   if (quoteForContext) {
     const truncated = quoteForContext.length > 50
       ? quoteForContext.slice(0, 50) + '...'
       : quoteForContext;
-    const userMsgEl = appendMessageWithQuote(truncated, displayText, imageUris);
+    userMsgEl = appendMessageWithQuote(truncated, displayText, imageUris);
     userMsgEl.dataset.rawText = text;
     userMsgEl.dataset.rawQuote = quoteForContext;
     userMsgEl.dataset.rawDisplay = displayText;
     emit(EVENTS.CLEAR_QUOTE_PREVIEW);
   } else {
-    const userMsgEl = appendMessage('user', displayText, imageUris);
+    userMsgEl = appendMessage('user', displayText, imageUris);
     userMsgEl.dataset.rawText = text;
     userMsgEl.dataset.rawDisplay = displayText;
   }
@@ -129,8 +131,14 @@ export async function sendToAI(
   } catch (e: unknown) {
     const errMsg = toErrorMessage(e);
     if (state.getActiveTabId() === startTabId) {
-      removeLastMessage();
-      appendMessage('error', errMsg);
+      // Keep the user bubble — removing it used to destroy the typed text with
+      // no way back. The retry action re-sends it via the RETRY event; history
+      // was already rolled back below, so the re-truncate is a no-op.
+      const wrapper = userMsgEl.closest('.user-msg-group') as HTMLElement | null;
+      const actions = wrapper
+        ? [{ label: t('action.retry'), onClick: () => emitRetryFromWrapper(wrapper) }]
+        : [];
+      appendErrorMessage(errMsg, actions);
       state.setIsGenerating(false);
       setButtonsDisabled(false);
     }
@@ -141,8 +149,16 @@ export async function sendToAI(
 }
 
 export async function sendMessage(): Promise<void> {
+  /* While a generation is running the send button shows the stop icon; its
+     click aborts (handled by the ai-chat click listener). Keyboard sends
+     (Enter) must never abort — typing ahead is normal, so just ignore. */
+  if (state.getIsGenerating()) return;
+
   const text = _userInput.value.trim();
-  if (!text || state.getIsGenerating()) return;
+  if (!text) {
+    updateSendButtonDim();
+    return;
+  }
 
   const imageError = validateImageState();
   if (imageError) {

@@ -205,6 +205,42 @@ body {
   margin-bottom: 14px;
 }
 
+/* First-run onboarding card (no API key / model configured yet). */
+.onboarding-card {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 18px 16px;
+  margin: 0 12px;
+}
+
+.onboarding-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, var(--text-secondary));
+  margin-bottom: 8px;
+}
+
+.onboarding-hint {
+  font-size: 12px;
+  line-height: 1.8;
+  margin-bottom: 12px;
+}
+
+.onboarding-settings-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.onboarding-settings-btn:hover {
+  background: var(--primary-hover);
+}
+
 /* ===== Input Area ===== */
 
 .input-area {
@@ -279,6 +315,16 @@ body {
 .send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Send button doubles as the stop control while generating. */
+.send-btn.is-stop {
+  background: var(--error-text, #d93025);
+}
+
+/* Dimmed while the input is empty (visual affordance; still clickable). */
+.send-btn.send-dim {
+  opacity: 0.4;
 }
 
 /* ===== Image Preview Bar ===== */
@@ -574,6 +620,11 @@ body {
 .ai-action-btn:hover {
   opacity: 1;
   color: var(--primary);
+}
+
+.ai-action-btn.copied {
+  opacity: 1;
+  color: #22a06b;
 }
 
 .tts-btn svg,

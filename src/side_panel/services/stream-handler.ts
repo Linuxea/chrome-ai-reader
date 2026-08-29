@@ -1,11 +1,12 @@
 import { t } from '../../shared/i18n.js';
-import { escapeHtml } from '../../shared/constants';
+import { openOptionsPage } from '../../platform/messaging';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
   appendMessage, addTypingIndicator,
   removeTypingIndicator, scrollToBottom, smartScrollToBottom,
   setButtonsDisabled,
+  addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore,
 } from '../ui/dom-helpers';
 import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
@@ -17,8 +18,20 @@ import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './c
 
 let _chatArea: HTMLElement;
 
+/** Live streams by tab id — lets the stop button abort the active generation. */
+const _activeStreams = new Map<number, { port: chrome.runtime.Port; abort: () => void }>();
+
 export function initStreamHandler({ chatArea }: { chatArea: HTMLElement }): void {
   _chatArea = chatArea;
+}
+
+/**
+ * Abort the active generation for `tabId`. The port disconnect triggers the
+ * graceful onDisconnect path, which (unlike an unexpected disconnect) finalizes
+ * the partial answer into history so nothing already streamed is lost.
+ */
+export function abortGeneration(tabId: number): void {
+  _activeStreams.get(tabId)?.abort();
 }
 
 export async function callAI(messages: ChatMessage[], tabId: number | null): Promise<void> {
@@ -50,6 +63,12 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   port.postMessage({
     type: 'chat',
     messages: messages,
+  });
+
+  let userAborted = false;
+  _activeStreams.set(tabId!, {
+    port,
+    abort: () => { userAborted = true; port.disconnect(); },
   });
 
   function isCurrentTab(): boolean { return state.getActiveTabId() === tabId; }
@@ -213,9 +232,19 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         } else {
           removeTypingIndicator(typingEl);
           if (thinkingEl) thinkingEl.open = false;
-          const errorText = msg.errorKey ? t(msg.errorKey) : escapeHtml(msg.error || '')!;
+          const errorText = msg.errorKey ? t(msg.errorKey) : (msg.error || t('error.apiFailed'));
           msgEl.className = 'message message-error';
           msgEl.textContent = errorText;
+
+          // Actionable error: retry re-sends the failed user message; config
+          // errors additionally offer a shortcut into the options page.
+          const actions = [];
+          const wrapper = findUserWrapperBefore(msgEl);
+          if (wrapper) actions.push({ label: t('action.retry'), onClick: () => emitRetryFromWrapper(wrapper) });
+          if (msg.errorKey === 'error.noApiKey' || msg.errorKey === 'error.noModelName') {
+            actions.push({ label: t('action.openSettings'), onClick: () => { openOptionsPage(); } });
+          }
+          addErrorMessageActions(msgEl, actions);
           setButtonsDisabled(false);
         }
       }
@@ -224,6 +253,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   port.onDisconnect.addListener(() => {
     cancelScheduledFlush();
+    _activeStreams.delete(tabId!);
     if (tabState.isGenerating) {
       if (isCurrentTab() && msgEl.isConnected) {
         removeTypingIndicator(typingEl);
@@ -235,6 +265,21 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
           msgEl.textContent = t('error.apiFailed');
         }
         rollbackTrailingUserMessage(tabState, tabId!);
+      } else if (userAborted) {
+        /* User-requested stop: flush the buffered tail and finalize the partial
+           answer into history, so everything already streamed survives tab
+           switches and reopens. (An unexpected disconnect intentionally leaves
+           history untouched.) */
+        flushNow();
+        appendHistory(tabState, { role: 'assistant', content: fullText }, tabId!);
+        if (isCurrentTab()) {
+          if (!msgEl.isConnected) {
+            emit(EVENTS.REQUEST_RERENDER);
+          } else {
+            addTTSButton(msgEl);
+          }
+        }
+        emit(EVENTS.SAVE_CURRENT_CHAT);
       }
       tabState.isGenerating = false;
       state.persistForTab(tabId!);

@@ -276,16 +276,20 @@ describe('dom-helpers', () => {
   });
 
   describe('setButtonsDisabled', () => {
-    it('disables all action buttons and send button', () => {
+    it('disables all action buttons and morphs send into stop', () => {
       setButtonsDisabled(true);
       actionBtns.forEach(btn => expect(btn.disabled).toBe(true));
-      expect(sendBtn.disabled).toBe(true);
+      // Send button stays enabled as the stop control
+      expect(sendBtn.disabled).toBe(false);
+      expect(sendBtn.classList.contains('is-stop')).toBe(true);
     });
 
-    it('enables all action buttons and send button', () => {
+    it('enables all action buttons and restores the send icon', () => {
+      setButtonsDisabled(true);
       setButtonsDisabled(false);
       actionBtns.forEach(btn => expect(btn.disabled).toBe(false));
       expect(sendBtn.disabled).toBe(false);
+      expect(sendBtn.classList.contains('is-stop')).toBe(false);
     });
 
     it('skips podcast action button', () => {

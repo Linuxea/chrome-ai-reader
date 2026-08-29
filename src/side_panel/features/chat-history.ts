@@ -5,6 +5,7 @@ import { downloadFile } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
 import { stripImagesForPersistence } from '../services/chat/strip-images';
+import { addTTSButton } from '../services/tts/index.js';
 import { marked } from 'marked';
 import type { ChatMessage } from '../../shared/types';
 
@@ -215,6 +216,8 @@ async function loadChat(id: string): Promise<void> {
         // Legacy records may contain persisted UI chrome — strip it on the way in.
         div.innerHTML = stripMessageChrome(msg.content);
       }
+      // Restored answers get their copy/TTS/download buttons back.
+      addTTSButton(div);
     }
     _chatArea.appendChild(div);
   });
@@ -266,9 +269,21 @@ export async function renderHistoryList(): Promise<void> {
       exportChatAsMarkdown(chat);
     });
 
-    item.querySelector('.history-item-delete')!.addEventListener('click', (e) => {
+    const deleteBtn = item.querySelector('.history-item-delete') as HTMLButtonElement;
+    deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      deleteChat(chat.id);
+      /* Two-step confirm: first click arms the button (it reverts after 2.5s),
+         second click actually deletes — no more instant accidental deletes. */
+      if (deleteBtn.classList.contains('confirming')) {
+        deleteChat(chat.id);
+        return;
+      }
+      deleteBtn.classList.add('confirming');
+      deleteBtn.title = t('history.confirmDelete');
+      setTimeout(() => {
+        deleteBtn.classList.remove('confirming');
+        deleteBtn.title = t('settings.commands.delete');
+      }, 2500);
     });
 
     _historyList.appendChild(item);

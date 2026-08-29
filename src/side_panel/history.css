@@ -139,3 +139,11 @@
   opacity: 1 !important;
   color: var(--error-text);
 }
+
+/* Armed state of the two-step delete confirmation. */
+.history-item-delete.confirming {
+  opacity: 1;
+  color: var(--error-text);
+  background: var(--hover-overlay, rgba(127, 127, 127, 0.15));
+  transform: scale(1.15);
+}

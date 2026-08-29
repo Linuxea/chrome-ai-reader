@@ -74,6 +74,13 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
     document.body.appendChild(el);
     return el;
   }),
+  appendErrorMessage: vi.fn(() => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    return el;
+  }),
+  emitRetryFromWrapper: vi.fn(),
+  updateSendButtonDim: vi.fn(),
   removeLastMessage: vi.fn(),
   setButtonsDisabled: vi.fn(),
 }));
@@ -318,13 +325,16 @@ describe('services/message-sender', () => {
       expect(domMock.appendMessage).toHaveBeenCalledWith('user', 'q', images);
     });
 
-    it('rolls back user message and shows error on callAI failure', async () => {
+    it('keeps the user bubble and shows an actionable error on callAI failure', async () => {
       (callAI as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('stream failed'));
 
       await sendToAI('question', 'question');
 
-      expect(domMock.removeLastMessage).toHaveBeenCalled();
-      expect(domMock.appendMessage).toHaveBeenCalledWith('error', 'stream failed');
+      // The user bubble stays; an error bubble reports the failure instead.
+      // (Retry actions attach only when a real user-msg-group wrapper exists —
+      // covered by dom-helpers tests.)
+      expect(domMock.removeLastMessage).not.toHaveBeenCalled();
+      expect(domMock.appendErrorMessage).toHaveBeenCalledWith('stream failed', expect.anything());
       expect(tabState.conversationHistory).not.toContainEqual(
         expect.objectContaining({ role: 'user' }),
       );
@@ -341,7 +351,10 @@ describe('services/message-sender', () => {
 
       await sendToAI('q', 'q');
 
-      expect(domMock.appendMessage).toHaveBeenCalledWith('error', 'extract failed');
+      expect(domMock.appendErrorMessage).toHaveBeenCalledWith(
+        'extract failed',
+        expect.anything(),
+      );
       expect(callAI).not.toHaveBeenCalled();
     });
   });

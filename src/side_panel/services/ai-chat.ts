@@ -1,6 +1,7 @@
-import { initStreamHandler } from './stream-handler';
+import { initStreamHandler, abortGeneration } from './stream-handler';
 import { initQuickActionHandler, handleQuickAction } from './quick-action-handler';
 import { initMessageSender, sendToAI, sendMessage } from './message-sender';
+import * as state from '../state';
 
 let _userInput: HTMLTextAreaElement;
 let _sendBtn: HTMLButtonElement;
@@ -40,7 +41,15 @@ export function initAIChat({
   initMessageSender({ chatArea, userInput });
   initQuickActionHandler({ sendToAI });
 
-  _sendBtn.addEventListener('click', sendMessage);
+  // Stop-mode click aborts the active generation; otherwise it's a normal send.
+  _sendBtn.addEventListener('click', () => {
+    if (_sendBtn.classList.contains('is-stop')) {
+      const tabId = state.getActiveTabId();
+      if (tabId != null) abortGeneration(tabId);
+      return;
+    }
+    sendMessage();
+  });
   _userInput.addEventListener('keydown', (e: KeyboardEvent) =>
     handleKeydown(e, isCommandPopupOpen, getFilteredCommands, renderCommandPopup, hideCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex));
   _actionBtns.forEach(btn => {
@@ -58,6 +67,10 @@ function handleKeydown(
   getCommandSelectedIndex: GetIndexFn,
   setCommandSelectedIndex: SetIndexFn,
 ): void {
+  /* IME composition (Chinese input etc.): Enter/arrow keys pick candidates.
+     keyCode 229 is the legacy composition signal on browsers without isComposing. */
+  if (e.isComposing || e.keyCode === 229) return;
+
   if (isCommandPopupOpen()) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();

@@ -32,6 +32,7 @@ vi.mock('../../src/side_panel/events.js', () => ({
   EVENTS: {
     REQUEST_RERENDER: 'requestRerender',
     GENERATE_SUGGESTIONS: 'generateSuggestions',
+    SAVE_CURRENT_CHAT: 'saveCurrentChat',
   },
 }));
 
@@ -52,6 +53,10 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
   scrollToBottom: vi.fn(),
   smartScrollToBottom: vi.fn(),
   setButtonsDisabled: vi.fn(),
+  // error-bubble action helpers (stop/error UX)
+  addErrorMessageActions: vi.fn(),
+  emitRetryFromWrapper: vi.fn(),
+  findUserWrapperBefore: vi.fn(() => null),
 }));
 
 vi.mock('../../src/side_panel/services/tts/index.js', () => ({
@@ -69,7 +74,7 @@ vi.mock('marked', () => ({
 }));
 
 // --- Import after mocks ---
-import { initStreamHandler, callAI } from '../../src/side_panel/services/stream-handler.js';
+import { initStreamHandler, callAI, abortGeneration } from '../../src/side_panel/services/stream-handler.js';
 import { marked } from 'marked';
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
@@ -314,6 +319,53 @@ describe('services/stream-handler', () => {
       port._simulateMessage({ type: 'error', error: 'err' });
 
       expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
+    });
+
+    it('attaches a settings action for config errors (noApiKey)', async () => {
+      await callAI([], 1);
+      port._simulateMessage({ type: 'error', errorKey: 'error.noApiKey' });
+
+      expect(domMock.addErrorMessageActions).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining([
+          expect.objectContaining({ label: '[action.openSettings]' }),
+        ]),
+      );
+    });
+
+    it('attaches no settings action for non-config errors', async () => {
+      await callAI([], 1);
+      port._simulateMessage({ type: 'error', error: 'boom' });
+
+      const actions = (domMock.addErrorMessageActions as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(actions.filter((a: { label: string }) => a.label === '[action.openSettings]')).toHaveLength(0);
+    });
+  });
+
+  // ==========================================================================
+  // user abort (stop button)
+  // ==========================================================================
+  describe('user abort', () => {
+    it('finalizes the partial answer into history when aborted by the user', async () => {
+      await callAI([], 1);
+      port._simulateMessage({ type: 'chunk', content: 'partial answer' });
+
+      abortGeneration(1); // disconnects the port with the user-abort flag set
+
+      expect(tabState.conversationHistory).toContainEqual({
+        role: 'assistant',
+        content: 'partial answer',
+      });
+      expect(tabState.isGenerating).toBe(false);
+      expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
+      expect(eventsMock.emit).toHaveBeenCalledWith('saveCurrentChat');
+    });
+
+    it('does not touch history when generation is still pending (no content yet)', async () => {
+      await callAI([], 1);
+      port._simulateDisconnect(); // unexpected disconnect, nothing streamed
+
+      expect(tabState.conversationHistory).toHaveLength(0);
     });
   });
 

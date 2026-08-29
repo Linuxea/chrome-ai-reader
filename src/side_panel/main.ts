@@ -10,6 +10,7 @@ import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/ind
 import { initOCR, clearImagePreviews, addImageDataUri } from './services/ocr.js';
 import { captureVisibleTab } from './services/screenshot';
 import { getSync, onSyncChange } from '../platform/storage';
+import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
 import { sendToAI, sendMessage, retryMessage, editMessage } from './services/message-sender';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
@@ -53,7 +54,7 @@ const deps = { isTTSPlaying, stopTTS, removeSuggestQuestions, clearImagePreviews
 async function init(): Promise<void> {
   await Promise.all([loadLanguage(), initState()]);
 
-  initDOMHelpers({ chatArea: els.chatArea, actionBtns, sendBtn });
+  initDOMHelpers({ chatArea: els.chatArea, actionBtns, sendBtn, userInput: els.userInput });
   initTheme();
   initModelStatus();
 
@@ -75,7 +76,7 @@ async function init(): Promise<void> {
   visionCaptureBtn.addEventListener('click', async () => {
     try {
       const dataUri = await captureVisibleTab();
-      const name = `截图 ${new Date().toLocaleString()}`;
+      const name = t('screenshot.defaultName', { time: new Date().toLocaleString() });
       await addImageDataUri(dataUri, name);
     } catch (e) {
       appendMessage('error', t('error.screenshotFailed') + (e instanceof Error ? `：${e.message}` : ''));
@@ -139,12 +140,49 @@ async function init(): Promise<void> {
 
   if (state.getConversationHistory().length > 0) {
     resetUIForTabSwitch(els, deps);
+  } else {
+    renderOnboardingIfNeeded();
   }
 
   // Show related pages for current tab on init
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]?.url) renderRelatedPages(tabs[0].url);
   });
+}
+
+/**
+ * First-run onboarding: without an API key or model configured, replace the
+ * bare welcome line with a setup card linking to the options page. Skipped
+ * once any conversation exists (the user is past setup).
+ */
+async function renderOnboardingIfNeeded(): Promise<void> {
+  const { apiKey, modelName } = await getSync<{ apiKey?: string; modelName?: string }>(['apiKey', 'modelName']);
+  if (apiKey && modelName) return;
+  if (state.getConversationHistory().length > 0) return;
+
+  const welcome = els.chatArea.querySelector('.welcome-msg');
+  if (!welcome) return;
+  welcome.innerHTML = '';
+
+  const card = document.createElement('div');
+  card.className = 'onboarding-card';
+
+  const title = document.createElement('div');
+  title.className = 'onboarding-title';
+  title.textContent = t('onboarding.needConfig');
+
+  const hint = document.createElement('div');
+  hint.className = 'onboarding-hint';
+  hint.textContent = t('onboarding.hint');
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'onboarding-settings-btn';
+  btn.textContent = t('action.openSettings');
+  btn.addEventListener('click', () => { openOptionsPage(); });
+
+  card.append(title, hint, btn);
+  welcome.appendChild(card);
 }
 
 init();

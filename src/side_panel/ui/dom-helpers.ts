@@ -8,17 +8,23 @@ import type { ChatMessage, MessageContentPart } from '../../shared/types';
 let _chatArea: HTMLElement;
 let _actionBtns: NodeListOf<HTMLButtonElement>;
 let _sendBtn: HTMLButtonElement;
+let _userInput: HTMLTextAreaElement | null = null;
+let _sendBtnDefaultHtml = '';
 
 interface DOMHelperDeps {
   chatArea: HTMLElement;
   actionBtns: NodeListOf<HTMLButtonElement>;
   sendBtn: HTMLButtonElement;
+  userInput?: HTMLTextAreaElement;
 }
 
-export function initDOMHelpers({ chatArea, actionBtns, sendBtn }: DOMHelperDeps): void {
+export function initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput }: DOMHelperDeps): void {
   _chatArea = chatArea;
   _actionBtns = actionBtns;
   _sendBtn = sendBtn;
+  _userInput = userInput ?? null;
+  _sendBtnDefaultHtml = sendBtn.innerHTML;
+  updateSendButtonDim();
 }
 
 /** Options for batch rendering (tab switch / history reload). */
@@ -214,6 +220,70 @@ export function removeLastMessage(): void {
   }
 }
 
+// --- Error bubble actions ----------------------------------------------------
+// Error bubbles are actionable: retry re-sends the failed user message,
+// open-settings jumps to the options page for config errors.
+
+export interface ErrorMessageAction {
+  label: string;
+  onClick: () => void;
+}
+
+function buildErrorActionsRow(actions: ErrorMessageAction[]): HTMLDivElement {
+  const row = document.createElement('div');
+  row.className = 'error-actions';
+  for (const action of actions) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'error-action-btn';
+    btn.textContent = action.label;
+    btn.addEventListener('click', action.onClick);
+    row.appendChild(btn);
+  }
+  return row;
+}
+
+/** Create a new error bubble with an action row (retry / settings / …). */
+export function appendErrorMessage(text: string, actions: ErrorMessageAction[] = []): HTMLDivElement {
+  const div = document.createElement('div');
+  div.className = 'message message-error';
+  const span = document.createElement('span');
+  span.className = 'error-text';
+  span.textContent = text;
+  div.appendChild(span);
+  if (actions.length > 0) div.appendChild(buildErrorActionsRow(actions));
+  _chatArea.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+/** Attach an action row to an existing error bubble (the streaming path reuses the AI bubble). */
+export function addErrorMessageActions(msgEl: HTMLElement, actions: ErrorMessageAction[]): void {
+  if (actions.length === 0) return;
+  msgEl.appendChild(buildErrorActionsRow(actions));
+}
+
+/** Re-send the user message inside `wrapper` via the RETRY event. */
+export function emitRetryFromWrapper(wrapper: HTMLElement): void {
+  const userEl = wrapper.querySelector('.message-user') as HTMLElement | null;
+  emit(EVENTS.RETRY, {
+    wrapper,
+    rawText: userEl?.dataset.rawText || '',
+    rawDisplay: userEl?.dataset.rawDisplay || userEl?.textContent || '',
+    rawQuote: userEl?.dataset.rawQuote || '',
+  });
+}
+
+/** Nearest user-message group at or before `msgEl` — the retry target for an error bubble. */
+export function findUserWrapperBefore(msgEl: HTMLElement): HTMLElement | null {
+  let el = msgEl.previousElementSibling;
+  while (el) {
+    if (el.classList.contains('user-msg-group')) return el as HTMLElement;
+    el = el.previousElementSibling;
+  }
+  return null;
+}
+
 export function updateLastMessage(role: string, content: string): void {
   const messages = _chatArea.querySelectorAll(CSS.MESSAGE);
   if (messages.length > 0) {
@@ -253,13 +323,39 @@ export function smartScrollToBottom(): void {
   }
 }
 
+const STOP_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>`;
+
+function setSendButtonMode(mode: 'send' | 'stop'): void {
+  if (mode === 'stop') {
+    if (_sendBtn.classList.contains('is-stop')) return;
+    _sendBtn.classList.add('is-stop');
+    _sendBtn.classList.remove('send-dim');
+    _sendBtn.title = t('action.stop');
+    _sendBtn.innerHTML = STOP_ICON;
+  } else if (_sendBtn.classList.contains('is-stop')) {
+    _sendBtn.classList.remove('is-stop');
+    _sendBtn.title = t('sidebar.send');
+    _sendBtn.innerHTML = _sendBtnDefaultHtml;
+    updateSendButtonDim();
+  }
+}
+
+/** Dim the send button while the input has no content (visual affordance). */
+export function updateSendButtonDim(): void {
+  if (_sendBtn.classList.contains('is-stop')) return;
+  const empty = !_userInput || _userInput.value.trim() === '';
+  _sendBtn.classList.toggle('send-dim', empty);
+}
+
 export function setButtonsDisabled(disabled: boolean): void {
   _actionBtns.forEach(btn => {
     const action = btn.dataset.action;
     if (action === 'podcast') return;
     btn.disabled = disabled;
   });
-  _sendBtn.disabled = disabled;
+  /* The send button morphs into a stop control during generation instead of
+     disabling — a long generation needs an abort affordance. */
+  setSendButtonMode(disabled ? 'stop' : 'send');
 }
 
 /**
@@ -274,6 +370,12 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
   const text = extractTextFromContent(msg);
   const role = msg.role === 'assistant' ? 'ai' : msg.role;
   const div = appendMessage(role, text, imageUris, options);
+
+  // Restored messages get their action buttons back (copy/TTS/download) via
+  // the ADD_TTS_BUTTON event — ui/** must not import services directly.
+  if (msg.role === 'assistant') {
+    emit(EVENTS.ADD_TTS_BUTTON, { msgEl: div });
+  }
 
   if (msg.hadImages && imageUris.length === 0) {
     const hint = document.createElement('div');

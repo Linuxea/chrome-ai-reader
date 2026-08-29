@@ -28,6 +28,7 @@ vi.mock('../../../src/side_panel/events.js', () => ({
 }));
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   setButtonsDisabled: vi.fn(),
+  updateSendButtonDim: vi.fn(),
 }));
 vi.mock('../../../src/side_panel/features/quick-commands.js', () => ({
   isCommandPopupOpen: vi.fn(() => false),
