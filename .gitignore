@@ -1,5 +1,6 @@
 .opencode/
 .superpowers/
+.zcode/
 node_modules/
 dist/
 coverage/
