@@ -5,7 +5,7 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (935 tests across 63 files)
+npm run test   # vitest run (932 tests across 63 files; proxy test file needs `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint src/ proxy/
@@ -73,8 +73,9 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
 - `src/side_panel/events.ts` — lightweight synchronous event bus
 - `EVENTS` constant enum — all event names are typed constants, no string magic keys
-- Events: RETRY, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, CLEAR_QUOTE_PREVIEW, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST, SHOW_RELATED_PAGES, PAGE_EXTRACTED
+- Events: RETRY, EDIT, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, CLEAR_QUOTE_PREVIEW, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST, SHOW_RELATED_PAGES, PAGE_EXTRACTED, PODCAST_REBUILD_REQUEST
 - `PAGE_EXTRACTED` decouples `page-extractor` (service) from `related-pages` (feature) — the service emits, the feature subscribes
+- `PODCAST_REBUILD_REQUEST` is the same pattern: `ui/tab-switch-handler` emits after rebuilding the chat area on tab switch, the podcast feature subscribes to rebuild its card — keeps `ui/**` from importing the feature
 
 ## Chrome Extension Messaging
 
@@ -96,12 +97,16 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 935 tests across 63 files
+- **Vitest** with jsdom environment, 932 tests across 63 files
+- **Proxy tests need proxy deps**: `tests/proxy/protocol.test.js` imports `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
-- Coverage: ~30% overall, core modules 80%+ (dom-helpers 98%, theme 100%, sw-openai 91%, page-extractor 88%)
-- Run `npm run test:coverage` for detailed coverage report
+- Coverage (`npm run test:coverage`): includes `src/**/*.{js,ts}` + `proxy/**/*.js`; excludes pure type defs and entry orchestrators (`main.ts`, `options/index.ts`, `content/index.ts`). Enforces thresholds — lines 55 / functions 50 / branches 45 / statements 52 — failing them fails the run
 - **Circular dependencies**: run `npx madge --circular --extensions ts,js src/` — currently 1 known cycle (`ui/global-events` ↔ `ui/tab-switch-handler`, pre-existing)
+
+## Docs
+
+`docs/superpowers/specs/` (design docs) and `docs/superpowers/plans/` (implementation plans) hold one dated pair per feature (e.g. `2026-06-20-deep-annotation-design.md`). Read the relevant spec before changing a feature's behavior.
 
 ## Key Gotchas
 
@@ -111,9 +116,11 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`, runs on `localhost:3456`)
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
 - TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure
-- `vitest.config.js` coverage `include` pattern is `src/**/*.js` — most source files are now `.ts`, so coverage numbers may undercount; update pattern when adding TS test files
+- `vitest.config.js` coverage enforces thresholds (lines 55 / functions 50 / branches 45 / statements 52) — regressing coverage fails `npm run test:coverage`
+- **Stop button**: while streaming, the send button becomes Stop; `abortGeneration(tabId)` in `services/stream-handler.ts` aborts by calling `port.disconnect()` — there is no wire-level abort message, the SW keys cleanup off port disconnect
+- **IME-safe Enter**: keydown handlers that send on Enter must guard `e.isComposing || e.keyCode === 229` (IME composition, see `ai-chat.ts`) — otherwise Chinese/Japanese input sends mid-composition
 - `scripts/watch-iife.js` does NOT include the esbuild plugin (unlike `build-extension.js`) — TypeScript in content/background is only transpiled during production build, not in dev watch mode
-- **Layering guardrail**: ESLint `no-restricted-imports` (warn) prevents `side_panel/ui/**` from importing services/features. Note: ESLint only lints `.js` by default (no typescript-eslint plugin); `.ts` layering is enforced via tsc + review.
+- **Layering guardrail**: ESLint `no-restricted-imports` for `side_panel/ui/**` is `warn` (base rule is `off` during the refactor); it blocks ui/ imports of services/, features/, and a planned `shell/` orchestration layer that does **not exist yet** — `ui/global-events.ts` is slated to move there in a future phase. Note: ESLint only lints `.js` by default (no typescript-eslint plugin); `.ts` layering is enforced via tsc + review.
 - **Image intake**: `services/ocr.ts` `ingestImages()` is the single entry point for adding images (upload button + paste + drag-drop all funnel through it). Do not re-duplicate the index+FileReader+OCR loop.
 - **History operations**: use `services/chat/history-ops.ts` (`appendMessage`/`rollbackTrailingUserMessage`/`truncateHistoryFromUserContent`) instead of mutating `tabState.conversationHistory` directly — it centralizes persistence + rollback policy.
 - **State persistence**: `state.ts` field setters persist to `chrome.storage.session` debounced (250ms); conversation helpers + `persistForTab()` flush immediately, and `switchToTab()` flushes the outgoing tab. Add new TabState fields as explicit getter/setter pairs — the runtime `defineTabField` name-synthesis was removed.
