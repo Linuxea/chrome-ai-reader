@@ -204,3 +204,20 @@ export interface PageRecordsFindRelatedResponse {
   relations?: PageRelation[];
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// scrollPage* one-shot chrome.tabs.sendMessage actions — full-page capture
+// scroll control (content/scroll-controller.ts ↔ services/screenshot.ts)
+// ---------------------------------------------------------------------------
+
+/** Metrics reported back by the content script after each programmatic scroll. */
+export interface ScrollPageState {
+  /** Current scroll offset of the page's scrolling element. */
+  y: number;
+  /** Visible viewport height (px). */
+  innerHeight: number;
+  /** Total page height (px) — may grow between calls as lazy content loads. */
+  scrollHeight: number;
+  /** True when one more viewport-height scroll can no longer advance. */
+  atBottom: boolean;
+}

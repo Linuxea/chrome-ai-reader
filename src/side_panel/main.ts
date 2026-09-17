@@ -8,7 +8,7 @@ import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
 import { initOCR, clearImagePreviews, addImageDataUri } from './services/ocr.js';
-import { captureVisibleTab } from './services/screenshot';
+import { captureVisibleTab, captureFullPage } from './services/screenshot';
 import { getSync, onSyncChange } from '../platform/storage';
 import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
@@ -63,15 +63,17 @@ async function init(): Promise<void> {
 
   // 视觉分析按钮：显隐由 visionEnabled 控制，onSyncChange 实时联动
   const visionCaptureBtn = document.getElementById('visionCaptureBtn')!;
+  const fullPageCaptureBtn = document.getElementById('fullPageCaptureBtn') as HTMLButtonElement;
   const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
-  if (visionEnabled) visionCaptureBtn.classList.remove('hidden');
 
   // Listener lives for the panel's lifetime; side panel is a single-page
   // context that unloads cleanly on close, so no explicit unsubscribe needed.
-  onSyncChange('visionEnabled', (val) => {
-    if (val === true) visionCaptureBtn.classList.remove('hidden');
-    else visionCaptureBtn.classList.add('hidden');
-  });
+  const syncVisionButtons = (on: boolean): void => {
+    visionCaptureBtn.classList.toggle('hidden', !on);
+    fullPageCaptureBtn.classList.toggle('hidden', !on);
+  };
+  syncVisionButtons(visionEnabled === true);
+  onSyncChange('visionEnabled', (val) => syncVisionButtons(val === true));
 
   visionCaptureBtn.addEventListener('click', async () => {
     try {
@@ -80,6 +82,36 @@ async function init(): Promise<void> {
       await addImageDataUri(dataUri, name);
     } catch (e) {
       appendMessage('error', t('error.screenshotFailed') + (e instanceof Error ? `：${e.message}` : ''));
+    }
+  });
+
+  // 整页截屏：由上至下 截屏→滚动→截屏…直到触底或达段数上限；结束后恢复原滚动位置
+  let fullPageBusy = false;
+  fullPageCaptureBtn.addEventListener('click', async () => {
+    if (fullPageBusy) return;
+    fullPageBusy = true;
+    const prevTitle = fullPageCaptureBtn.title;
+    visionCaptureBtn.setAttribute('disabled', '');
+    fullPageCaptureBtn.setAttribute('disabled', '');
+    try {
+      const { dataUris, error } = await captureFullPage((done, total) => {
+        fullPageCaptureBtn.title = t('screenshot.fullPageProgress', { done, total });
+      });
+      const time = new Date().toLocaleString();
+      for (let i = 0; i < dataUris.length; i++) {
+        const name = t('screenshot.fullPageName', { n: i + 1, total: dataUris.length, time });
+        await addImageDataUri(dataUris[i], name);
+      }
+      if (error || dataUris.length === 0) {
+        appendMessage('error', t('error.screenshotFailed') + (error ? `：${error}` : ''));
+      }
+    } catch (e) {
+      appendMessage('error', t('error.screenshotFailed') + (e instanceof Error ? `：${e.message}` : ''));
+    } finally {
+      fullPageBusy = false;
+      visionCaptureBtn.removeAttribute('disabled');
+      fullPageCaptureBtn.removeAttribute('disabled');
+      fullPageCaptureBtn.title = prevTitle;
     }
   });
 

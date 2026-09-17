@@ -1,5 +1,6 @@
 import { handleExtract } from './page-extractor';
 import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS, initAnnotationLang } from './annotation';
+import { scrollBegin, scrollNext, scrollRestore } from './scroll-controller';
 
 // Localized annotation icon/bubble labels — read once at script load so the
 // language is ready long before the user can trigger an annotation run.
@@ -19,6 +20,27 @@ chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chr
     handleClearAnnotation();
     sendResponse({ ok: true });
     return;
+  }
+
+  // Full-page capture scroll control (see scroll-controller.ts). Async —
+  // return true keeps the sendResponse channel open for the settled metrics.
+  if (request.action === 'scrollBegin') {
+    void scrollBegin().then(
+      (m) => sendResponse(m),
+      () => sendResponse(undefined),
+    );
+    return true;
+  }
+  if (request.action === 'scrollNext') {
+    void scrollNext().then(
+      (m) => sendResponse(m),
+      () => sendResponse(undefined),
+    );
+    return true;
+  }
+  if (request.action === 'scrollRestore') {
+    void scrollRestore().then(() => sendResponse({ ok: true }));
+    return true;
   }
 });
 
