@@ -2,9 +2,10 @@ import { t } from '../../shared/i18n.js';
 import { openOptionsPage } from '../../platform/messaging';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
+import { createInnerFollower } from '../ui/auto-scroll';
 import {
   appendMessage, addTypingIndicator,
-  removeTypingIndicator, scrollToBottom, smartScrollToBottom,
+  removeTypingIndicator, smartScrollToBottom,
   setButtonsDisabled,
   addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore,
 } from '../ui/dom-helpers';
@@ -82,7 +83,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   const STREAM_FLUSH_INTERVAL_MS = 80;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFlushAt = 0;
-  let contentFlushCount = 0;
+  let followThinking: (() => void) | null = null;
 
   /** Close an unterminated ``` fence so partially streamed code blocks render stably. */
   function balanceFences(text: string): string {
@@ -93,21 +94,20 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   function flushContent(): void {
     if (!contentEl || !contentEl.isConnected) return;
     contentEl.innerHTML = marked.parse(balanceFences(fullText)) as string;
-    /* Force-scroll on the first answer flush: the thinking <details> just
-       got collapsed above, which (together with overflow-anchor) is the
-       exact trigger for the scroll-stops-following bug. Even with
-       overflow-anchor:none, pinning scrollTop to the bottom at the
-       thinking→answer handoff guarantees the view starts tracking the
-       answer from its first character. Subsequent flushes use the
-       smart variant so users can scroll up to read without fighting it. */
-    if (contentFlushCount === 0) scrollToBottom();
-    else smartScrollToBottom();
-    contentFlushCount++;
+    /* Always the smart variant: with the stick-to-bottom state machine
+       (ui/auto-scroll.ts) there is nothing left to compensate — the old
+       forced first-flush scroll existed to recover from scroll-anchoring
+       snapping scrollTop off-position when the thinking <details> collapsed,
+       and it yanked users who had deliberately scrolled up during thinking
+       back to the bottom. Now: stuck users follow the answer from its first
+       character; unstuck users keep their reading position. */
+    smartScrollToBottom();
   }
 
   function flushThinking(): void {
     if (!thinkingContentEl || !thinkingContentEl.isConnected) return;
     thinkingContentEl.innerHTML = marked.parse(balanceFences(thinkingText)) as string;
+    followThinking?.();
     smartScrollToBottom();
   }
 
@@ -162,6 +162,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         thinkingContentEl = document.createElement('div');
         thinkingContentEl.className = 'thinking-content';
         thinkingEl.appendChild(thinkingContentEl);
+        followThinking = createInnerFollower(thinkingContentEl);
         msgEl.appendChild(thinkingEl);
       }
 
@@ -216,6 +217,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
           addTTSButton(msgEl);
           initTTSAutoPlay();
           emit(EVENTS.GENERATE_SUGGESTIONS, { msgEl, history: tabState.conversationHistory });
+          // TTS button + suggestion loading both attach below the answer; keep
+          // a stuck view pinned over the newly added chrome.
+          smartScrollToBottom();
         }
       }
     } else if (msg.type === 'error') {

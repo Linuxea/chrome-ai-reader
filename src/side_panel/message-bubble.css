@@ -5,10 +5,15 @@
   line-height: 1.75;
   word-wrap: break-word;
   animation: msg-in 0.25s ease;
-  /* Skip layout/paint for offscreen messages — long conversations scroll and
-     re-render far cheaper. auto keeps the last rendered size once known. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 120px;
+  /* Do NOT re-add content-visibility:auto / contain-intrinsic-size here.
+     Offscreen messages then report placeholder heights toward scrollHeight;
+     as they realize their true size mid-scroll, the scrollable range mutates
+     under the scrollbar ("scrollbar promises content below that can never be
+     reached"). Combined with overflow-anchor:none on .chat-area (required to
+     survive per-flush innerHTML rebuilds) this reproduced the "collapse the
+     thinking box mid-stream → side panel can't scroll down" bug. Reverted for
+     correctness; if long-chat render perf ever needs it again, use message
+     virtualization instead. */
 }
 
 @keyframes msg-in {

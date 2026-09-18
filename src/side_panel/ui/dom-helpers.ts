@@ -3,6 +3,7 @@ import { t } from '../../shared/i18n.js';
 import { CSS } from '../../shared/css-selectors';
 import { marked } from 'marked';
 import { emit, EVENTS } from '../events';
+import * as autoScroll from './auto-scroll';
 import type { ChatMessage, MessageContentPart } from '../../shared/types';
 
 let _chatArea: HTMLElement;
@@ -24,6 +25,7 @@ export function initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput }: DOM
   _sendBtn = sendBtn;
   _userInput = userInput ?? null;
   _sendBtnDefaultHtml = sendBtn.innerHTML;
+  autoScroll.initAutoScroll(chatArea);
   updateSendButtonDim();
 }
 
@@ -312,15 +314,11 @@ export function removeTypingIndicator(indicator: HTMLElement | null): void {
 }
 
 export function scrollToBottom(): void {
-  _chatArea.scrollTop = _chatArea.scrollHeight;
+  autoScroll.scrollToBottom();
 }
 
 export function smartScrollToBottom(): void {
-  const threshold = 80;
-  const distanceToBottom = _chatArea.scrollHeight - _chatArea.scrollTop - _chatArea.clientHeight;
-  if (distanceToBottom <= threshold) {
-    _chatArea.scrollTop = _chatArea.scrollHeight;
-  }
+  autoScroll.smartScrollToBottom();
 }
 
 const STOP_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>`;

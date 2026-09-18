@@ -583,6 +583,11 @@ body {
   padding: 0 10px 8px;
   max-height: 300px;
   overflow-y: auto;
+  /* Same rationale as .chat-area: this nested scroller's innerHTML is rebuilt
+     on every stream flush. With scroll anchoring enabled (the default), the
+     rebuilt anchor snaps the inner scrollTop to a wrong position; disabled,
+     the inner auto-follow logic in stream-handler fully owns it. */
+  overflow-anchor: none;
 }
 
 .thinking-content p {

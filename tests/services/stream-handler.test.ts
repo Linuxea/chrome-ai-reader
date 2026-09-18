@@ -213,9 +213,50 @@ describe('services/stream-handler', () => {
       port._simulateMessage({ type: 'done' });
 
       expect(domMock.removeTypingIndicator).toHaveBeenCalled();
-      // First flush scrolls hard; the final flush (done) uses the smart variant
-      expect(domMock.scrollToBottom).toHaveBeenCalled();
+      // Stream path delegates exclusively to the smart (stick-aware) variant —
+      // the old forced first-flush scroll was removed with the stick-to-bottom
+      // state machine (see ui/auto-scroll.ts).
       expect(domMock.smartScrollToBottom).toHaveBeenCalled();
+      expect(domMock.scrollToBottom).not.toHaveBeenCalled();
+    });
+
+    it('never force-scrolls during a stream — respects a reader scrolled up during thinking', async () => {
+      await callAI([], 1);
+
+      port._simulateMessage({ type: 'thinking', content: 'hmm' });
+      port._simulateMessage({ type: 'chunk', content: 'answer' });
+      port._simulateMessage({ type: 'done' });
+
+      expect(domMock.scrollToBottom).not.toHaveBeenCalled();
+      expect(domMock.smartScrollToBottom).toHaveBeenCalled();
+    });
+
+    it('makes no DOM or scroll calls while the thinking block is collapsed by the user', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        document.body.innerHTML = ''; // isolate from other tests' leftover DOM
+        await callAI([], 1);
+
+        port._simulateMessage({ type: 'thinking', content: 'visible token' }); // immediate flush
+        const details = document.querySelector('.thinking-block') as HTMLDetailsElement;
+        expect(details).toBeTruthy();
+        details.open = false; // user collapsed mid-thinking
+
+        marked.parse.mockClear();
+        domMock.smartScrollToBottom.mockClear();
+        domMock.scrollToBottom.mockClear();
+
+        port._simulateMessage({ type: 'thinking', content: ' hidden token' }); // buffered
+        vi.advanceTimersByTime(200); // pending flush fires with the box closed
+
+        // flushNow skips flushThinking entirely when details is closed — no
+        // innerHTML rebuild, no scroll write, nothing for the user to fight.
+        expect(marked.parse).not.toHaveBeenCalled();
+        expect(domMock.smartScrollToBottom).not.toHaveBeenCalled();
+        expect(domMock.scrollToBottom).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('forwards chunks to TTS when autoplay is enabled', async () => {

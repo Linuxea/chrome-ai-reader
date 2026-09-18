@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>滚动 bug A/B 复现页 — 思考框折叠后无法下拉</title>
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; font-family: system-ui, sans-serif; }
+  .container { display: flex; flex-direction: column; height: 100%; }
+  .toolbar {
+    flex-shrink: 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    padding: 10px 14px; background: #f3f4f6; border-bottom: 1px solid #d1d5db; font-size: 13px;
+  }
+  .toolbar button { padding: 5px 12px; cursor: pointer; }
+  .toolbar label { user-select: none; }
+  .chat-area {
+    flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #fafafa;
+  }
+  .message { max-width: 88%; padding: 10px 14px; border-radius: 12px; line-height: 1.75; word-wrap: break-word; }
+  .message-user { align-self: flex-end; background: #dbeafe; }
+  .message-ai { align-self: flex-start; background: #fff; border: 1px solid #e5e7eb; }
+  /* ===== A/B 开关:勾选 = 复刻 ffa0024 引入回归时的 .message 样式 ===== */
+  .cv .message { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+  .thinking-block { border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px; color: #6b7280; background: #f9fafb; }
+  .thinking-summary { cursor: pointer; padding: 7px 10px; user-select: none; }
+  .thinking-content { padding: 0 10px 8px; max-height: 300px; overflow-y: auto; overflow-anchor: none; }
+  .input-area { flex-shrink: 0; padding: 10px 16px; background: #fff; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 13px; }
+  .hint { padding: 8px 14px; background: #fef3c7; font-size: 12px; border-bottom: 1px solid #fcd34d; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="toolbar">
+    <button id="btnStart">开始模拟思考流</button>
+    <button id="btnStop" disabled>停止</button>
+    <button id="btnReset">重置对话</button>
+    <label><input type="checkbox" id="cvToggle"> 启用 content-visibility（复现 bug）</label>
+  </div>
+  <div class="hint">
+    复现步骤：① 勾选上方开关 ② 点「开始模拟思考流」③ 思考文字流出时点击「AI 思考中」折叠思考框
+    ④ 立即上下拖动滚动条 —— 现象：滚动条显示下方有内容，却拉不下去 / 回弹。
+    取消勾选后重复同样步骤，现象消失（即修复后行为）。
+  </div>
+  <div class="chat-area" id="chatArea"></div>
+  <div class="input-area">（模拟输入区 —— 真实面板中的输入框位置）</div>
+</div>
+
+<script>
+const chatArea = document.getElementById('chatArea');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
+const btnReset = document.getElementById('btnReset');
+const cvToggle = document.getElementById('cvToggle');
+
+cvToggle.addEventListener('change', () => {
+  chatArea.classList.toggle('cv', cvToggle.checked);
+});
+
+// --- 长对话底料：高低错落的消息，保证占位高度(120px)与真实高度差异巨大 ---
+function seedConversation() {
+  chatArea.innerHTML = '';
+  for (let i = 1; i <= 25; i++) {
+    const user = document.createElement('div');
+    user.className = 'message message-user';
+    user.textContent = `问题 ${i}：` + (i % 3 === 0 ? '请详细展开分析一下这个话题的来龙去脉' : '继续');
+    chatArea.appendChild(user);
+
+    const ai = document.createElement('div');
+    ai.className = 'message message-ai';
+    const paras = i % 3 === 0 ? 12 : i % 3 === 1 ? 1 : 4; // 高度错落：~90px 到 ~900px
+    ai.innerHTML = Array.from({ length: paras }, (_, k) =>
+      `<p>回答 ${i} 第 ${k + 1} 段。这是一段较长的内容，用来制造真实高度与 120px 占位高度之间的巨大差异，正是滚动范围不稳定的来源。</p>`
+    ).join('');
+    chatArea.appendChild(ai);
+  }
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+// --- 与面板 ui/auto-scroll.ts 相同的 stick 策略 ---
+const EPSILON = 24;
+let stick = true;
+chatArea.addEventListener('scroll', () => {
+  stick = chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight <= EPSILON;
+});
+function smartScroll() { if (stick) chatArea.scrollTop = chatArea.scrollHeight; }
+
+// --- 思考流模拟：80ms 一增量，复刻流式渲染节拍 ---
+let timer = null;
+let thinkingText = '';
+let details = null;
+let thinkingContent = null;
+let innerStick = true;
+
+btnStart.addEventListener('click', () => {
+  btnStart.disabled = true; btnStop.disabled = false;
+  thinkingText = ''; innerStick = true;
+
+  const msg = document.createElement('div');
+  msg.className = 'message message-ai';
+  details = document.createElement('details');
+  details.className = 'thinking-block';
+  details.open = true; // ← 手动折叠这个框就是复现触发点
+  details.innerHTML = '<summary class="thinking-summary">AI 思考中（点击折叠 = 复现触发点）</summary>';
+  thinkingContent = document.createElement('div');
+  thinkingContent.className = 'thinking-content';
+  thinkingContent.addEventListener('scroll', () => {
+    innerStick = thinkingContent.scrollHeight - thinkingContent.scrollTop - thinkingContent.clientHeight <= EPSILON;
+  });
+  details.appendChild(thinkingContent);
+  msg.appendChild(details);
+  chatArea.appendChild(msg);
+
+  let n = 0;
+  timer = setInterval(() => {
+    n++;
+    thinkingText += `<p>思考片段 ${n}：用户可能在问关于第 ${n % 25 + 1} 轮对话的细节，我需要回顾上下文并结合页面内容推断意图……</p>`;
+    if (details.open) {
+      thinkingContent.innerHTML = thinkingText; // 与面板一致：整块 innerHTML 重建
+      if (innerStick) thinkingContent.scrollTop = thinkingContent.scrollHeight;
+    }
+    smartScroll();
+  }, 80);
+});
+
+btnStop.addEventListener('click', () => {
+  clearInterval(timer); timer = null;
+  btnStart.disabled = false; btnStop.disabled = true;
+  if (details) details.open = false; // 与面板一致：结束/回答开始时收起思考框
+  smartScroll();
+});
+
+btnReset.addEventListener('click', () => {
+  if (timer) { clearInterval(timer); timer = null; }
+  btnStart.disabled = false; btnStop.disabled = true;
+  stick = true;
+  seedConversation();
+});
+
+seedConversation();
+</script>
+</body>
+</html>
