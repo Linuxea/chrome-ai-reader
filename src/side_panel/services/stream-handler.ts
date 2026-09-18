@@ -8,6 +8,7 @@ import {
   removeTypingIndicator, smartScrollToBottom,
   setButtonsDisabled,
   addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore,
+  createToolCard,
 } from '../ui/dom-helpers';
 import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
@@ -35,7 +36,13 @@ export function abortGeneration(tabId: number): void {
   _activeStreams.get(tabId)?.abort();
 }
 
-export async function callAI(messages: ChatMessage[], tabId: number | null): Promise<void> {
+export interface CallAIOptions {
+  /** Agent mode: the SW attaches enabled tools and may run a multi-step loop. */
+  agent?: boolean;
+  enabledTools?: string[];
+}
+
+export async function callAI(messages: ChatMessage[], tabId: number | null, callOpts?: CallAIOptions): Promise<void> {
   if (isTTSPlaying()) stopTTS();
 
   const tabState = state.getStateForTab(tabId!);
@@ -64,6 +71,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   port.postMessage({
     type: 'chat',
     messages: messages,
+    ...(callOpts?.agent ? { agent: true, enabledTools: callOpts.enabledTools ?? [] } : {}),
   });
 
   let userAborted = false;
@@ -142,6 +150,25 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     content?: string;
     error?: string;
     errorKey?: string;
+    /** tool_call / tool_result payloads (agent mode) */
+    id?: string;
+    name?: string;
+    input?: unknown;
+    output?: string;
+    /** done.messages: the authoritative assistant/tool exchange for persistence */
+    messages?: ChatMessage[];
+  }
+
+  /** Live tool-call cards by call id — tool_result fills the matching card. */
+  const toolCards = new Map<string, ReturnType<typeof createToolCard>>();
+
+  function addToolCard(id: string, name: string, input: unknown): void {
+    if (!isCurrentTab() || !msgEl.isConnected) return;
+    const card = createToolCard(name, JSON.stringify(input ?? {}));
+    toolCards.set(id, card);
+    // Cards sit above the streamed answer text, mirroring the live order.
+    msgEl.insertBefore(card.el, contentEl ?? null);
+    smartScrollToBottom();
   }
 
   port.onMessage.addListener((msg: StreamMessage) => {
@@ -192,10 +219,21 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
+    } else if (msg.type === 'tool_call') {
+      if (isCurrentTab() && msgEl.isConnected) removeTypingIndicator(typingEl);
+      addToolCard(msg.id || '', msg.name || 'tool', msg.input);
+    } else if (msg.type === 'tool_result') {
+      toolCards.get(msg.id || '')?.setOutput(msg.output || '');
     } else if (msg.type === 'done') {
       cancelScheduledFlush();
       flushNow(); // render the complete text before buttons/summary attach
-      appendHistory(tabState, { role: 'assistant', content: fullText }, tabId!);
+      if (msg.messages && msg.messages.length > 0) {
+        // Agent mode: the SW sends the authoritative assistant/tool sequence —
+        // persist it verbatim instead of reconstructing from UI events.
+        for (const m of msg.messages) appendHistory(tabState, m, tabId!);
+      } else {
+        appendHistory(tabState, { role: 'assistant', content: fullText }, tabId!);
+      }
       tabState.isGenerating = false;
       state.persistForTab(tabId!);
       port.disconnect();

@@ -36,23 +36,26 @@ function createMockPort() {
   };
 }
 
-function createSSEStream(chunks) {
-  const lines = chunks.map(c => `data: ${JSON.stringify(c)}`).join('\n') + '\ndata: [DONE]\n';
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(lines);
-  return {
-    getReader() {
-      let i = 0;
-      return {
-        read() {
-          if (i >= bytes.length) return Promise.resolve({ done: true });
-          const chunk = bytes.slice(i, i + 100);
-          i += 100;
-          return Promise.resolve({ done: false, value: chunk });
-        },
-      };
+function createSSEResponse(chunks) {
+  // The AI SDK requires a real Response: it iterates response.headers and
+  // pipes response.body (a ReadableStream). SSE events must be separated by
+  // blank lines per spec, and the provider requires an explicit
+  // finish_reason before [DONE] (it errors on streams without one).
+  const events = [
+    ...chunks.map(c => `data: ${JSON.stringify(c)}\n\n`),
+    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+    'data: [DONE]\n\n',
+  ].join('');
+  const bytes = new TextEncoder().encode(events);
+  let i = 0;
+  const body = new ReadableStream({
+    pull(ctrl) {
+      if (i >= bytes.length) { ctrl.close(); return; }
+      ctrl.enqueue(bytes.slice(i, i + 100));
+      i += 100;
     },
-  };
+  });
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
 }
 
 describe('background/sw-openai', () => {
@@ -74,16 +77,12 @@ describe('background/sw-openai', () => {
     });
 
     it('makes fetch request and streams chunks', async () => {
-      const sseBody = createSSEStream([
+      const sseBody = createSSEResponse([
         { choices: [{ delta: { content: 'Hello' } }] },
         { choices: [{ delta: { content: ' world' } }] },
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
 
@@ -91,7 +90,7 @@ describe('background/sw-openai', () => {
         'https://api.test.com/chat/completions',
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({ Authorization: 'Bearer sk-test' }),
+          headers: expect.objectContaining({ authorization: 'Bearer sk-test' }),
         })
       );
 
@@ -102,26 +101,20 @@ describe('background/sw-openai', () => {
     });
 
     it('streams reasoning_content as thinking type', async () => {
-      const sseBody = createSSEStream([
+      const sseBody = createSSEResponse([
         { choices: [{ delta: { reasoning_content: 'thinking...' } }] },
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callOpenAI([{ role: 'user', content: 'think' }], port);
       expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'thinking', content: 'thinking...' });
     });
 
     it('sends error on non-ok response', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: false,
-        status: 429,
-        json: vi.fn().mockResolvedValue({ error: { message: 'rate limited' } }),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: 'rate limited' } }), { status: 429 }),
+      );
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
       expect(safePostMessage).toHaveBeenCalledWith(port, {
@@ -131,11 +124,9 @@ describe('background/sw-openai', () => {
     });
 
     it('sends error with status when no error message in response body', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: false,
-        status: 500,
-        json: vi.fn().mockRejectedValue(new Error('not json')),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('not json', { status: 500, headers: { 'content-type': 'text/plain' } }),
+      );
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
       expect(safePostMessage).toHaveBeenCalledWith(port, {
@@ -146,13 +137,9 @@ describe('background/sw-openai', () => {
 
     it('uses default apiBase when not configured', async () => {
       store.sync.apiBase = undefined;
-      const sseBody = createSSEStream([]);
+      const sseBody = createSSEResponse([]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
       expect(fetch).toHaveBeenCalledWith(
@@ -162,12 +149,8 @@ describe('background/sw-openai', () => {
     });
 
     it('includes response_format in request body when provided', async () => {
-      const sseBody = createSSEStream([]);
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      const sseBody = createSSEResponse([]);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port, {
         response_format: { type: 'json_object' },
@@ -198,34 +181,25 @@ describe('background/sw-openai', () => {
       });
     });
 
-    it('sends done at end of stream without [DONE] marker', async () => {
-      // Stream that ends without [DONE]
-      const encoder = new TextEncoder();
-      const lines = 'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n';
-      const bytes = encoder.encode(lines);
-      const body = {
-        getReader() {
-          let i = 0;
-          return {
-            read() {
-              if (i >= bytes.length) return Promise.resolve({ done: true });
-              const chunk = bytes.slice(i);
-              i = bytes.length;
-              return Promise.resolve({ done: false, value: chunk });
-            },
-          };
-        },
-      };
-
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body,
-        json: vi.fn(),
+    it('sends error when stream ends without a finish reason (SDK is stricter than the old parser)', async () => {
+      // Stream that ends without [DONE] AND without finish_reason — the AI
+      // SDK provider treats a missing finish reason as a protocol error,
+      // while the old hand-rolled parser silently posted done.
+      const text = 'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n';
+      const body = new ReadableStream({
+        start(c) { c.enqueue(new TextEncoder().encode(text)); c.close(); },
       });
 
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+      );
+
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
-      // Should still send 'done' at end of while loop
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'done' });
+      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'chunk', content: 'hi' });
+      expect(safePostMessage).toHaveBeenCalledWith(port, {
+        type: 'error',
+        error: 'Response stream ended without a finish reason.',
+      });
     });
   });
 
@@ -237,16 +211,12 @@ describe('background/sw-openai', () => {
     });
 
     it('makes fetch request and streams content chunks', async () => {
-      const sseBody = createSSEStream([
+      const sseBody = createSSEResponse([
         { choices: [{ delta: { content: 'Q1?' } }] },
         { choices: [{ delta: { content: ' Q2?' } }] },
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callSuggestQuestions([{ role: 'user', content: 'suggest' }], port);
 
@@ -256,16 +226,12 @@ describe('background/sw-openai', () => {
     });
 
     it('does not forward reasoning_content in suggest mode', async () => {
-      const sseBody = createSSEStream([
+      const sseBody = createSSEResponse([
         { choices: [{ delta: { reasoning_content: 'thinking' } }] },
         { choices: [{ delta: { content: 'result' } }] },
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callSuggestQuestions([{ role: 'user', content: 'suggest' }], port);
 
@@ -286,12 +252,8 @@ describe('background/sw-openai', () => {
     });
 
     it('uses temperature 0.8', async () => {
-      const sseBody = createSSEStream([]);
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        body: sseBody,
-        json: vi.fn(),
-      });
+      const sseBody = createSSEResponse([]);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseBody);
 
       await callSuggestQuestions([{ role: 'user', content: 'suggest' }], port);
       const callArgs = fetch.mock.calls[0];

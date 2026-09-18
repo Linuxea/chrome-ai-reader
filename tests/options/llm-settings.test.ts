@@ -143,4 +143,45 @@ describe('options/llm-settings', () => {
       expect(apiKeyInput.value).toBe('existing');
     });
   });
+
+  describe('agent settings', () => {
+    let agentModeInput: HTMLInputElement;
+    let toolReadPage: HTMLInputElement;
+    let toolFindRelated: HTMLInputElement;
+    let toolOcr: HTMLInputElement;
+
+    beforeEach(() => {
+      agentModeInput = document.getElementById('agentMode') as HTMLInputElement;
+      toolReadPage = document.getElementById('toolReadPage') as HTMLInputElement;
+      toolFindRelated = document.getElementById('toolFindRelated') as HTMLInputElement;
+      toolOcr = document.getElementById('toolOcr') as HTMLInputElement;
+    });
+
+    it('defaults agentMode off and all tools on when storage has no agent data', () => {
+      mod.loadLlmValues({});
+      expect(agentModeInput.checked).toBe(false);
+      expect(toolReadPage.checked).toBe(true);
+      expect(toolFindRelated.checked).toBe(true);
+      expect(toolOcr.checked).toBe(true);
+    });
+
+    it('loads agentMode + enabledTools from storage', () => {
+      mod.loadLlmValues({ agentMode: true, enabledTools: ['read_page', 'ocr_image'] });
+      expect(agentModeInput.checked).toBe(true);
+      expect(toolReadPage.checked).toBe(true);
+      expect(toolFindRelated.checked).toBe(false);
+      expect(toolOcr.checked).toBe(true);
+    });
+
+    it('collects agentMode + the checked tool names', () => {
+      apiKeyInput.value = 'sk-test';
+      agentModeInput.checked = true;
+      toolReadPage.checked = true;
+      toolFindRelated.checked = false;
+      toolOcr.checked = true;
+      const result = mod.collectLlmSaveData();
+      expect(result.set!.agentMode).toBe(true);
+      expect(result.set!.enabledTools).toEqual(['read_page', 'ocr_image']);
+    });
+  });
 });

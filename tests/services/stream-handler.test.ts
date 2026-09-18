@@ -57,6 +57,14 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
   addErrorMessageActions: vi.fn(),
   emitRetryFromWrapper: vi.fn(),
   findUserWrapperBefore: vi.fn(() => null),
+  // tool-call cards (agent mode)
+  createToolCard: vi.fn((name: string, input: string) => {
+    const el = document.createElement('details');
+    el.className = 'tool-card';
+    el.dataset.toolName = name;
+    el.dataset.toolInput = input;
+    return { el, setOutput: vi.fn((output: string) => { el.dataset.toolOutput = output; }) };
+  }),
 }));
 
 vi.mock('../../src/side_panel/services/tts/index.js', () => ({
@@ -550,6 +558,73 @@ describe('services/stream-handler', () => {
         role: 'assistant',
         content: 'response',
       });
+    });
+  });
+
+  // ==========================================================================
+  // agent mode (tool_call / tool_result / done.messages)
+  // ==========================================================================
+  describe('agent mode', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      document.body.innerHTML = '';
+      stateMock.getStateForTab.mockReturnValue(tabState);
+      stateMock.getActiveTabId.mockReturnValue(1);
+    });
+
+    it('posts agent:true + enabledTools when callOpts.agent is set', async () => {
+      await callAI([], 1, { agent: true, enabledTools: ['read_page'] });
+      expect(port.postMessage).toHaveBeenCalledWith({
+        type: 'chat',
+        messages: [],
+        agent: true,
+        enabledTools: ['read_page'],
+      });
+    });
+
+    it('omits agent fields for plain calls', async () => {
+      await callAI([], 1);
+      expect(port.postMessage).toHaveBeenCalledWith({ type: 'chat', messages: [] });
+    });
+
+    it('renders tool cards and fills output on tool_result', async () => {
+      await callAI([], 1, { agent: true, enabledTools: ['read_page'] });
+
+      port._simulateMessage({ type: 'tool_call', id: 'c1', name: 'read_page', input: { tabId: 7 } });
+      expect(domMock.createToolCard).toHaveBeenCalledWith('read_page', '{"tabId":7}');
+
+      port._simulateMessage({ type: 'tool_result', id: 'c1', output: '{"textContent":"hi"}' });
+      const handle = domMock.createToolCard.mock.results[0].value as { setOutput: (s: string) => void };
+      expect(handle.setOutput).toHaveBeenCalledWith('{"textContent":"hi"}');
+    });
+
+    it('persists the authoritative done.messages sequence verbatim', async () => {
+      await callAI([], 1, { agent: true, enabledTools: ['read_page'] });
+
+      port._simulateMessage({ type: 'chunk', content: 'final answer' });
+      port._simulateMessage({
+        type: 'done',
+        messages: [
+          { role: 'assistant', content: '', tool_calls: [{ id: 'c1', name: 'read_page', arguments: '{"tabId":7}' }] },
+          { role: 'tool', tool_call_id: 'c1', name: 'read_page', content: '{"textContent":"hi"}' },
+          { role: 'assistant', content: 'final answer' },
+        ],
+      });
+
+      expect(tabState.conversationHistory).toEqual([
+        { role: 'assistant', content: '', tool_calls: [{ id: 'c1', name: 'read_page', arguments: '{"tabId":7}' }] },
+        { role: 'tool', tool_call_id: 'c1', name: 'read_page', content: '{"textContent":"hi"}' },
+        { role: 'assistant', content: 'final answer' },
+      ]);
+      // Not the chunk-accumulated single append — no duplicate assistant turn
+      expect(tabState.conversationHistory.filter(m => m.role === 'assistant')).toHaveLength(2);
+    });
+
+    it('falls back to chunk-accumulated append when done carries no messages', async () => {
+      await callAI([], 1, { agent: true, enabledTools: [] });
+      port._simulateMessage({ type: 'chunk', content: 'plain' });
+      port._simulateMessage({ type: 'done' });
+      expect(tabState.conversationHistory).toEqual([{ role: 'assistant', content: 'plain' }]);
     });
   });
 });

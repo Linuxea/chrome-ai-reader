@@ -19,6 +19,7 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
   ttsAutoPlay: document.getElementById('ttsAutoPlay') as HTMLInputElement,
   embeddingEnabled: document.getElementById('embeddingEnabled') as HTMLInputElement,
   visionEnabled: document.getElementById('visionEnabled') as HTMLInputElement,
+  agentMode: document.getElementById('agentMode') as HTMLInputElement,
 };
 
-export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language', 'embeddingThreshold', 'embeddingMaxPages'];
+export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'enabledTools', 'themeName', 'language', 'embeddingThreshold', 'embeddingMaxPages'];
