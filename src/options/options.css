@@ -501,23 +501,6 @@ textarea {
   transform: translateX(18px);
 }
 
-/* Agent per-tool list */
-.agent-tools {
-  margin: 6px 0 0 12px;
-  padding-left: 10px;
-  border-left: 2px solid var(--border, #e0e0e0);
-  transition: opacity 0.2s ease;
-}
-
-.agent-tools .toggle-sub {
-  font-size: 13px;
-}
-
-.agent-tools-disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
 /* Theme Picker Cards */
 .theme-picker {
   display: flex;

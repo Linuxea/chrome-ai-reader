@@ -105,10 +105,6 @@ export async function sendToAI(
 
     const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
     const visionOn = visionEnabled === true;
-
-    // Agent mode config (options page): the SW attaches the enabled tool set
-    // and may run a multi-step tool loop before the final answer.
-    const { agentMode, enabledTools } = await getSync<{ agentMode?: boolean; enabledTools?: string[] }>(['agentMode', 'enabledTools']);
     const hasImages = visionOn && imageUris !== undefined && imageUris.length > 0;
 
     let userMessage: ChatMessage;
@@ -131,10 +127,7 @@ export async function sendToAI(
       }
     }
 
-    await callAI(messages, startTabId, {
-      agent: agentMode === true,
-      enabledTools: Array.isArray(enabledTools) ? enabledTools : undefined,
-    });
+    await callAI(messages, startTabId);
   } catch (e: unknown) {
     const errMsg = toErrorMessage(e);
     if (state.getActiveTabId() === startTabId) {

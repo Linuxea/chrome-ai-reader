@@ -25,7 +25,6 @@ const TEXT_INPUT_IDS = [
 /** IDs of all checkbox elements */
 const CHECKBOX_IDS = [
   'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'visionEnabled',
-  'agentMode', 'toolReadPage', 'toolFindRelated', 'toolOcr',
 ] as const;
 
 /** IDs of all button elements */
@@ -46,7 +45,6 @@ const OTHER_IDS = [
   'status',              // <div>
   'themePicker',         // <div>
   'languageSelect',      // <select>
-  'agentTools',          // <div> (agent per-tool list container)
 ] as const;
 
 /**
@@ -78,7 +76,6 @@ export function setupOptionsDom(): void {
   parts.push('<div id="status"></div>');
   parts.push('<div id="themePicker"></div>');
   parts.push('<select id="languageSelect"><option value="zh">中文</option><option value="en">English</option></select>');
-  parts.push('<div id="agentTools"></div>');
 
   document.body.innerHTML = parts.join('\n');
 }

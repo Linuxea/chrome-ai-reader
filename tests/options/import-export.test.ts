@@ -10,7 +10,7 @@ import { setupOptionsDom } from './helpers/setup-options-dom';
 vi.mock('../../src/shared/i18n.js', () => ({ t: (k: string) => `[${k}]` }));
 vi.mock('../../src/shared/download.js', () => ({ downloadFile: vi.fn() }));
 vi.mock('../../src/options/status.js', () => ({ showStatus: vi.fn() }));
-vi.mock('../../src/options/llm-settings.js', () => ({ fetchModels: vi.fn(), applyAgentToolSelection: vi.fn() }));
+vi.mock('../../src/options/llm-settings.js', () => ({ fetchModels: vi.fn() }));
 
 import type * as ImportExport from '../../src/options/import-export';
 import { downloadFile } from '../../src/shared/download.js';

@@ -3,7 +3,7 @@ import { downloadFile } from '../shared/download';
 import { showStatus } from './status';
 import { textFields, checkboxFields, SYNC_FIELDS } from './fields';
 import { COMMANDS_KEY, saveQuickCommands, renderCurrentCommands } from './quick-commands-editor';
-import { fetchModels, applyAgentToolSelection } from './llm-settings';
+import { fetchModels } from './llm-settings';
 
 const exportBtn = document.getElementById('exportBtn') as HTMLButtonElement;
 const importBtn = document.getElementById('importBtn') as HTMLButtonElement;
@@ -38,9 +38,6 @@ export function initImportExport(): void {
         const syncData: Record<string, unknown> = {};
         for (const [key, input] of Object.entries(textFields)) { if (data[key]) { syncData[key] = data[key]; input.value = data[key] as string; } }
         for (const [key, checkbox] of Object.entries(checkboxFields)) { if (data[key] !== undefined) { syncData[key] = data[key]; checkbox.checked = data[key] as boolean; } }
-        // enabledTools is a string[] (agent per-tool selection) — not covered by the loops above.
-        if (Array.isArray(data.enabledTools)) { syncData.enabledTools = data.enabledTools; applyAgentToolSelection(data.enabledTools as string[]); }
-        else { chrome.storage.sync.remove('enabledTools'); applyAgentToolSelection(null); }
         Object.keys(textFields).forEach(f => { if (!(f in data)) chrome.storage.sync.remove(f); });
         Object.keys(checkboxFields).forEach(f => { if (!(f in data)) { chrome.storage.sync.remove(f); checkboxFields[f].checked = checkboxFields[f].defaultChecked; } });
         chrome.storage.sync.set(syncData, () => {

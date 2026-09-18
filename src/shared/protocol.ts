@@ -12,6 +12,9 @@
  * Port name constants live in `PORT_NAMES` below; pair each with its
  * request/response message types. Background handlers and clients must both
  * import from here.
+ *
+ * Reserved-for-future (agent) message kinds are declared but commented out —
+ * see Phase 6 of the refactor plan. They are intentionally NOT wired yet.
  */
 
 import type { ChatMessage, PageRecord, PageRelation } from './types';
@@ -47,24 +50,18 @@ export interface AIChatRequest {
   type: 'chat';
   messages: ChatMessage[];
   response_format?: ResponseFormat;
-  /** true = agent mode: the SW attaches the user-enabled tool set and lets the model call them in a loop. */
-  agent?: boolean;
-  /** Names of tools the panel has enabled (options page). Empty/omitted + agent:true = no tools (plain chat). */
-  enabledTools?: string[];
 }
 
-/**
- * Streaming messages posted FROM the background on the ai-chat (and any
- * text-streaming) port. Same shape is reused by suggest-questions & podcast-llm
- * (which never emit the tool_call/tool_result/done.messages variants).
- */
+/** Streaming messages posted FROM the background on the ai-chat (and any
+ *  text-streaming) port. Same shape is reused by suggest-questions & podcast-llm. */
 export type StreamMessage =
   | { type: 'thinking'; content: string }
   | { type: 'chunk'; content: string }
-  | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; id: string; output: string }
-  | { type: 'done'; messages?: ChatMessage[] }
+  | { type: 'done' }
   | { type: 'error'; error?: string; errorKey?: string };
+// Reserved for agent evolution (Phase 6 — not wired yet):
+//   | { type: 'tool_call'; tool_call_id: string; name: string; arguments: string }
+//   | { type: 'tool_result'; tool_call_id: string; content: string }
 
 // ---------------------------------------------------------------------------
 // suggest-questions port

@@ -408,35 +408,4 @@ describe('dom-helpers', () => {
       expect(div.className).toContain('message-ai');
     });
   });
-
-  describe('appendMessageFromHistory — agent messages', () => {
-    it('renders role:tool messages as a collapsed tool card with output', () => {
-      const msg = { role: 'tool', tool_call_id: 'c1', name: 'read_page', content: '{"textContent":"hi"}' };
-      const el = appendMessageFromHistory(msg);
-
-      expect(el.className).toContain('tool-card');
-      expect(el.open).toBe(false);
-      expect(el.querySelector('.tool-card-name').textContent).toBe('read_page');
-      expect(el.querySelector('.tool-card-status-done')).not.toBeNull();
-      expect(el.textContent).toContain('{"textContent":"hi"}');
-    });
-
-    it('renders assistant tool_calls as cards above the text', () => {
-      const msg = {
-        role: 'assistant',
-        content: 'final answer',
-        tool_calls: [{ id: 'c1', name: 'read_page', arguments: '{"tabId":7}' }],
-      };
-      const div = appendMessageFromHistory(msg);
-
-      expect(div.className).toContain('message-ai');
-      expect(div.textContent).toContain('final answer');
-      const card = div.querySelector('.tool-card');
-      expect(card).not.toBeNull();
-      expect(card.querySelector('.tool-card-name').textContent).toBe('read_page');
-      expect(card.querySelector('.tool-card-status-done')).not.toBeNull();
-      // card sits above the rendered text
-      expect(div.firstElementChild).toBe(card);
-    });
-  });
 });

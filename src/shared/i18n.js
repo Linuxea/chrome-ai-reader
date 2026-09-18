@@ -29,11 +29,6 @@ const TRANSLATIONS = {
 
     'settings.vision.enabled': '模型支持视觉能力',
     'settings.vision.hint': '勾选后需使用 OpenAI 兼容的视觉模型（如 gpt-4o、qwen-vl）。勾选后上传与截图的图片将直接发给模型，不再走 OCR。',
-    'settings.agent.enabled': 'Agent 模式（工具调用）',
-    'settings.agent.hint': '开启后 AI 可调用工具（多步执行）再回答，需模型支持 Function Calling（如 deepseek-chat、gpt-4o）。关闭时为普通对话。',
-    'settings.agent.tool.readPage': '读页面（提取当前标签页正文）',
-    'settings.agent.tool.findRelated': '搜关联页（检索已读过的页面）',
-    'settings.agent.tool.ocr': '图片 OCR（识别图片文字）',
 
     'settings.tts': 'TTS 语音合成配置',
     'settings.tts.appId': 'App ID',
@@ -146,7 +141,6 @@ const TRANSLATIONS = {
     'error.noApiKeySave': '请输入 API Key',
     'error.apiKeyHint': '提示：标准 OpenAI Key 以 sk- 开头。如使用第三方 API，请同时填写 API 地址',
     'error.apiFailed': 'API 请求失败',
-    'error.toolsNotSupported': '当前 API 端点不支持工具调用，请关闭 Agent 模式或更换支持工具调用的模型',
     'error.noTtsConfig': '请先在设置页面配置 TTS 语音合成',
     'error.ttsFailed': 'TTS 请求失败',
     'error.ttsError': 'TTS 错误',
@@ -199,11 +193,6 @@ const TRANSLATIONS = {
     'cmd.noMatch': '无匹配的快捷指令',
 
     'ai.thinking': '思考过程',
-    'ai.toolCall': '工具调用',
-    'ai.toolRunning': '执行中…',
-    'ai.toolDone': '已完成',
-    'ai.toolInput': '参数',
-    'ai.toolOutput': '结果',
     'ai.truncated': '[内容过长，已截断]',
     'ai.quoteTruncated': '[引用内容过长，已截断]',
     'ai.quotePrefix': '以下是用户从页面中引用的内容：',
@@ -297,11 +286,6 @@ const TRANSLATIONS = {
 
     'settings.vision.enabled': 'Model supports vision',
     'settings.vision.hint': 'Requires an OpenAI-compatible vision model (e.g. gpt-4o, qwen-vl). When enabled, uploaded and screenshotted images are sent directly to the model instead of going through OCR.',
-    'settings.agent.enabled': 'Agent mode (tool calling)',
-    'settings.agent.hint': 'When enabled, the AI can call tools (multi-step) before answering. Requires a Function-Calling-capable model (e.g. deepseek-chat, gpt-4o). Off = plain chat.',
-    'settings.agent.tool.readPage': 'Read page (extract the current tab content)',
-    'settings.agent.tool.findRelated': 'Search related (recall previously read pages)',
-    'settings.agent.tool.ocr': 'Image OCR (recognize text in images)',
 
     'settings.tts': 'TTS Voice Configuration',
     'settings.tts.appId': 'App ID',
@@ -414,7 +398,6 @@ const TRANSLATIONS = {
     'error.noApiKeySave': 'Please enter an API Key',
     'error.apiKeyHint': 'Hint: Standard OpenAI keys start with sk-. If using a third-party API, also fill in the API Base URL',
     'error.apiFailed': 'API request failed',
-    'error.toolsNotSupported': 'The current API endpoint does not support tool calling. Disable Agent mode or switch to a tool-capable model.',
     'error.noTtsConfig': 'Please configure TTS in Settings',
     'error.ttsFailed': 'TTS request failed',
     'error.ttsError': 'TTS error',
@@ -467,11 +450,6 @@ const TRANSLATIONS = {
     'cmd.noMatch': 'No matching commands',
 
     'ai.thinking': 'Thinking',
-    'ai.toolCall': 'Tool call',
-    'ai.toolRunning': 'Running…',
-    'ai.toolDone': 'Done',
-    'ai.toolInput': 'Input',
-    'ai.toolOutput': 'Output',
     'ai.truncated': '[Content too long, truncated]',
     'ai.quoteTruncated': '[Quote too long, truncated]',
     'ai.quotePrefix': 'The following is content quoted by the user from the page:',

@@ -1,11 +1,10 @@
-import { callOpenAI, callSuggestQuestions, callEmbedding, callAgent } from './sw-openai';
+import { callOpenAI, callSuggestQuestions, callEmbedding } from './sw-openai';
 import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
 import { handleOcrParse } from './sw-ocr';
 import { annotateChunk } from './sw-annotation';
 import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
-import type { ChatMessage } from '../shared/types';
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
@@ -14,13 +13,7 @@ chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
 chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   if (port.name === 'ai-chat') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'chat') {
-        if (msg.agent) {
-          await callAgent(msg.messages as ChatMessage[], port, msg.enabledTools as string[] | undefined);
-        } else {
-          await callOpenAI(msg.messages as ChatMessage[], port, { response_format: msg.response_format as Record<string, unknown> | undefined, temperature: msg.temperature as number | undefined });
-        }
-      }
+      if (msg.type === 'chat') await callOpenAI(msg.messages as { role: string; content: string }[], port, { response_format: msg.response_format as Record<string, unknown> | undefined, temperature: msg.temperature as number | undefined });
     });
   } else if (port.name === 'tts' || port.name === 'tts-download') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
@@ -28,7 +21,7 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
     });
   } else if (port.name === 'suggest-questions') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'suggest') await callSuggestQuestions(msg.messages as ChatMessage[], port);
+      if (msg.type === 'suggest') await callSuggestQuestions(msg.messages as { role: string; content: string }[], port);
     });
   } else if (port.name === 'podcast-llm') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {

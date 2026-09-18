@@ -14,7 +14,7 @@ import {
   getPageRecord, putPageRecord, getAllPageRecords, deletePageRecord,
   migrateLegacyPageRecords,
 } from '../shared/page-records-db';
-import { findRelatedRecords, cosineSimilarity } from '../shared/vector';
+import { findRelatedRecords } from '../shared/vector';
 
 export interface StorePageRecordRequest {
   record: Omit<PageRecord, 'id' | 'timestamp'>;
@@ -57,29 +57,6 @@ export async function findRelated(req: FindRelatedRequest): Promise<PageRelation
   await migrationPromise;
   const all = await getAllPageRecords();
   return findRelatedRecords(all, req.normalizedUrl, req.threshold, req.limit);
-}
-
-/**
- * Rank stored page records against an arbitrary embedding vector (e.g. a
- * free-text query embedded by the agent's find_related_pages tool), instead
- * of a stored page's own vector. Used by the agent tool path.
- */
-export async function searchByEmbedding(
-  queryEmbedding: number[],
-  threshold: number,
-  limit: number,
-): Promise<PageRelation[]> {
-  await migrationPromise;
-  if (!queryEmbedding.length) return [];
-  const all = await getAllPageRecords();
-  const relations: PageRelation[] = [];
-  for (const record of all) {
-    if (!record.embedding?.length) continue;
-    const similarity = cosineSimilarity(queryEmbedding, record.embedding);
-    if (similarity >= threshold) relations.push({ record, similarity });
-  }
-  relations.sort((a, b) => b.similarity - a.similarity);
-  return relations.slice(0, limit);
 }
 
 /** chrome.runtime.onMessage handler for the pageRecords:* actions. */

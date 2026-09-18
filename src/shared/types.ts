@@ -14,9 +14,11 @@
 /**
  * A single chat message in the OpenAI-compatible chat-completion format.
  *
- * NOTE: the agent fields (`tool_calls`, `tool_call_id`, `name`, `role:'tool'`)
- * are populated by the agent-mode flow (see background/llm/) — they ride in
- * the panel's conversationHistory and are rendered as tool cards.
+ * NOTE: the optional agent fields below (`tool_calls`, `tool_call_id`, `name`)
+ * are RESERVED for a future agent/tool-calling architecture. They are not yet
+ * populated by the current chatbot flow (which is pure text-in/text-out), but
+ * declaring them here means the type contract is ready when tool calling is
+ * introduced — callers won't need to widen ChatMessage later.
  */
 /**
  * 一个多模态内容块。视觉消息的 `content` 是此类型的数组；
@@ -39,7 +41,7 @@ export interface ChatMessage {
    * 持久化时仍保留此字段，用于重载后渲染"图片已失效"提示。
    */
   hadImages?: boolean;
-  /** Tool calls emitted by the assistant (agent mode). */
+  /** Tool calls emitted by the assistant (agent evolution — not yet wired). */
   tool_calls?: ToolCall[];
   /** When role is 'tool', the id of the tool call this result responds to. */
   tool_call_id?: string;
@@ -49,7 +51,7 @@ export interface ChatMessage {
 
 /**
  * A tool/function call the model requests the host to execute.
- * Emitted in agent mode; `arguments` stays JSON-encoded (wire convention).
+ * Reserved for agent evolution — the current chatbot never produces these.
  */
 export interface ToolCall {
   /** Unique id for this call (model-provided). */

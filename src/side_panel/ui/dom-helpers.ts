@@ -357,113 +357,17 @@ export function setButtonsDisabled(disabled: boolean): void {
 }
 
 /**
- * A collapsible tool-call card (live agent streaming + history reload both
- * use it). `setOutput` flips the status pill from "running" to "done" and
- * fills the result pane.
- */
-export interface ToolCardHandle {
-  el: HTMLDetailsElement;
-  /** Flip status to done and append the tool's output block. */
-  setOutput: (output: string) => void;
-  /** Flip status to done without an output block (history reload of a call card). */
-  markDone: () => void;
-}
-
-function summarize(text: string, cap = 400): string {
-  return text.length > cap ? `${text.slice(0, cap)}…` : text;
-}
-
-export function createToolCard(name: string, inputText: string): ToolCardHandle {
-  const details = document.createElement('details');
-  details.className = 'tool-card';
-
-  const summary = document.createElement('summary');
-  summary.className = 'tool-card-summary';
-  const nameSpan = document.createElement('span');
-  nameSpan.className = 'tool-card-name';
-  nameSpan.textContent = name;
-  const status = document.createElement('span');
-  status.className = 'tool-card-status tool-card-status-running';
-  status.textContent = t('ai.toolRunning');
-  summary.appendChild(nameSpan);
-  summary.appendChild(status);
-  details.appendChild(summary);
-
-  const body = document.createElement('div');
-  body.className = 'tool-card-body';
-  const inputPre = document.createElement('pre');
-  inputPre.className = 'tool-card-io';
-  const inputLabel = document.createElement('div');
-  inputLabel.className = 'tool-card-io-label';
-  inputLabel.textContent = t('ai.toolInput');
-  body.appendChild(inputLabel);
-  inputPre.textContent = summarize(inputText);
-  body.appendChild(inputPre);
-  details.appendChild(body);
-
-  function setStatusDone(): void {
-    status.className = 'tool-card-status tool-card-status-done';
-    status.textContent = t('ai.toolDone');
-  }
-
-  return {
-    el: details,
-    setOutput(output: string): void {
-      setStatusDone();
-      const outputLabel = document.createElement('div');
-      outputLabel.className = 'tool-card-io-label';
-      outputLabel.textContent = t('ai.toolOutput');
-      const outputPre = document.createElement('pre');
-      outputPre.className = 'tool-card-io';
-      outputPre.textContent = summarize(output);
-      body.appendChild(outputLabel);
-      body.appendChild(outputPre);
-    },
-    markDone(): void {
-      setStatusDone();
-    },
-  };
-}
-
-/**
  * Render a chat message from `conversationHistory` (memory or reloaded from
  * storage) into the chat area. Handles both string content (plain text) and
  * array content (multimodal — extracts image_url thumbnails). On reload,
  * `hadImages: true` with string content means images were stripped at
  * persistence time → show an "image lost" hint.
- *
- * Agent messages render as tool cards: an assistant turn with `tool_calls`
- * becomes one card per call (above any text it produced), and a `role:'tool'`
- * message becomes a completed card with the tool's output.
  */
-export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptions): HTMLElement {
-  if (msg.role === 'tool') {
-    const card = createToolCard(msg.name || 'tool', '');
-    card.setOutput(typeof msg.content === 'string' ? msg.content : '');
-    card.el.open = false;
-    const host = options?.target ?? _chatArea;
-    host.appendChild(card.el);
-    if (!options?.deferScroll) scrollToBottom();
-    return card.el;
-  }
-
+export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptions): HTMLDivElement {
   const imageUris = extractImageUrisFromContent(msg);
   const text = extractTextFromContent(msg);
   const role = msg.role === 'assistant' ? 'ai' : msg.role;
   const div = appendMessage(role, text, imageUris, options);
-
-  // Tool-call cards for agent assistant turns, inserted above the text so the
-  // visual order matches the live stream (cards first, answer last). The
-  // matching outputs live in the following role:'tool' messages, rendered as
-  // their own cards — so these call cards just close as done.
-  if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-    for (const tc of msg.tool_calls) {
-      const card = createToolCard(tc.name, tc.arguments);
-      card.markDone();
-      card.el.open = false;
-      div.insertBefore(card.el, div.firstChild);
-    }
-  }
 
   // Restored messages get their action buttons back (copy/TTS/download) via
   // the ADD_TTS_BUTTON event — ui/** must not import services directly.
