@@ -77,6 +77,17 @@ function persistActiveNow(): void {
   if (_activeTabId != null && _activeState) writeTabState(_activeTabId, _activeState);
 }
 
+/**
+ * State restored from chrome.storage.session outlives the panel that wrote
+ * it, but in-flight work does not: a generation / podcast stream dies with the
+ * panel. Restoring those flags as `true` used to leave the tab stuck (every
+ * send silently ignored) until the user switched tabs.
+ */
+function restoreTabState(stored: TabState | undefined): TabState {
+  if (!stored) return createFreshTabState();
+  return { ...stored, isGenerating: false, isPodcastGenerating: false };
+}
+
 export async function switchToTab(newTabId: number): Promise<void> {
   if (!newTabId || newTabId === _activeTabId) return;
 
@@ -87,11 +98,12 @@ export async function switchToTab(newTabId: number): Promise<void> {
     _activeState = _tabStates.get(newTabId)!;
   } else {
     const stored = await chrome.storage.session.get(`tabState_${newTabId}`);
-    _activeState = (stored[`tabState_${newTabId}`] as TabState | undefined) || createFreshTabState();
+    _activeState = restoreTabState(stored[`tabState_${newTabId}`] as TabState | undefined);
     _tabStates.set(newTabId, _activeState);
   }
 
   notify('tabSwitched', undefined);
+  notify('isGenerating', _activeState.isGenerating);
 }
 
 export async function initState(): Promise<void> {
@@ -112,7 +124,7 @@ export async function initState(): Promise<void> {
     const tabId = tabs[0].id;
     _activeTabId = tabId;
     const stored = await chrome.storage.session.get(`tabState_${tabId}`);
-    _activeState = (stored[`tabState_${tabId}`] as TabState | undefined) || createFreshTabState();
+    _activeState = restoreTabState(stored[`tabState_${tabId}`] as TabState | undefined);
     _tabStates.set(tabId, _activeState);
   }
 
@@ -194,10 +206,20 @@ export function setPageTitle(v: string): void { if (!_activeState) return; _acti
 
 export function getIsGenerating(): boolean { return _activeState?.isGenerating ?? false; }
 export function setIsGenerating(v: boolean): void {
-  if (!_activeState) return;
-  _activeState.isGenerating = v;
-  schedulePersist();
-  notify('isGenerating', v);
+  if (_activeTabId != null) setGeneratingForTab(_activeTabId, v);
+}
+
+/**
+ * The single writer for a tab's generating flag — the tab may not be the
+ * active one (a stream finishing in the background). Persists immediately and
+ * notifies `isGenerating` subscribers when it is the active tab.
+ */
+export function setGeneratingForTab(tabId: number, v: boolean): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts) return;
+  ts.isGenerating = v;
+  persistForTab(tabId);
+  if (tabId === _activeTabId) notify('isGenerating', v);
 }
 
 export function getCurrentChatId(): string | null { return _activeState?.currentChatId ?? null; }

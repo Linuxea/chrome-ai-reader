@@ -53,6 +53,7 @@ import * as stateMock from '../../../src/side_panel/state.js';
 import * as eventsMock from '../../../src/side_panel/events.js';
 import * as chatHistoryMock from '../../../src/side_panel/features/chat-history.js';
 import * as quickCommandsMock from '../../../src/side_panel/features/quick-commands.js';
+import * as domMock from '../../../src/side_panel/ui/dom-helpers.js';
 
 function createUIElements(): UIElements {
   return {
@@ -202,6 +203,39 @@ describe('ui/global-events', () => {
     it('registers chrome.tabs.onActivated listener', () => {
       bindGlobalEvents(els, deps);
       expect(chrome.tabs.onActivated.addListener).toHaveBeenCalled();
+    });
+
+    describe('tab activation', () => {
+      type Activated = (info: { tabId: number; windowId: number }) => Promise<void>;
+      function activatedListener(): Activated {
+        return vi.mocked(chrome.tabs.onActivated.addListener).mock.calls[0][0] as unknown as Activated;
+      }
+
+      beforeEach(() => {
+        (chrome as unknown as { windows: unknown }).windows = { getCurrent: vi.fn(() => Promise.resolve({ id: 7 })) };
+        stateMock.getActiveTabId.mockReturnValue(1);
+      });
+
+      it('does not clear the outgoing tab\'s generating flag, and shows Stop if the new tab is generating', async () => {
+        bindGlobalEvents(els, deps);
+        await Promise.resolve(); // windows.getCurrent resolves
+        stateMock.getIsGenerating.mockReturnValue(true); // the tab being switched TO is generating
+
+        await activatedListener()({ tabId: 2, windowId: 7 });
+
+        expect(stateMock.setIsGenerating).not.toHaveBeenCalled();
+        expect(stateMock.switchToTab).toHaveBeenCalledWith(2);
+        expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(true);
+      });
+
+      it('ignores tab activations in other browser windows', async () => {
+        bindGlobalEvents(els, deps);
+        await Promise.resolve();
+
+        await activatedListener()({ tabId: 2, windowId: 99 });
+
+        expect(stateMock.switchToTab).not.toHaveBeenCalled();
+      });
     });
 
     it('registers chrome.runtime.onMessage listener', () => {

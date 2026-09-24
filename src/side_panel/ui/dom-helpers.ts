@@ -71,8 +71,9 @@ export function appendMessage(role: string, content: string, imageUris?: string[
   return div;
 }
 
-export function appendMessageWithQuote(quoteStr: string, userText: string, imageUris?: string[]): HTMLDivElement {
-  const welcome = _chatArea.querySelector(CSS.WELCOME_MSG);
+export function appendMessageWithQuote(quoteStr: string, userText: string, imageUris?: string[], options?: AppendOptions): HTMLDivElement {
+  const parent = options?.target ?? _chatArea;
+  const welcome = parent.querySelector(CSS.WELCOME_MSG);
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
@@ -88,9 +89,42 @@ export function appendMessageWithQuote(quoteStr: string, userText: string, image
   const wrapper = wrapUserMessage(div);
   addUserActions(wrapper, div);
 
-  _chatArea.appendChild(wrapper);
-  scrollToBottom();
+  parent.appendChild(wrapper);
+  if (!options?.deferScroll) scrollToBottom();
   return div;
+}
+
+/** What a user bubble shows and what retry / edit need to re-send it. */
+export interface UserBubble {
+  /** Text re-sent on retry (a quick action's prompt, or the typed text). */
+  rawText: string;
+  /** Text shown in the bubble. */
+  displayText: string;
+  /** Full quoted page text (shown truncated). */
+  quote?: string;
+  imageUris?: string[];
+}
+
+const QUOTE_PREVIEW_CHARS = 50;
+
+/**
+ * The one way to render a user message — used for live sends and history
+ * re-renders alike, so a restored bubble looks and behaves (retry / edit)
+ * exactly like the original.
+ */
+export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): HTMLDivElement {
+  const { rawText, displayText, quote, imageUris } = bubble;
+  let el: HTMLDivElement;
+  if (quote) {
+    const preview = quote.length > QUOTE_PREVIEW_CHARS ? quote.slice(0, QUOTE_PREVIEW_CHARS) + '...' : quote;
+    el = appendMessageWithQuote(preview, displayText, imageUris, options);
+    el.dataset.rawQuote = quote;
+  } else {
+    el = appendMessage('user', displayText, imageUris, options);
+  }
+  el.dataset.rawText = rawText;
+  el.dataset.rawDisplay = displayText;
+  return el;
 }
 
 export function buildBubbleImagesHtml(imageUris: string[]): string {
@@ -363,7 +397,8 @@ export function setButtonsDisabled(disabled: boolean): void {
 
 /**
  * Render a chat message from `conversationHistory` (memory or reloaded from
- * storage) into the chat area. Handles both string content (plain text) and
+ * storage) into the chat area. User messages go through appendUserMessage so
+ * retry / edit keep working after a tab switch, reopen or history load. Handles both string content (plain text) and
  * array content (multimodal — extracts image_url thumbnails). On reload,
  * `hadImages: true` with string content means images were stripped at
  * persistence time → show an "image lost" hint.
@@ -371,8 +406,19 @@ export function setButtonsDisabled(disabled: boolean): void {
 export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptions): HTMLDivElement {
   const imageUris = extractImageUrisFromContent(msg);
   const text = extractTextFromContent(msg);
-  const role = msg.role === 'assistant' ? 'ai' : msg.role;
-  const div = appendMessage(role, text, imageUris, options);
+  let div: HTMLDivElement;
+  if (msg.role === 'user') {
+    // `meta` holds what the user entered; legacy entries without it fall back
+    // to the assembled content (retry then re-sends that content verbatim).
+    div = appendUserMessage(
+      msg.meta
+        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris }
+        : { rawText: text, displayText: text, imageUris },
+      options,
+    );
+  } else {
+    div = appendMessage(msg.role === 'assistant' ? 'ai' : msg.role, text, imageUris, options);
+  }
 
   // Restored messages get their action buttons back (copy/TTS/download) via
   // the ADD_TTS_BUTTON event — ui/** must not import services directly.

@@ -3,11 +3,11 @@ import { getCurrentLang } from '../../shared/i18n.js';
 import { getPrompt } from '../../shared/prompts';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
-import type { ChatMessage, MessageContentPart } from '../../shared/types';
+import type { ChatMessage, MessageContentPart, UserMessageMeta } from '../../shared/types';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
-  appendMessage, appendMessageWithQuote,
+  appendMessage, appendUserMessage,
   appendErrorMessage, emitRetryFromWrapper,
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
@@ -15,7 +15,7 @@ import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { getDraftText, clearDraftText, consumeAttachments, hasAttachments } from './composer';
 import { ensurePageContent } from './page-extractor';
 import { callAI, abortGeneration } from './stream-handler';
-import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
+import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, toApiMessage } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
 let _chatArea: HTMLElement;
@@ -36,27 +36,15 @@ export async function sendToAI(
   const tabState = state.getStateForTab(startTabId!);
   if (!tabState) return;
 
-  tabState.isGenerating = true;
-  state.persistForTab(startTabId!);
+  state.setGeneratingForTab(startTabId!, true);
   setButtonsDisabled(true);
 
   const quoteForContext = retryQuote || tabState.selectedText;
 
-  let userMsgEl: HTMLDivElement;
-  if (quoteForContext) {
-    const truncated = quoteForContext.length > 50
-      ? quoteForContext.slice(0, 50) + '...'
-      : quoteForContext;
-    userMsgEl = appendMessageWithQuote(truncated, displayText, imageUris);
-    userMsgEl.dataset.rawText = text;
-    userMsgEl.dataset.rawQuote = quoteForContext;
-    userMsgEl.dataset.rawDisplay = displayText;
-    emit(EVENTS.CLEAR_QUOTE_PREVIEW);
-  } else {
-    userMsgEl = appendMessage('user', displayText, imageUris);
-    userMsgEl.dataset.rawText = text;
-    userMsgEl.dataset.rawDisplay = displayText;
-  }
+  const meta: UserMessageMeta = { rawText: text, displayText };
+  if (quoteForContext) meta.quote = quoteForContext;
+  const userMsgEl = appendUserMessage({ ...meta, imageUris });
+  if (quoteForContext) emit(EVENTS.CLEAR_QUOTE_PREVIEW);
 
   try {
     // Ensure the page has been extracted at least once for this tab. This is
@@ -89,7 +77,7 @@ export async function sendToAI(
     }
 
     const conversationHistory = tabState.conversationHistory || [];
-    messages.push(...conversationHistory);
+    messages.push(...conversationHistory.map(toApiMessage));
 
     let apiContent = text;
 
@@ -106,11 +94,11 @@ export async function sendToAI(
       const parts: MessageContentPart[] = [];
       if (apiContent) parts.push({ type: 'text', text: apiContent });
       for (const uri of imageUris!) parts.push({ type: 'image_url', image_url: { url: uri } });
-      userMessage = { role: 'user', content: parts, hadImages: true };
+      userMessage = { role: 'user', content: parts, hadImages: true, meta };
     } else {
-      userMessage = { role: 'user', content: apiContent };
+      userMessage = { role: 'user', content: apiContent, meta };
     }
-    messages.push(userMessage);
+    messages.push(toApiMessage(userMessage));
     appendHistory(tabState, userMessage, startTabId!);
 
     if (hasImages) {
@@ -132,12 +120,10 @@ export async function sendToAI(
         ? [{ label: t('action.retry'), onClick: () => emitRetryFromWrapper(wrapper) }]
         : [];
       appendErrorMessage(errMsg, actions);
-      state.setIsGenerating(false);
       setButtonsDisabled(false);
     }
     rollbackTrailingUserMessage(tabState, startTabId!);
-    tabState.isGenerating = false;
-    state.persistForTab(startTabId!);
+    state.setGeneratingForTab(startTabId!, false);
   }
 }
 

@@ -142,13 +142,57 @@ describe('initState', () => {
       selectedText: '',
       isGenerating: false,
       isPodcastGenerating: false,
-      ocrRunning: 0,
-      ocrResults: [],
       imageIndex: 0,
     };
     await state.initState();
     expect(state.getPageTitle()).toBe('Cached Title');
     expect(state.getPageContent()).toBe('cached content');
+  });
+
+  it('never restores in-flight flags: a reopened panel is not stuck "generating"', async () => {
+    store.session['tabState_42'] = {
+      pageContent: '', pageTitle: '', pageExcerpt: '', conversationHistory: [],
+      currentChatId: null, selectedText: '', imageIndex: 0,
+      isGenerating: true, isPodcastGenerating: true,
+    };
+    await state.initState();
+    expect(state.getIsGenerating()).toBe(false);
+    expect(state.getIsPodcastGenerating()).toBe(false);
+  });
+});
+
+describe('setGeneratingForTab', () => {
+  beforeEach(async () => {
+    store.session = {};
+    await state.initState();
+  });
+
+  it('writes a background tab without touching the active tab, notifying only for the active one', async () => {
+    const cb = vi.fn();
+    const unsub = state.subscribe('isGenerating', cb);
+    await state.switchToTab(77); // tab 42 now in the background
+    cb.mockClear();
+
+    state.setGeneratingForTab(42, true);
+    expect(state.getStateForTab(42).isGenerating).toBe(true);
+    expect(state.getIsGenerating()).toBe(false);
+    expect(cb).not.toHaveBeenCalled();
+    expect(store.session['tabState_42'].isGenerating).toBe(true);
+
+    state.setGeneratingForTab(77, true);
+    expect(cb).toHaveBeenCalledWith(true);
+    unsub();
+  });
+
+  it('switchToTab notifies the generating state of the tab now shown', async () => {
+    state.setGeneratingForTab(42, true);
+    const cb = vi.fn();
+    const unsub = state.subscribe('isGenerating', cb);
+    await state.switchToTab(78);
+    expect(cb).toHaveBeenLastCalledWith(false);
+    await state.switchToTab(42);
+    expect(cb).toHaveBeenLastCalledWith(true);
+    unsub();
   });
 });
 
@@ -313,8 +357,6 @@ describe('switchToTab', () => {
       selectedText: '',
       isGenerating: false,
       isPodcastGenerating: false,
-      ocrRunning: 0,
-      ocrResults: [],
       imageIndex: 0,
     };
     await state.switchToTab(55);

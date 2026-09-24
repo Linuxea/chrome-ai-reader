@@ -152,6 +152,13 @@
   text-align: center;
 }
 
+/* "Generation stopped" — the user pressed Stop before any answer text arrived. */
+.message-note {
+  align-self: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .error-actions {
   display: flex;
   gap: 8px;

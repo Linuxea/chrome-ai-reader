@@ -429,6 +429,38 @@ describe('dom-helpers', () => {
       expect(div.querySelector('.image-lost-hint')).toBeNull();
     });
 
+    it('restores a user bubble from meta: display text, quote, and retry data', () => {
+      const msg = {
+        role: 'user',
+        content: '[ai.quotePrefix]\n\nquoted page text\n\nPlease summarize',
+        meta: { rawText: 'Please summarize', displayText: 'Summarize', quote: 'quoted page text' },
+      };
+      const div = appendMessageFromHistory(msg);
+
+      // bubble shows what the user saw when sending — not the assembled prompt
+      expect(div.querySelector('blockquote.quote-in-bubble').textContent).toBe('quoted page text');
+      expect(div.textContent).toContain('Summarize');
+      expect(div.textContent).not.toContain('[ai.quotePrefix]');
+      // retry / edit read these
+      expect(div.dataset.rawText).toBe('Please summarize');
+      expect(div.dataset.rawDisplay).toBe('Summarize');
+      expect(div.dataset.rawQuote).toBe('quoted page text');
+      expect(div.closest('.user-msg-group').querySelector('.msg-actions')).not.toBeNull();
+    });
+
+    it('retry on a restored bubble re-sends the original input', () => {
+      const msg = { role: 'user', content: 'x', meta: { rawText: 'orig', displayText: 'Orig' } };
+      const div = appendMessageFromHistory(msg);
+      div.closest('.user-msg-group').querySelector('.msg-action-btn[title="[action.retry]"]').click();
+
+      expect(emit).toHaveBeenCalledWith(EVENTS.RETRY, expect.objectContaining({ rawText: 'orig', rawDisplay: 'Orig' }));
+    });
+
+    it('legacy user entries (no meta) still carry retry data = their content', () => {
+      const div = appendMessageFromHistory({ role: 'user', content: 'legacy text' });
+      expect(div.dataset.rawText).toBe('legacy text');
+    });
+
     it('renders assistant message as ai role (markdown)', () => {
       const msg = { role: 'assistant', content: 'AI 回复' };
       const div = appendMessageFromHistory(msg);

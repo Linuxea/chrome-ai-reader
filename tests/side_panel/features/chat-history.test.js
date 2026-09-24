@@ -29,6 +29,11 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   scrollToBottom: vi.fn(),
 }));
 
+vi.mock('../../../src/side_panel/events.js', () => ({
+  emit: vi.fn(),
+  EVENTS: { REQUEST_RERENDER: 'requestRerender' },
+}));
+
 vi.mock('marked', () => ({
   marked: { parse: (text) => `<p>${text}</p>` },
 }));
@@ -40,7 +45,9 @@ import {
   initChatHistory,
   getDisplayMessages,
   stripMessageChrome,
+  renderHistoryList,
 } from '../../../src/side_panel/features/chat-history.js';
+import { emit } from '../../../src/side_panel/events.js';
 
 describe('generateTitle', () => {
   it('returns full text when user message < 30 chars', () => {
@@ -174,5 +181,48 @@ describe('stripMessageChrome / getDisplayMessages', () => {
       { role: 'assistant', content: '<p>answer</p>' },
       { role: 'user', content: 'question' },
     ]);
+  });
+});
+
+describe('loading a saved chat', () => {
+  async function openChat(chat) {
+    globalThis.chrome = {
+      storage: { local: { get: vi.fn((_k, cb) => cb({ chatHistories: [chat] })), set: vi.fn() } },
+    };
+    const chatArea = document.createElement('div');
+    const historyPanel = document.createElement('div');
+    const historyList = document.createElement('div');
+    const onLoadChat = vi.fn();
+    initChatHistory({ chatArea, historyPanel, historyList, onLoadChat, onRenderOutline: vi.fn(), onOutlineToMarkdown: vi.fn() });
+    await renderHistoryList();
+    historyList.querySelector('.history-item-info').click();
+    await new Promise(r => setTimeout(r, 0));
+    return { chatArea, historyPanel, onLoadChat };
+  }
+
+  it('renders from conversationHistory via the shared re-render path (retry / edit work)', async () => {
+    emit.mockClear();
+    const { chatArea, historyPanel, onLoadChat } = await openChat({
+      id: 'c1', title: 't', updatedAt: 1,
+      messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: '<p>a</p>' }],
+      conversationHistory: [{ role: 'user', content: 'q', meta: { rawText: 'q', displayText: 'q' } }, { role: 'assistant', content: 'a' }],
+    });
+
+    expect(onLoadChat).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
+    expect(emit).toHaveBeenCalledWith('requestRerender');
+    expect(chatArea.children).toHaveLength(0); // not built from the display snapshot
+    expect(historyPanel.classList.contains('hidden')).toBe(true);
+  });
+
+  it('falls back to the display snapshot for legacy records without history', async () => {
+    emit.mockClear();
+    const { chatArea } = await openChat({
+      id: 'c2', title: 't', updatedAt: 1,
+      messages: [{ role: 'user', content: 'legacy q' }],
+      conversationHistory: [],
+    });
+
+    expect(emit).not.toHaveBeenCalledWith('requestRerender');
+    expect(chatArea.textContent).toContain('legacy q');
   });
 });

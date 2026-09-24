@@ -104,12 +104,21 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     else if (isCommandPopupOpen()) hideCommandPopup();
   });
 
+  // The side panel belongs to one window; tab activations in other windows
+  // must not swap this panel's conversation.
+  let panelWindowId: number | undefined;
+  chrome.windows?.getCurrent?.().then((w) => { panelWindowId = w.id; }).catch(() => { /* keep unfiltered */ });
+
   chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    if (panelWindowId !== undefined && activeInfo.windowId !== panelWindowId) return;
     if (activeInfo.tabId === state.getActiveTabId()) return;
-    state.setIsGenerating(false);
+    // The outgoing tab's generation keeps running in the background — do NOT
+    // clear its generating flag (that used to let a second send interleave
+    // with the first and hid the Stop button on return).
     cleanupActiveFeatures(els, deps);
     await state.switchToTab(activeInfo.tabId);
-    setButtonsDisabled(false);
+    // Send vs Stop reflects the tab now shown.
+    setButtonsDisabled(state.getIsGenerating());
     resetUIForTabSwitch(els, deps);
     emit(EVENTS.SHOW_RELATED_PAGES);
   });

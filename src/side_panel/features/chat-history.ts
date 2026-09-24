@@ -7,6 +7,7 @@ import { scrollToBottom } from '../ui/dom-helpers';
 import { stripImagesForPersistence } from '../services/chat/strip-images';
 import { addTTSButton } from '../services/tts/index.js';
 import { marked } from 'marked';
+import { emit, EVENTS } from '../events';
 import type { ChatMessage } from '../../shared/types';
 
 const STORAGE_KEY = 'chatHistories';
@@ -195,6 +196,18 @@ async function loadChat(id: string): Promise<void> {
       messages: chat.conversationHistory || [],
       displayMessages: chat.messages,
     });
+  }
+
+  // Render from conversationHistory — the same path as a tab switch — so user
+  // bubbles come back with their original text / quote and working retry /
+  // edit. Only legacy records (outline cards, or saved without history) fall
+  // back to the stored display snapshot.
+  const history = chat.conversationHistory || [];
+  const hasOutline = chat.messages.some(m => m.type === 'outline');
+  if (history.length > 0 && !hasOutline) {
+    emit(EVENTS.REQUEST_RERENDER);
+    _historyPanel.classList.add('hidden');
+    return;
   }
 
   _chatArea.innerHTML = '';

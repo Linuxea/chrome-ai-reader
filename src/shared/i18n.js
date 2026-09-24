@@ -184,6 +184,7 @@ const TRANSLATIONS = {
     'cmd.noMatch': '无匹配的快捷指令',
 
     'ai.thinking': '思考过程',
+    'ai.stopped': '已停止生成',
     'ai.truncated': '[内容过长，已截断]',
     'ai.quoteTruncated': '[引用内容过长，已截断]',
     'ai.quotePrefix': '以下是用户从页面中引用的内容：',
@@ -431,6 +432,7 @@ const TRANSLATIONS = {
     'cmd.noMatch': 'No matching commands',
 
     'ai.thinking': 'Thinking',
+    'ai.stopped': 'Generation stopped',
     'ai.truncated': '[Content too long, truncated]',
     'ai.quoteTruncated': '[Quote too long, truncated]',
     'ai.quotePrefix': 'The following is content quoted by the user from the page:',

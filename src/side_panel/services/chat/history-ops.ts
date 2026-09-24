@@ -81,3 +81,16 @@ export function appendMessage(tabState: TabState, msg: ChatMessage, tabId: numbe
   tabState.conversationHistory.push(msg);
   state.persistForTab(tabId);
 }
+
+/**
+ * The wire form of a history message: only the OpenAI chat fields. Local
+ * bookkeeping (`meta`, `hadImages`, `type`) stays in the panel — strict
+ * OpenAI-compatible providers reject unknown message properties.
+ */
+export function toApiMessage(msg: ChatMessage): ChatMessage {
+  const out: ChatMessage = { role: msg.role, content: msg.content };
+  if (msg.name) out.name = msg.name;
+  if (msg.tool_calls) out.tool_calls = msg.tool_calls;
+  if (msg.tool_call_id) out.tool_call_id = msg.tool_call_id;
+  return out;
+}

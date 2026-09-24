@@ -52,6 +52,7 @@ vi.mock('../../src/side_panel/state.js', () => ({
   persistForTab: vi.fn(),
   getCustomSystemPrompt: vi.fn(() => ''),
   setIsGenerating: vi.fn(),
+  setGeneratingForTab: vi.fn(),
   getIsGenerating: vi.fn(() => false),
 }));
 
@@ -63,27 +64,39 @@ vi.mock('../../src/side_panel/events.js', () => ({
   },
 }));
 
-vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
-  appendMessage: vi.fn(() => {
+vi.mock('../../src/side_panel/ui/dom-helpers.js', () => {
+  const makeEl = () => {
     const el = document.createElement('div');
     document.body.appendChild(el);
     return el;
-  }),
-  appendMessageWithQuote: vi.fn(() => {
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    return el;
-  }),
-  appendErrorMessage: vi.fn(() => {
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    return el;
-  }),
-  emitRetryFromWrapper: vi.fn(),
-  updateSendButtonDim: vi.fn(),
-  removeLastMessage: vi.fn(),
-  setButtonsDisabled: vi.fn(),
-}));
+  };
+  const appendMessage = vi.fn(makeEl);
+  const appendMessageWithQuote = vi.fn(makeEl);
+  return {
+    appendMessage,
+    appendMessageWithQuote,
+    // Mirrors the real renderer's contract: quote → quote bubble (50-char
+    // preview), otherwise a plain bubble; datasets feed retry / edit.
+    appendUserMessage: vi.fn((b: { rawText: string; displayText: string; quote?: string; imageUris?: string[] }) => {
+      let el: HTMLDivElement;
+      if (b.quote) {
+        const preview = b.quote.length > 50 ? b.quote.slice(0, 50) + '...' : b.quote;
+        el = appendMessageWithQuote(preview, b.displayText, b.imageUris) as HTMLDivElement;
+        el.dataset.rawQuote = b.quote;
+      } else {
+        el = appendMessage('user', b.displayText, b.imageUris) as HTMLDivElement;
+      }
+      el.dataset.rawText = b.rawText;
+      el.dataset.rawDisplay = b.displayText;
+      return el;
+    }),
+    appendErrorMessage: vi.fn(makeEl),
+    emitRetryFromWrapper: vi.fn(),
+    updateSendButtonDim: vi.fn(),
+    removeLastMessage: vi.fn(),
+    setButtonsDisabled: vi.fn(),
+  };
+});
 
 vi.mock('../../src/side_panel/services/tts/index.js', () => ({
   isTTSPlaying: vi.fn(() => false),
@@ -116,6 +129,7 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
     }
     return false;
   }),
+  toApiMessage: vi.fn((m: { role: string; content: unknown }) => ({ role: m.role, content: m.content })),
   truncateHistoryFromUserContent: vi.fn((ts: { conversationHistory: unknown[] }, content: unknown) => {
     const hist = ts.conversationHistory;
     const idx = hist.findLastIndex((m: { role: string; content: unknown }) =>
@@ -169,6 +183,10 @@ describe('services/message-sender', () => {
     stateMock.getStateForTab.mockReturnValue(tabState);
     stateMock.getActiveTabId.mockReturnValue(1);
     stateMock.getIsGenerating.mockReturnValue(false);
+    stateMock.setGeneratingForTab.mockImplementation((id: number, v: boolean) => {
+      tabState.isGenerating = v;
+      stateMock.persistForTab(id);
+    });
     stateMock.getCustomSystemPrompt.mockReturnValue('');
     (ensurePageContent as ReturnType<typeof vi.fn>).mockReturnValue(
       Promise.resolve({ ok: true, value: null }),
@@ -249,13 +267,28 @@ describe('services/message-sender', () => {
       expect(messages.some((m: { content: string }) => m.content === 'previous answer')).toBe(true);
     });
 
-    it('appends user message to conversation history', async () => {
+    it('appends user message to conversation history, with what the user entered as meta', async () => {
       await sendToAI('my question', 'display');
 
       expect(tabState.conversationHistory).toContainEqual({
         role: 'user',
         content: 'my question',
+        meta: { rawText: 'my question', displayText: 'display' },
       });
+    });
+
+    it('records the full quote in meta (content holds the assembled prompt)', async () => {
+      await sendToAI('q', 'q', 'the quoted text');
+      const hist = tabState.conversationHistory as { content: unknown; meta: unknown }[];
+      expect(hist[0].meta).toEqual({ rawText: 'q', displayText: 'q', quote: 'the quoted text' });
+      expect(hist[0].content).toBe('[ai.quotePrefix]\n\nthe quoted text\n\nq');
+    });
+
+    it('sends only role + content to the API (no local meta / hadImages)', async () => {
+      tabState.conversationHistory = [{ role: 'user', content: 'old', meta: { rawText: 'old', displayText: 'old' }, hadImages: true }];
+      await sendToAI('new', 'new');
+      const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>[];
+      for (const m of messages) expect(Object.keys(m).sort()).toEqual(['content', 'role']);
     });
 
     it('calls ensurePageContent to guarantee extraction before sending', async () => {
@@ -633,11 +666,13 @@ describe('services/message-sender', () => {
         { type: 'image_url', image_url: { url: img1 } },
         { type: 'image_url', image_url: { url: img2 } },
       ]);
-      expect(lastMsg.hadImages).toBe(true);
+      // hadImages is local bookkeeping: kept in history, never sent to the API
+      expect(lastMsg.hadImages).toBeUndefined();
 
       // history append 收到原始带图消息（内存保留图片）
       const historyArg = (appendHistory as ReturnType<typeof vi.fn>).mock.calls[0][1];
       expect(Array.isArray(historyArg.content)).toBe(true);
+      expect(historyArg.hadImages).toBe(true);
     });
 
     it('builds string content when there are no images', async () => {
