@@ -3,7 +3,7 @@
  *
  * Tests:
  * - sendToAI: system prompt + page context assembly, conversation history,
- *   quote handling (truncation + prefix), OCR context, error rollback
+ *   quote handling (truncation + prefix), image parts, error rollback
  * - sendMessage: reads from textarea, validates images, clears input
  * - retryMessage: removes messages after wrapper, splices history
  *
@@ -90,13 +90,9 @@ vi.mock('../../src/side_panel/services/tts/index.js', () => ({
   stopTTS: vi.fn(),
 }));
 
-vi.mock('../../src/side_panel/services/ocr.js', () => ({
-  hasImageErrors: vi.fn(() => false),
-  buildOcrContext: vi.fn(() => ''),
+vi.mock('../../src/side_panel/services/images.js', () => ({
   collectImageDataUris: vi.fn(() => []),
   clearImagePreviews: vi.fn(),
-  validateImageState: vi.fn(() => null),
-  hasImagesWithoutOcr: vi.fn(() => false),
 }));
 
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
@@ -128,9 +124,6 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
   }),
 }));
 
-vi.mock('../../src/platform/storage.js', () => ({
-  getSync: vi.fn(() => Promise.resolve({})),
-}));
 
 // --- Import after mocks ---
 import {
@@ -145,10 +138,9 @@ import { initComposer } from '../../src/side_panel/services/composer.js';
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
 import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
-import * as ocrMock from '../../src/side_panel/services/ocr.js';
+import * as imagesMock from '../../src/side_panel/services/images.js';
 import { ensurePageContent } from '../../src/side_panel/services/page-extractor.js';
 import { callAI } from '../../src/side_panel/services/stream-handler.js';
-import { getSync } from '../../src/platform/storage.js';
 import { appendMessage as appendHistory, truncateHistoryFromUserContent } from '../../src/side_panel/services/chat/history-ops.js';
 
 describe('services/message-sender', () => {
@@ -181,13 +173,8 @@ describe('services/message-sender', () => {
       Promise.resolve({ ok: true, value: null }),
     );
     (callAI as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    ocrMock.hasImageErrors.mockReturnValue(false);
-    ocrMock.buildOcrContext.mockReturnValue('');
-    ocrMock.collectImageDataUris.mockReturnValue([]);
-    ocrMock.clearImagePreviews.mockImplementation(() => {});
-    ocrMock.validateImageState.mockReturnValue(null);
-    ocrMock.hasImagesWithoutOcr.mockReturnValue(false);
-    (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: false });
+    imagesMock.collectImageDataUris.mockReturnValue([]);
+    imagesMock.clearImagePreviews.mockImplementation(() => {});
 
     userInput = document.createElement('textarea');
     chatArea = document.createElement('div');
@@ -315,17 +302,9 @@ describe('services/message-sender', () => {
       expect(domMock.appendMessage).toHaveBeenCalledWith('user', 'q', undefined);
     });
 
-    it('appends OCR context to API content when provided', async () => {
-      await sendToAI('question', 'question', undefined, 'OCR: extracted text');
-
-      const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const lastMsg = messages[messages.length - 1];
-      expect(lastMsg.content).toContain('OCR: extracted text');
-    });
-
     it('passes imageUris to appendMessage', async () => {
       const images = ['data:image/png;base64,abc'];
-      await sendToAI('q', 'q', undefined, undefined, images);
+      await sendToAI('q', 'q', undefined, images);
 
       expect(domMock.appendMessage).toHaveBeenCalledWith('user', 'q', images);
     });
@@ -392,26 +371,14 @@ describe('services/message-sender', () => {
       expect(callAI).not.toHaveBeenCalled();
     });
 
-    it('shows error and returns when image validation fails', async () => {
+    it('sends pending images with the text and clears previews', async () => {
       userInput.value = 'text';
-      ocrMock.validateImageState.mockReturnValue('image error');
+      imagesMock.collectImageDataUris.mockReturnValue(['img1']);
 
       await sendMessage();
 
-      expect(domMock.appendMessage).toHaveBeenCalledWith('error', 'image error');
-      expect(callAI).not.toHaveBeenCalled();
-    });
-
-    it('collects OCR context and image URIs, clears previews', async () => {
-      userInput.value = 'text';
-      ocrMock.buildOcrContext.mockReturnValue('ocr ctx');
-      ocrMock.collectImageDataUris.mockReturnValue(['img1']);
-
-      await sendMessage();
-
-      expect(ocrMock.clearImagePreviews).toHaveBeenCalled();
-      // sendToAI should be called with OCR context and images
-      expect(callAI).toHaveBeenCalled();
+      expect(imagesMock.clearImagePreviews).toHaveBeenCalled();
+      expect(domMock.appendMessage).toHaveBeenCalledWith('user', 'text', ['img1']);
     });
   });
 
@@ -445,47 +412,13 @@ describe('services/message-sender', () => {
       expect(userInput.value).toBe('');
     });
 
-    it('attaches OCR text for prompt intents (vision off)', async () => {
-      ocrMock.buildOcrContext.mockReturnValue('OCR TEXT');
-      await submit({ prompt: 'PROMPT', display: 'Label' });
-      expect(lastUserMessage().content).toBe('PROMPT\n\nOCR TEXT');
-      expect(ocrMock.clearImagePreviews).toHaveBeenCalled();
-    });
-
-    it('attaches images for prompt intents (vision on)', async () => {
-      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
-      ocrMock.collectImageDataUris.mockReturnValue(['data:image/png;base64,A']);
+    it('attaches pending images for prompt intents', async () => {
+      imagesMock.collectImageDataUris.mockReturnValue(['data:image/png;base64,A']);
       await submit({ prompt: 'PROMPT', display: 'Label' });
       expect(lastUserMessage().content).toEqual([
         { type: 'text', text: 'PROMPT' },
         { type: 'image_url', image_url: { url: 'data:image/png;base64,A' } },
       ]);
-    });
-
-    it('keeps the draft and images when attachments are invalid', async () => {
-      userInput.value = 'keep me';
-      ocrMock.validateImageState.mockReturnValue('ocr running');
-      await submit({ prompt: 'PROMPT', display: 'Label' });
-      expect(domMock.appendMessage).toHaveBeenCalledWith('error', 'ocr running');
-      expect(userInput.value).toBe('keep me');
-      expect(ocrMock.clearImagePreviews).not.toHaveBeenCalled();
-      expect(callAI).not.toHaveBeenCalled();
-    });
-
-    it('refuses images that were never OCR\'d while vision is off', async () => {
-      userInput.value = 'q';
-      ocrMock.hasImagesWithoutOcr.mockReturnValue(true);
-      await submit();
-      expect(domMock.appendMessage).toHaveBeenCalledWith('error', '[error.imageNeedsVision]');
-      expect(callAI).not.toHaveBeenCalled();
-    });
-
-    it('ignores a second submit while the first is still validating', async () => {
-      userInput.value = 'once';
-      const first = submit();
-      const second = submit();
-      await Promise.all([first, second]);
-      expect(callAI).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -545,28 +478,7 @@ describe('services/message-sender', () => {
       );
     });
 
-    it('re-sends the original OCR text and matches the history entry that contains it', async () => {
-      tabState.conversationHistory = [
-        { role: 'user', content: 'question\n\nOCR TEXT' },
-        { role: 'assistant', content: 'old answer' },
-      ];
-      const wrapper = document.createElement('div');
-      const userEl = document.createElement('div');
-      userEl.className = 'message-user';
-      userEl.dataset.ocrContext = 'OCR TEXT';
-      wrapper.appendChild(userEl);
-      chatArea.appendChild(wrapper);
-
-      await retryMessage(wrapper, 'question', 'question');
-
-      // Old pair truncated, then the same user content re-appended.
-      expect(tabState.conversationHistory).toEqual([
-        { role: 'user', content: 'question\n\nOCR TEXT' },
-      ]);
-    });
-
     it('falls back to the bubble thumbnails when the history entry was rolled back', async () => {
-      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
       const wrapper = document.createElement('div');
       wrapper.innerHTML = '<div class="message-user"><div class="bubble-images"><img src="data:image/png;base64,B"></div>q</div>';
       chatArea.appendChild(wrapper);
@@ -687,24 +599,23 @@ describe('services/message-sender', () => {
   });
 
   // ==========================================================================
-  // sendToAI — vision fork (multimodal content assembly)
+  // sendToAI — multimodal content assembly
   // ==========================================================================
-  describe('sendToAI — vision fork', () => {
-    it('builds array content with image_url blocks when visionEnabled + images present', async () => {
-      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
+  describe('sendToAI — multimodal content', () => {
+    it('builds array content with image_url blocks when images are present', async () => {
       const img1 = 'data:image/png;base64,AAA';
       const img2 = 'data:image/png;base64,BBB';
 
-      await sendToAI('分析这些图', '分析这些图', undefined, '', [img1, img2]);
+      await sendToAI('分析这些图', '分析这些图', undefined, [img1, img2]);
 
       const messagesArg = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
       const lastMsg = messagesArg[messagesArg.length - 1];
       expect(lastMsg.role).toBe('user');
-      expect(Array.isArray(lastMsg.content)).toBe(true);
-      const parts = lastMsg.content;
-      expect(parts[0]).toEqual({ type: 'text', text: '分析这些图' });
-      expect(parts[1]).toEqual({ type: 'image_url', image_url: { url: img1 } });
-      expect(parts[2]).toEqual({ type: 'image_url', image_url: { url: img2 } });
+      expect(lastMsg.content).toEqual([
+        { type: 'text', text: '分析这些图' },
+        { type: 'image_url', image_url: { url: img1 } },
+        { type: 'image_url', image_url: { url: img2 } },
+      ]);
       expect(lastMsg.hadImages).toBe(true);
 
       // history append 收到原始带图消息（内存保留图片）
@@ -712,31 +623,11 @@ describe('services/message-sender', () => {
       expect(Array.isArray(historyArg.content)).toBe(true);
     });
 
-    it('builds string content when visionEnabled is false (OCR fallback path)', async () => {
-    (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: false });
-    (appendHistory as ReturnType<typeof vi.fn>).mockImplementation(
-      (ts: { conversationHistory: unknown[] }, msg: unknown) => {
-        ts.conversationHistory.push(msg);
-      },
-    );
-
-      await sendToAI('总结', '总结', undefined, 'OCR_TEXT', []);
+    it('builds string content when there are no images', async () => {
+      await sendToAI('纯文字提问', '纯文字提问', undefined, []);
 
       const messagesArg = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
       const lastMsg = messagesArg[messagesArg.length - 1];
-      expect(typeof lastMsg.content).toBe('string');
-      expect(lastMsg.content).toContain('总结');
-      expect(lastMsg.content).toContain('OCR_TEXT');
-    });
-
-    it('builds string content when visionEnabled but no images', async () => {
-      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
-
-      await sendToAI('纯文字提问', '纯文字提问', undefined, '', []);
-
-      const messagesArg = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const lastMsg = messagesArg[messagesArg.length - 1];
-      expect(typeof lastMsg.content).toBe('string');
       expect(lastMsg.content).toBe('纯文字提问');
     });
   });

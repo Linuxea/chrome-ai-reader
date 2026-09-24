@@ -47,9 +47,7 @@
  * @property {string} selectedText - Currently selected text on the page
  * @property {boolean} isGenerating - Whether an AI response is streaming
  * @property {boolean} isPodcastGenerating - Whether a podcast is being generated
- * @property {number} ocrRunning - OCR task counter (0 = idle)
- * @property {Array<{index: number, fileName: string, text: string}>} ocrResults - OCR results per image
- * @property {number} imageIndex - Current image index for OCR scanning
+ * @property {number} imageIndex - Index counter for pending preview-bar images
  */
 
 /**

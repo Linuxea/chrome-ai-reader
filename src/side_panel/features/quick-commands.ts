@@ -115,7 +115,7 @@ export function hideCommandPopup(): void {
 
 /**
  * Run a quick command through the same submit pipeline as the send button:
- * pending images / OCR text are attached, and any text typed after `/name`
+ * pending images are attached, and any text typed after `/name`
  * rides along as extra instructions (like a draft does for quick actions).
  */
 export function executeQuickCommand(cmd: QuickCommand): void {

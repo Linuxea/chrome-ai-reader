@@ -1,9 +1,9 @@
-import type { TabState, ChatMessage, OcrResult } from '../shared/types';
+import type { TabState, ChatMessage } from '../shared/types';
 import { stripImagesForPersistence } from './services/chat/strip-images';
 
 /**
  * Debounce window for field-setter persistence. High-frequency setters
- * (setPageContent during extraction, OCR progress counters, …) must not
+ * (setPageContent during extraction, image index counter, …) must not
  * serialize the whole TabState — including conversationHistory — into
  * chrome.storage.session on every call. Message-boundary writes
  * (conversation helpers, persistForTab, tab switch) bypass the debounce
@@ -42,8 +42,6 @@ function createFreshTabState(): TabState {
     selectedText: '',
     isGenerating: false,
     isPodcastGenerating: false,
-    ocrRunning: 0,
-    ocrResults: [],
     imageIndex: 0,
   };
 }
@@ -207,12 +205,6 @@ export function setCurrentChatId(v: string | null): void { if (!_activeState) re
 
 export function getSelectedText(): string { return _activeState?.selectedText ?? ''; }
 export function setSelectedText(v: string): void { if (!_activeState) return; _activeState.selectedText = v; schedulePersist(); }
-
-export function getOcrRunning(): number { return _activeState?.ocrRunning ?? 0; }
-export function setOcrRunning(v: number): void { if (!_activeState) return; _activeState.ocrRunning = v; schedulePersist(); }
-
-export function getOcrResults(): OcrResult[] { return _activeState?.ocrResults ?? []; }
-export function setOcrResults(v: OcrResult[]): void { if (!_activeState) return; _activeState.ocrResults = v; schedulePersist(); }
 
 export function getImageIndex(): number { return _activeState?.imageIndex ?? 0; }
 export function setImageIndex(v: number): void { if (!_activeState) return; _activeState.imageIndex = v; schedulePersist(); }

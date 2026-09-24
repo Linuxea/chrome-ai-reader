@@ -2,7 +2,7 @@ import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import { appendMessageFromHistory, scrollToBottom } from './dom-helpers';
-import { clearImagePreviews } from '../services/ocr.js';
+import { clearImagePreviews } from '../services/images.js';
 import { updateQuotePreview } from './global-events';
 import type { ChatMessage } from '../../shared/types';
 import type { UIElements, GlobalEventDeps } from './global-events';

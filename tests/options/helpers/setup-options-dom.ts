@@ -18,13 +18,12 @@
 const TEXT_INPUT_IDS = [
   'apiKey', 'apiBase', 'modelName', 'systemPrompt',
   'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'podcastResourceId', 'ttsSpeaker',
-  'ocrApiKey',
   'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
 ] as const;
 
 /** IDs of all checkbox elements */
 const CHECKBOX_IDS = [
-  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'visionEnabled',
+  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled',
 ] as const;
 
 /** IDs of all button elements */

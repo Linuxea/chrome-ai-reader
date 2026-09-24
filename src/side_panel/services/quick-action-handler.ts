@@ -51,6 +51,6 @@ export async function handleQuickAction(action: string): Promise<void> {
   };
 
   // Same pipeline as the send button: the draft text rides along as extra
-  // instructions and pending images / OCR text are attached.
+  // instructions and pending images are attached.
   await _submit({ prompt: actionPrompts[action], display: actionNames[action] });
 }

@@ -31,7 +31,7 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
     return el;
   }),
 }));
-vi.mock('../../../src/side_panel/services/ocr.js', () => ({ clearImagePreviews: vi.fn() }));
+vi.mock('../../../src/side_panel/services/images.js', () => ({ clearImagePreviews: vi.fn() }));
 vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
   updateQuotePreview: vi.fn(),
 }));

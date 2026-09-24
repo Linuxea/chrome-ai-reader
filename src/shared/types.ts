@@ -71,15 +71,7 @@ export interface TabState {
   selectedText: string;
   isGenerating: boolean;
   isPodcastGenerating: boolean;
-  ocrRunning: number;
-  ocrResults: OcrResult[];
   imageIndex: number;
-}
-
-export interface OcrResult {
-  index: number;
-  fileName: string;
-  text: string;
 }
 
 /**

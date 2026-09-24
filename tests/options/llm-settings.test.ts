@@ -112,6 +112,13 @@ describe('options/llm-settings', () => {
       expect(result.remove).toContain('systemPrompt');
     });
 
+    it('clears the retired visionEnabled / ocrApiKey settings on save', () => {
+      apiKeyInput.value = 'sk-test';
+      const result = mod.collectLlmSaveData();
+      expect(result.remove).toEqual(expect.arrayContaining(['visionEnabled', 'ocrApiKey']));
+      expect(result.set).not.toHaveProperty('visionEnabled');
+    });
+
     it('trims all values before saving', () => {
       apiKeyInput.value = '  sk-test  ';
       apiBaseInput.value = '  https://api.test.com  ';

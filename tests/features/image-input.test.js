@@ -9,12 +9,12 @@ vi.mock('../../src/shared/i18n.js', () => ({
 // responsibility: detecting paste/drop events, extracting image files,
 // and forwarding them to ingestImages. They no longer assert on the
 // internal state mutations that ingestImages owns.
-vi.mock('../../src/side_panel/services/ocr.js', () => ({
+vi.mock('../../src/side_panel/services/images.js', () => ({
   ingestImages: vi.fn(),
 }));
 
 import { initImageInput } from '../../src/side_panel/features/image-input.js';
-import { ingestImages } from '../../src/side_panel/services/ocr.js';
+import { ingestImages } from '../../src/side_panel/services/images.js';
 
 describe('initImageInput', () => {
   let userInput;

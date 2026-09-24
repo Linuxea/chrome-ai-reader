@@ -1,5 +1,5 @@
 import { t } from '../../shared/i18n.js';
-import { ingestImages } from '../services/ocr.js';
+import { ingestImages } from '../services/images.js';
 
 export function initImageInput({ userInput }: { userInput: HTMLElement }): void {
   document.body.dataset.dropHint = t('sidebar.dropHint');

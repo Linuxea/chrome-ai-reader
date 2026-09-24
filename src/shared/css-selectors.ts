@@ -15,10 +15,8 @@ export const CSS = {
   TTS_LOADING: '.tts-loading',
   TTS_DOWNLOAD_BTN: '.tts-download-btn',
 
-  // Image/OCR
+  // Images
   IMAGE_PREVIEW_ITEM: '.image-preview-item',
-  IMAGE_PREVIEW_ERROR: '.image-preview-item.error',
-  IMAGE_STATUS: '.image-status',
   IMAGE_THUMB: '.image-thumb',
 
   // Outline

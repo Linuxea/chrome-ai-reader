@@ -35,7 +35,7 @@ vi.mock('../../../src/side_panel/features/quick-commands.js', () => ({
   hideCommandPopup: vi.fn(),
   updateCommandPopup: vi.fn(),
 }));
-vi.mock('../../../src/side_panel/services/ocr.js', () => ({ clearImagePreviews: vi.fn() }));
+vi.mock('../../../src/side_panel/services/images.js', () => ({ clearImagePreviews: vi.fn() }));
 vi.mock('../../../src/side_panel/features/chat-history.js', () => ({
   saveCurrentChat: vi.fn(),
   getDisplayMessages: vi.fn(() => []),

@@ -62,9 +62,6 @@ vi.mock('../../src/background/sw-openai.js', () => ({
 }));
 vi.mock('../../src/background/sw-tts.js', () => ({ callTTS: vi.fn() }));
 vi.mock('../../src/background/sw-podcast.js', () => ({ callPodcast: vi.fn() }));
-vi.mock('../../src/background/sw-ocr.js', () => ({
-  handleOcrParse: vi.fn(() => true),
-}));
 vi.mock('../../src/background/sw-related-pages.js', () => ({
   handlePageRecordsMessage: vi.fn((msg: Record<string, unknown>, sendResponse: (r?: unknown) => void) => {
     sendResponse({ success: true });
@@ -77,7 +74,6 @@ import '../../src/background/service-worker.js';
 import { callOpenAI, callSuggestQuestions, callEmbedding } from '../../src/background/sw-openai.js';
 import { callTTS } from '../../src/background/sw-tts.js';
 import { callPodcast } from '../../src/background/sw-podcast.js';
-import { handleOcrParse } from '../../src/background/sw-ocr.js';
 import { handlePageRecordsMessage } from '../../src/background/sw-related-pages.js';
 
 // --- Helper: create a mock port for onConnect tests ---
@@ -192,7 +188,7 @@ describe('background/service-worker', () => {
       );
     });
 
-    it('sends podcast images (vision mode) as image_url parts', async () => {
+    it('sends pending podcast images as image_url parts', async () => {
       const port = createMockPortForRoute('podcast-llm');
       onConnectListener()!(port);
       port._receiveMessage({ type: 'generate', prompt: 'sys', text: 'content', images: ['data:image/png;base64,A'] });
@@ -348,17 +344,6 @@ describe('background/service-worker', () => {
           error: expect.stringContaining('401'),
         }),
       );
-    });
-
-    it('routes ocrParse to handleOcrParse', () => {
-      const sendResponse = vi.fn();
-      const result = onMessageListener()!(
-        { action: 'ocrParse', file: 'data:image/png;base64,abc' },
-        {},
-        sendResponse,
-      );
-      expect(result).toBe(true);
-      expect(handleOcrParse).toHaveBeenCalled();
     });
 
     it('routes pageRecords:store to handlePageRecordsMessage', () => {

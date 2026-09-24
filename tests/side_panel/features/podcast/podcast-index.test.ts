@@ -1,7 +1,7 @@
 /**
  * Tests for side_panel/features/podcast/index.ts — podcast orchestration.
  *
- * handlePodcastClick: guard (isGenerating), content extraction (selection/page/OCR),
+ * handlePodcastClick: guard (isGenerating), content extraction (selection/page), pending images,
  * empty content error, script generation delegation.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -13,7 +13,6 @@ vi.mock('../../../../src/side_panel/state.js', () => ({
   setIsPodcastGenerating: vi.fn(),
   getSelectedText: vi.fn(() => ''),
   setSelectedText: vi.fn(),
-  getOcrResults: vi.fn(() => []),
   subscribe: vi.fn(),
   getPageContent: vi.fn(() => ''),
   getActiveTabId: vi.fn(() => 1),
@@ -32,8 +31,7 @@ vi.mock('../../../../src/side_panel/services/tts/index.js', () => ({
   stopTTS: vi.fn(),
 }));
 vi.mock('../../../../src/side_panel/services/composer.js', () => ({
-  validateAttachments: vi.fn(() => Promise.resolve(null)),
-  consumeAttachments: vi.fn(() => Promise.resolve({ ocrContext: '', imageUris: [] })),
+  consumeAttachments: vi.fn(() => ({ imageUris: [] })),
 }));
 vi.mock('../../../../src/side_panel/features/podcast/ui.js', () => ({
   createPodcastCard: vi.fn(() => document.createElement('div')),
@@ -83,14 +81,12 @@ describe('features/podcast/index', () => {
     stateMock.getIsGenerating.mockReturnValue(false);
     stateMock.getIsPodcastGenerating.mockReturnValue(false);
     stateMock.getSelectedText.mockReturnValue('');
-    stateMock.getOcrResults.mockReturnValue([]);
     stateMock.getPageContent.mockReturnValue('');
     (ensurePageContent as ReturnType<typeof vi.fn>).mockReturnValue(
       Promise.resolve({ ok: true, value: null }),
     );
     (generatePodcastScript as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    vi.mocked(composerMock.validateAttachments).mockResolvedValue(null);
-    vi.mocked(composerMock.consumeAttachments).mockResolvedValue({ ocrContext: '', imageUris: [] });
+    vi.mocked(composerMock.consumeAttachments).mockReturnValue({ imageUris: [] });
     (createPodcastCard as ReturnType<typeof vi.fn>).mockReturnValue(document.createElement('div'));
     // Set up a podcast button in DOM
     document.body.innerHTML = '<button data-action="podcast"></button>';
@@ -144,39 +140,15 @@ describe('features/podcast/index', () => {
     expect(textContent).toBe('page content');
   });
 
-  it('merges OCR text from pending images into the podcast material (vision off)', async () => {
-    stateMock.getSelectedText.mockReturnValue('main text');
-    vi.mocked(composerMock.consumeAttachments).mockResolvedValue({ ocrContext: 'OCR text 1\n\nOCR text 3', imageUris: [] });
-
-    await handlePodcastClick();
-
-    const [, textContent, images] = vi.mocked(generatePodcastScript).mock.calls[0];
-    expect(textContent).toContain('main text');
-    expect(textContent).toContain('OCR text 1');
-    expect(textContent).toContain('OCR text 3');
-    expect(images).toEqual([]);
-  });
-
-  it('passes pending images to the script generator (vision on)', async () => {
+  it('passes pending images to the script generator', async () => {
     stateMock.getPageContent.mockReturnValue('page content');
-    vi.mocked(composerMock.consumeAttachments).mockResolvedValue({ ocrContext: '', imageUris: ['data:image/png;base64,A'] });
+    vi.mocked(composerMock.consumeAttachments).mockReturnValue({ imageUris: ['data:image/png;base64,A'] });
 
     await handlePodcastClick();
 
     const [, textContent, images] = vi.mocked(generatePodcastScript).mock.calls[0];
     expect(textContent).toBe('page content');
     expect(images).toEqual(['data:image/png;base64,A']);
-  });
-
-  it('does not start (and consumes nothing) when attachments are invalid', async () => {
-    stateMock.getPageContent.mockReturnValue('page content');
-    vi.mocked(composerMock.validateAttachments).mockResolvedValue('ocr running');
-
-    await handlePodcastClick();
-
-    expect(appendMessage).toHaveBeenCalledWith('error', 'ocr running');
-    expect(composerMock.consumeAttachments).not.toHaveBeenCalled();
-    expect(createPodcastCard).not.toHaveBeenCalled();
   });
 
   it('shows error when no content available', async () => {

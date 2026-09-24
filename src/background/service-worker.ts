@@ -1,12 +1,11 @@
 import { callOpenAI, callSuggestQuestions, callEmbedding } from './sw-openai';
 import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
-import { handleOcrParse } from './sw-ocr';
 import { annotateChunk } from './sw-annotation';
 import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
 import type { PodcastLLMRequest } from '../shared/protocol';
-import type { ChatMessage, MessageContentPart } from '../shared/types';
+import type { MessageContentPart } from '../shared/types';
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
@@ -69,15 +68,14 @@ chrome.runtime.onMessage.addListener((msg: Record<string, unknown>, sender: chro
     return true;
   }
 
-  if (msg.action === 'ocrParse') return handleOcrParse(msg as Parameters<typeof handleOcrParse>[0], sendResponse);
 
   if (msg.action === 'pageRecords:store' || msg.action === 'pageRecords:findRelated') {
     return handlePageRecordsMessage(msg, sendResponse);
   }
 });
 
-/** Podcast script request → one user message; images (vision mode) become image_url parts. */
-export function buildPodcastUserMessage(req: PodcastLLMRequest): ChatMessage {
+/** Podcast script request → one user message; pending images become image_url parts. */
+export function buildPodcastUserMessage(req: PodcastLLMRequest): { role: 'user'; content: string | MessageContentPart[] } {
   const text = `${req.prompt}\n\n${req.text}`;
   if (!req.images || req.images.length === 0) return { role: 'user', content: text };
   const parts: MessageContentPart[] = [{ type: 'text', text }];

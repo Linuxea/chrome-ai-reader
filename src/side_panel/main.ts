@@ -7,9 +7,9 @@ import { initDOMHelpers, appendMessage } from './ui/dom-helpers';
 import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
-import { initOCR, clearImagePreviews, addImageDataUri } from './services/ocr.js';
+import { initImages, clearImagePreviews, addImageDataUri } from './services/images.js';
 import { captureVisibleTab, captureFullPage } from './services/screenshot';
-import { getSync, onSyncChange } from '../platform/storage';
+import { getSync } from '../platform/storage';
 import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
 import { submit, retryMessage, editMessage } from './services/message-sender';
@@ -60,28 +60,18 @@ async function init(): Promise<void> {
   initModelStatus();
 
   initTTS({ chatArea: els.chatArea });
-  initOCR();
+  initImages();
   initComposer({ userInput: els.userInput });
 
-  // 视觉分析按钮：显隐由 visionEnabled 控制，onSyncChange 实时联动
+  // 截图按钮：模型默认支持多模态，截图直接作为图片附件发给模型
   const visionCaptureBtn = document.getElementById('visionCaptureBtn')!;
   const fullPageCaptureBtn = document.getElementById('fullPageCaptureBtn') as HTMLButtonElement;
-  const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
-
-  // Listener lives for the panel's lifetime; side panel is a single-page
-  // context that unloads cleanly on close, so no explicit unsubscribe needed.
-  const syncVisionButtons = (on: boolean): void => {
-    visionCaptureBtn.classList.toggle('hidden', !on);
-    fullPageCaptureBtn.classList.toggle('hidden', !on);
-  };
-  syncVisionButtons(visionEnabled === true);
-  onSyncChange('visionEnabled', (val) => syncVisionButtons(val === true));
 
   visionCaptureBtn.addEventListener('click', async () => {
     try {
       const dataUri = await captureVisibleTab();
       const name = t('screenshot.defaultName', { time: new Date().toLocaleString() });
-      await addImageDataUri(dataUri, name);
+      addImageDataUri(dataUri, name);
     } catch (e) {
       appendMessage('error', t('error.screenshotFailed') + (e instanceof Error ? `：${e.message}` : ''));
     }
@@ -102,7 +92,7 @@ async function init(): Promise<void> {
       const time = new Date().toLocaleString();
       for (let i = 0; i < dataUris.length; i++) {
         const name = t('screenshot.fullPageName', { n: i + 1, total: dataUris.length, time });
-        await addImageDataUri(dataUris[i], name);
+        addImageDataUri(dataUris[i], name);
       }
       if (error || dataUris.length === 0) {
         appendMessage('error', t('error.screenshotFailed') + (error ? `：${error}` : ''));

@@ -2,7 +2,7 @@ import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { setButtonsDisabled, updateSendButtonDim } from './dom-helpers';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
-import { clearImagePreviews } from '../services/ocr.js';
+import { clearImagePreviews } from '../services/images.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
 import { emit, EVENTS } from '../events';
 import { resetUIForTabSwitch, cleanupActiveFeatures } from './tab-switch-handler.js';

@@ -1,7 +1,7 @@
 /**
- * Tests for options/tts-settings.ts, ocr-settings.ts, suggest-settings.ts.
+ * Tests for options/tts-settings.ts, suggest-settings.ts.
  *
- * These three modules are small and follow the same collect/load pattern.
+ * These modules are small and follow the same collect/load pattern.
  * Combined into one test file for efficiency.
  *
  * Uses vi.resetModules() + dynamic import because modules call
@@ -13,7 +13,6 @@ import { setupOptionsDom } from './helpers/setup-options-dom';
 vi.mock('../../src/shared/i18n.js', () => ({ t: (k: string) => `[${k}]` }));
 
 import type * as TtsSettings from '../../src/options/tts-settings';
-import type * as OcrSettings from '../../src/options/ocr-settings';
 import type * as SuggestSettings from '../../src/options/suggest-settings';
 
 describe('options/tts-settings', () => {
@@ -76,41 +75,6 @@ describe('options/tts-settings', () => {
       ttsAutoPlayCheckbox.checked = true;
       mod.loadTtsValues({});
       expect(ttsAutoPlayCheckbox.checked).toBe(true);
-    });
-  });
-});
-
-describe('options/ocr-settings', () => {
-  let mod: typeof OcrSettings;
-  let ocrApiKeyInput: HTMLInputElement;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    setupOptionsDom();
-    mod = await import('../../src/options/ocr-settings');
-    ocrApiKeyInput = document.getElementById('ocrApiKey') as HTMLInputElement;
-  });
-
-  describe('collectOcrSaveData()', () => {
-    it('returns set with ocrApiKey when value present', () => {
-      ocrApiKeyInput.value = 'ocr-key-123';
-      const result = mod.collectOcrSaveData();
-      expect(result.set).toEqual({ ocrApiKey: 'ocr-key-123' });
-      expect(result.remove).toEqual([]);
-    });
-
-    it('returns remove with ocrApiKey when value empty', () => {
-      ocrApiKeyInput.value = '';
-      const result = mod.collectOcrSaveData();
-      expect(result.set).toEqual({});
-      expect(result.remove).toEqual(['ocrApiKey']);
-    });
-  });
-
-  describe('loadOcrValues()', () => {
-    it('populates ocrApiKey from data', () => {
-      mod.loadOcrValues({ ocrApiKey: 'loaded-ocr-key' });
-      expect(ocrApiKeyInput.value).toBe('loaded-ocr-key');
     });
   });
 });
