@@ -4,6 +4,7 @@ import { ok, err } from '../../shared/result.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import { showExtractingToast } from '../ui/toast';
+import { sendToContentScript } from '../../platform/messaging';
 
 export interface ExtractResult {
   textContent: string;
@@ -42,32 +43,42 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
   const tabId = expectTabId || state.getActiveTabId();
   if (!tabId) return err(new Error(t('error.noTab')));
 
-  const response = await chrome.tabs.sendMessage(tabId, { action: 'extract' }) as { success?: boolean; error?: string; data?: ExtractResult };
+  let response: { success?: boolean; error?: string; data?: ExtractResult } | undefined;
+  try {
+    response = await sendToContentScript(tabId, { action: 'extract' });
+  } catch {
+    // Browser-internal pages (chrome://, the Web Store, the PDF viewer, …)
+    // cannot host a content script; show that instead of Chrome's raw
+    // "Receiving end does not exist".
+    return err(new Error(t('error.pageUnsupported')));
+  }
   if (!response?.success) {
     return err(new Error(response?.error || t('error.extractFailed')));
   }
+
+  // Capture the URL now — it keys the cache (a later navigation invalidates
+  // it) and the related-pages record, and avoids a race if the user switches
+  // tabs during the delay below.
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const url = tab?.url ?? '';
 
   const tabState = state.getStateForTab(tabId);
   if (tabState && response.data) {
     tabState.pageContent = response.data.textContent;
     tabState.pageExcerpt = response.data.excerpt;
     tabState.pageTitle = response.data.title;
+    tabState.pageUrl = url;
     state.persistForTab(tabId);
   }
 
   // Notify subscribers (e.g. related-pages embedding) via the event bus instead
   // of importing the feature layer upward. Trigger after a short delay to let
   // the page settle and avoid wasting an embedding call when the user is just
-  // tab-skimming. Was 3000ms; lowered to 1500ms in the 2026-06 refactor so the
-  // auto-refresh on the related-reading panel shows results noticeably faster.
-  if (response.data) {
-    const excerpt = response.data.excerpt;
-    const title = response.data.title;
-    // Capture URL now to avoid race condition if user switches tabs during the delay
-    const tab = await chrome.tabs.get(tabId);
-    const url = tab.url;
+  // tab-skimming.
+  if (response.data && url) {
+    const { excerpt, title, textContent } = response.data;
     setTimeout(() => {
-      if (url) emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title });
+      emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title, content: textContent });
     }, 1500);
   }
 

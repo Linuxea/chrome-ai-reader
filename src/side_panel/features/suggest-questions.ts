@@ -4,21 +4,14 @@ import { getPrompt } from '../../shared/prompts';
 import { onSyncChange } from '../../platform/storage';
 import * as state from '../state';
 import { smartScrollToBottom } from '../ui/dom-helpers';
+import { appendDraftText } from '../services/composer';
 import type { ChatMessage } from '../../shared/types';
 
 let _chatArea: HTMLElement;
-let _userInput: HTMLTextAreaElement;
-let _onSend: () => Promise<void>;
 let suggestPort: chrome.runtime.Port | null = null;
 
-export function initSuggestQuestions({ chatArea, userInput, onSend }: {
-  chatArea: HTMLElement;
-  userInput: HTMLTextAreaElement;
-  onSend: () => Promise<void>;
-}): void {
+export function initSuggestQuestions({ chatArea }: { chatArea: HTMLElement }): void {
   _chatArea = chatArea;
-  _userInput = userInput;
-  _onSend = onSend;
 
   chrome.storage.sync.get(['suggestQuestions'], (data) => {
     state.setSuggestQuestionsEnabled(data.suggestQuestions !== false);
@@ -36,6 +29,25 @@ export function removeSuggestQuestions(): void {
   }
   const el = _chatArea.querySelector('.suggest-questions, .suggest-loading');
   if (el) el.remove();
+}
+
+/**
+ * Drop a leading list marker ("1.", "2、", "3)", "4）", "-", "*", "•") from a
+ * suggested question. A bare leading number is content, not a marker —
+ * "2024年发生了什么？" must stay intact.
+ */
+export function stripListMarker(line: string): string {
+  return line.replace(/^\s*(?:\d+\s*[.、)）:：]|[-*•])\s*/, '').trim();
+}
+
+/** Text of a (possibly multimodal) message; an image-only message reads as a placeholder. */
+function contentAsText(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return content;
+  const text = content
+    .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+    .map(p => p.text)
+    .join('\n');
+  return text || t('chat.imageOnly');
 }
 
 export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]): void {
@@ -56,13 +68,14 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
 
   let userContent = '';
   const lastUser = userMessages[userMessages.length - 1];
-  if (lastUser) userContent += getPrompt('suggest.userLabel', getCurrentLang()) + lastUser.content + '\n\n';
+  if (lastUser) userContent += getPrompt('suggest.userLabel', getCurrentLang()) + contentAsText(lastUser.content) + '\n\n';
 
   const lastAssistant = assistantMessages[assistantMessages.length - 1];
   if (lastAssistant) {
-    const truncated = lastAssistant.content.length > 2000
-      ? lastAssistant.content.slice(0, 2000) + '...'
-      : lastAssistant.content;
+    const assistantText = contentAsText(lastAssistant.content);
+    const truncated = assistantText.length > 2000
+      ? assistantText.slice(0, 2000) + '...'
+      : assistantText;
     userContent += getPrompt('suggest.aiLabel', getCurrentLang()) + truncated;
   }
 
@@ -90,7 +103,7 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
       if (!msgEl.parentNode) return;
       const questions = fullText
         .split('\n')
-        .map(q => q.replace(/^[\d]+[.、)\s]*/, '').trim())
+        .map(stripListMarker)
         .filter(q => q.length > 0)
         .slice(0, 3);
 
@@ -105,10 +118,10 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
         const item = document.createElement('button');
         item.className = 'suggest-item';
         item.textContent = q;
+        // Fill the question into the input (never auto-send, never clobber a
+        // draft) so the user can adjust it and send it with the normal button.
         item.addEventListener('click', () => {
-          suggestEl.remove();
-          _userInput.value = q;
-          _onSend();
+          appendDraftText(q, { focus: true });
         });
         suggestEl.appendChild(item);
       });

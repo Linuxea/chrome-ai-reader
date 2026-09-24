@@ -8,30 +8,61 @@ vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
   updateQuotePreview,
 }));
 
+// The panel's active tab + a real subscribe so tab switches can be simulated.
+const { activeTab, stateListeners } = vi.hoisted(() => ({
+  activeTab: { id: 42 as number | null },
+  stateListeners: new Map<string, Set<(v: unknown) => void>>(),
+}));
+vi.mock('../../../src/side_panel/state.js', () => ({
+  getActiveTabId: () => activeTab.id,
+  subscribe: (key: string, cb: (v: unknown) => void) => {
+    if (!stateListeners.has(key)) stateListeners.set(key, new Set());
+    stateListeners.get(key)!.add(cb);
+    return () => stateListeners.get(key)?.delete(cb);
+  },
+}));
+
 // chrome mock
-let runtimeListeners: ((msg: Record<string, unknown>) => void)[] = [];
-const tabsQuery = vi.fn();
-const tabsSendMessage = vi.fn();
+type Sender = { tab?: { id?: number } };
+let runtimeListeners: ((msg: Record<string, unknown>, sender: Sender) => void)[] = [];
+let updatedListeners: ((tabId: number, info: { status?: string }) => void)[] = [];
+const tabsSendMessage = vi.fn(() => Promise.resolve({ ok: true }));
+const executeScript = vi.fn(() => Promise.resolve());
 vi.stubGlobal('chrome', {
-  tabs: { query: tabsQuery, sendMessage: tabsSendMessage },
+  tabs: {
+    sendMessage: tabsSendMessage,
+    onUpdated: { addListener: (cb: (tabId: number, info: { status?: string }) => void) => updatedListeners.push(cb) },
+    onRemoved: { addListener: vi.fn() },
+  },
+  scripting: { executeScript },
   runtime: {
-    onMessage: { addListener: (cb: (m: Record<string, unknown>) => void) => runtimeListeners.push(cb) },
+    onMessage: { addListener: (cb: (m: Record<string, unknown>, s: Sender) => void) => runtimeListeners.push(cb) },
   },
 });
 
 import { initAnnotation, __getAnnotationState } from '../../../src/side_panel/features/annotation.js';
+import { initComposer } from '../../../src/side_panel/services/composer.js';
 
-function fireRuntime(msg: Record<string, unknown>): void {
-  for (const cb of runtimeListeners) cb(msg);
+/** A message from the content script of `tabId` (defaults to the active tab 42). */
+function fireRuntime(msg: Record<string, unknown>, tabId = 42): void {
+  for (const cb of runtimeListeners) cb(msg, { tab: { id: tabId } });
+}
+
+function switchTo(tabId: number): void {
+  activeTab.id = tabId;
+  stateListeners.get('tabSwitched')?.forEach(cb => cb(undefined));
 }
 
 describe('side_panel/features/annotation', () => {
   beforeEach(() => {
     document.body.innerHTML = `<button id="annotationBtn" class="action-btn"><span class="action-icon">🩺</span><span data-i18n="annotation.button">深度批阅</span></button>`;
     runtimeListeners = [];
-    tabsQuery.mockClear();
-    tabsSendMessage.mockClear();
-    tabsQuery.mockResolvedValue([{ id: 42 }]);
+    updatedListeners = [];
+    stateListeners.clear();
+    activeTab.id = 42;
+    tabsSendMessage.mockReset();
+    tabsSendMessage.mockResolvedValue({ ok: true });
+    executeScript.mockClear();
   });
 
   it('sends startAnnotation to the active tab on button click', async () => {
@@ -39,7 +70,7 @@ describe('side_panel/features/annotation', () => {
     document.getElementById('annotationBtn')!.click();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(tabsSendMessage).toHaveBeenCalledWith(42, { action: 'startAnnotation' }, expect.any(Function));
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, { action: 'startAnnotation' });
   });
 
   it('updates button label to progress on annotationProgress', () => {
@@ -65,7 +96,7 @@ describe('side_panel/features/annotation', () => {
     fireRuntime({ action: 'annotationDone', count: 5 });
     btn.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(tabsSendMessage).toHaveBeenCalledWith(42, { action: 'clearAnnotation' }, expect.any(Function));
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, { action: 'clearAnnotation' });
     expect(__getAnnotationState()).toBe('idle');
   });
 
@@ -104,6 +135,7 @@ describe('side_panel/features/annotation', () => {
     const input = document.createElement('textarea');
     input.id = 'userInput';
     document.body.appendChild(input);
+    initComposer({ userInput: input });
     const quoteText = document.createElement('span');
     quoteText.id = 'quoteText';
     const quotePreview = document.createElement('div');
@@ -131,5 +163,57 @@ describe('side_panel/features/annotation', () => {
     expect(textArg).toBe('90% 以上代码由 AI 辅助编写');
     // The AI COMMENT goes into the input for follow-up.
     expect(input.value).toContain('这里的水分在于基线未说明');
+  });
+
+  describe('per-tab state', () => {
+    it('shows each tab its own annotation state', () => {
+      const btn = document.getElementById('annotationBtn') as HTMLButtonElement;
+      initAnnotation({ button: btn });
+      fireRuntime({ action: 'annotationDone', count: 7 }, 42);
+
+      switchTo(99);
+      expect(__getAnnotationState()).toBe('idle');
+      expect(btn.textContent).not.toContain('7');
+
+      switchTo(42);
+      expect(__getAnnotationState()).toBe('done');
+      expect(btn.textContent).toContain('7');
+    });
+
+    it('progress from a background tab does not change the visible button', () => {
+      const btn = document.getElementById('annotationBtn') as HTMLButtonElement;
+      initAnnotation({ button: btn });
+      fireRuntime({ action: 'annotationProgress', done: 1, total: 5 }, 99);
+      expect(__getAnnotationState()).toBe('idle');
+    });
+
+    it('ignores follow-ups from a background tab', () => {
+      const input = document.createElement('textarea');
+      document.body.appendChild(input);
+      initComposer({ userInput: input });
+      initAnnotation({ button: document.getElementById('annotationBtn') as HTMLButtonElement, userInput: input });
+      fireRuntime({ action: 'annotationFollowUp', quote: 'q', comment: 'from another tab' }, 99);
+      expect(input.value).toBe('');
+    });
+
+    it('a page reload returns that tab to idle', () => {
+      initAnnotation({ button: document.getElementById('annotationBtn') as HTMLButtonElement });
+      fireRuntime({ action: 'annotationDone', count: 3 }, 42);
+      updatedListeners.forEach(cb => cb(42, { status: 'loading' }));
+      expect(__getAnnotationState()).toBe('idle');
+    });
+
+    it('shows an error instead of hanging when the page cannot host the content script', async () => {
+      tabsSendMessage.mockRejectedValue(new Error('Receiving end does not exist'));
+      executeScript.mockRejectedValueOnce(new Error('Cannot access a chrome:// URL'));
+      const btn = document.getElementById('annotationBtn') as HTMLButtonElement;
+      initAnnotation({ button: btn });
+
+      btn.click();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(__getAnnotationState()).toBe('error');
+      expect(btn.title).toContain('无法读取这个页面');
+    });
   });
 });

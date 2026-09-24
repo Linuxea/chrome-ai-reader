@@ -1,6 +1,6 @@
 import { initStreamHandler, abortGeneration } from './stream-handler';
 import { initQuickActionHandler, handleQuickAction } from './quick-action-handler';
-import { initMessageSender, sendToAI, sendMessage } from './message-sender';
+import { initMessageSender, submit, sendMessage } from './message-sender';
 import * as state from '../state';
 
 let _userInput: HTMLTextAreaElement;
@@ -38,8 +38,8 @@ export function initAIChat({
   _actionBtns = actionBtns;
 
   initStreamHandler({ chatArea });
-  initMessageSender({ chatArea, userInput });
-  initQuickActionHandler({ sendToAI });
+  initMessageSender({ chatArea });
+  initQuickActionHandler({ submit });
 
   // Stop-mode click aborts the active generation; otherwise it's a normal send.
   _sendBtn.addEventListener('click', () => {

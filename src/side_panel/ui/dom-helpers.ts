@@ -10,6 +10,7 @@ let _chatArea: HTMLElement;
 let _actionBtns: NodeListOf<HTMLButtonElement>;
 let _sendBtn: HTMLButtonElement;
 let _userInput: HTMLTextAreaElement | null = null;
+let _hasAttachments: () => boolean = () => false;
 let _sendBtnDefaultHtml = '';
 
 interface DOMHelperDeps {
@@ -17,13 +18,16 @@ interface DOMHelperDeps {
   actionBtns: NodeListOf<HTMLButtonElement>;
   sendBtn: HTMLButtonElement;
   userInput?: HTMLTextAreaElement;
+  /** Pending images count as content: an image-only message can be sent. */
+  hasAttachments?: () => boolean;
 }
 
-export function initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput }: DOMHelperDeps): void {
+export function initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput, hasAttachments }: DOMHelperDeps): void {
   _chatArea = chatArea;
   _actionBtns = actionBtns;
   _sendBtn = sendBtn;
   _userInput = userInput ?? null;
+  if (hasAttachments) _hasAttachments = hasAttachments;
   _sendBtnDefaultHtml = sendBtn.innerHTML;
   autoScroll.initAutoScroll(chatArea);
   updateSendButtonDim();
@@ -67,8 +71,9 @@ export function appendMessage(role: string, content: string, imageUris?: string[
   return div;
 }
 
-export function appendMessageWithQuote(quoteStr: string, userText: string, imageUris?: string[]): HTMLDivElement {
-  const welcome = _chatArea.querySelector(CSS.WELCOME_MSG);
+export function appendMessageWithQuote(quoteStr: string, userText: string, imageUris?: string[], options?: AppendOptions): HTMLDivElement {
+  const parent = options?.target ?? _chatArea;
+  const welcome = parent.querySelector(CSS.WELCOME_MSG);
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
@@ -84,9 +89,42 @@ export function appendMessageWithQuote(quoteStr: string, userText: string, image
   const wrapper = wrapUserMessage(div);
   addUserActions(wrapper, div);
 
-  _chatArea.appendChild(wrapper);
-  scrollToBottom();
+  parent.appendChild(wrapper);
+  if (!options?.deferScroll) scrollToBottom();
   return div;
+}
+
+/** What a user bubble shows and what retry / edit need to re-send it. */
+export interface UserBubble {
+  /** Text re-sent on retry (a quick action's prompt, or the typed text). */
+  rawText: string;
+  /** Text shown in the bubble. */
+  displayText: string;
+  /** Full quoted page text (shown truncated). */
+  quote?: string;
+  imageUris?: string[];
+}
+
+const QUOTE_PREVIEW_CHARS = 50;
+
+/**
+ * The one way to render a user message — used for live sends and history
+ * re-renders alike, so a restored bubble looks and behaves (retry / edit)
+ * exactly like the original.
+ */
+export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): HTMLDivElement {
+  const { rawText, displayText, quote, imageUris } = bubble;
+  let el: HTMLDivElement;
+  if (quote) {
+    const preview = quote.length > QUOTE_PREVIEW_CHARS ? quote.slice(0, QUOTE_PREVIEW_CHARS) + '...' : quote;
+    el = appendMessageWithQuote(preview, displayText, imageUris, options);
+    el.dataset.rawQuote = quote;
+  } else {
+    el = appendMessage('user', displayText, imageUris, options);
+  }
+  el.dataset.rawText = rawText;
+  el.dataset.rawDisplay = displayText;
+  return el;
 }
 
 export function buildBubbleImagesHtml(imageUris: string[]): string {
@@ -180,7 +218,8 @@ function openInlineEditor(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void 
 
   const save = (): void => {
     const edited = ta.value.trim();
-    if (!edited) return;
+    // Clearing the text is fine when the message still carries images.
+    if (!edited && imgs.length === 0) return;
     emit(EVENTS.EDIT, {
       wrapper,
       originalRawText: msgEl.dataset.rawText || '',
@@ -193,11 +232,14 @@ function openInlineEditor(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void 
   const saveBtn = msgEl.querySelector<HTMLButtonElement>('.msg-edit-save');
   cancelBtn?.addEventListener('click', restore);
   saveBtn?.addEventListener('click', save);
+  // Same keys as the main input: Enter saves, Shift+Enter is a newline,
+  // Escape cancels. Enter during IME composition picks a candidate instead.
   ta.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       restore();
-    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       save();
     }
@@ -243,6 +285,16 @@ function buildErrorActionsRow(actions: ErrorMessageAction[]): HTMLDivElement {
     row.appendChild(btn);
   }
   return row;
+}
+
+/** A quiet centered status line (e.g. "generation stopped"). */
+export function appendNoteMessage(text: string): HTMLDivElement {
+  const div = document.createElement('div');
+  div.className = 'message message-note';
+  div.textContent = text;
+  _chatArea.appendChild(div);
+  smartScrollToBottom();
+  return div;
 }
 
 /** Create a new error bubble with an action row (retry / settings / …). */
@@ -338,11 +390,11 @@ function setSendButtonMode(mode: 'send' | 'stop'): void {
   }
 }
 
-/** Dim the send button while the input has no content (visual affordance). */
+/** Dim the send button while there is nothing to send — no text and no pending images. */
 export function updateSendButtonDim(): void {
-  if (_sendBtn.classList.contains('is-stop')) return;
-  const empty = !_userInput || _userInput.value.trim() === '';
-  _sendBtn.classList.toggle('send-dim', empty);
+  if (!_sendBtn || _sendBtn.classList.contains('is-stop')) return;
+  const noText = !_userInput || _userInput.value.trim() === '';
+  _sendBtn.classList.toggle('send-dim', noText && !_hasAttachments());
 }
 
 export function setButtonsDisabled(disabled: boolean): void {
@@ -358,7 +410,8 @@ export function setButtonsDisabled(disabled: boolean): void {
 
 /**
  * Render a chat message from `conversationHistory` (memory or reloaded from
- * storage) into the chat area. Handles both string content (plain text) and
+ * storage) into the chat area. User messages go through appendUserMessage so
+ * retry / edit keep working after a tab switch, reopen or history load. Handles both string content (plain text) and
  * array content (multimodal — extracts image_url thumbnails). On reload,
  * `hadImages: true` with string content means images were stripped at
  * persistence time → show an "image lost" hint.
@@ -366,8 +419,20 @@ export function setButtonsDisabled(disabled: boolean): void {
 export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptions): HTMLDivElement {
   const imageUris = extractImageUrisFromContent(msg);
   const text = extractTextFromContent(msg);
-  const role = msg.role === 'assistant' ? 'ai' : msg.role;
-  const div = appendMessage(role, text, imageUris, options);
+  let div: HTMLDivElement;
+  if (msg.role === 'user') {
+    // `meta` holds what the user entered; legacy entries without it fall back
+    // to the assembled content (retry then re-sends that content verbatim).
+    div = appendUserMessage(
+      msg.meta
+        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris }
+        : { rawText: text, displayText: text, imageUris },
+      options,
+    );
+  } else {
+    div = appendMessage(msg.role === 'assistant' ? 'ai' : msg.role, text, imageUris, options);
+    if (msg.role === 'assistant') div.dataset.markdown = text; // copy button source
+  }
 
   // Restored messages get their action buttons back (copy/TTS/download) via
   // the ADD_TTS_BUTTON event — ui/** must not import services directly.

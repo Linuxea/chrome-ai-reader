@@ -67,12 +67,15 @@ describe('TTS Downloader', () => {
   });
 
   describe('stopTTSDownload', () => {
-    it('cleans up state and resets button', () => {
+    it('cleans up state and resets the button of the message being downloaded', () => {
+      const msgEl = document.createElement('div');
+      msgEl.textContent = 'Some text. More text.';
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      btn.classList.add('tts-loading');
-      btn.disabled = true;
-      chatArea.appendChild(btn);
+      msgEl.appendChild(btn);
+      chatArea.appendChild(msgEl);
+      handleTTSDownloadClick(msgEl);
+      expect(btn.disabled).toBe(true);
 
       stopTTSDownload();
 
@@ -109,13 +112,18 @@ describe('TTS Downloader', () => {
       msgEl.textContent = 'Content with enough text. Second sentence. Third. Fourth. Fifth.';
       chatArea.appendChild(msgEl);
 
+      // an unrelated earlier answer's button must stay untouched
+      const otherBtn = document.createElement('button');
+      otherBtn.className = 'tts-download-btn';
+      chatArea.prepend(otherBtn);
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      chatArea.appendChild(btn);
+      msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
       expect(btn.classList.contains('tts-loading')).toBe(true);
       expect(btn.disabled).toBe(true);
+      expect(otherBtn.classList.contains('tts-loading')).toBe(false);
     });
 
     it('connects to tts-download port and posts message', () => {
@@ -188,14 +196,14 @@ describe('TTS Downloader', () => {
 
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      btn.innerHTML = '<span>original</span>';
-      chatArea.appendChild(btn);
+      btn.innerHTML = '<svg></svg>'; // icon-only, like the real button (no text to read)
+      msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
       currentPort._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
       currentPort._simulateMessage({ type: 'done' });
 
-      expect(btn.title).toBe('[action.copied]');
+      expect(btn.title).toBe('[action.downloaded]');
     });
 
     it('stops download on error message', () => {

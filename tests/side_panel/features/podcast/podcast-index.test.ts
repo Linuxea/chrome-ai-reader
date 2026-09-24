@@ -1,7 +1,7 @@
 /**
  * Tests for side_panel/features/podcast/index.ts — podcast orchestration.
  *
- * handlePodcastClick: guard (isGenerating), content extraction (selection/page/OCR),
+ * handlePodcastClick: guard (isGenerating), content extraction (selection/page), pending images,
  * empty content error, script generation delegation.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -13,7 +13,6 @@ vi.mock('../../../../src/side_panel/state.js', () => ({
   setIsPodcastGenerating: vi.fn(),
   getSelectedText: vi.fn(() => ''),
   setSelectedText: vi.fn(),
-  getOcrResults: vi.fn(() => []),
   subscribe: vi.fn(),
   getPageContent: vi.fn(() => ''),
   getActiveTabId: vi.fn(() => 1),
@@ -31,7 +30,10 @@ vi.mock('../../../../src/side_panel/services/tts/index.js', () => ({
   isTTSPlaying: vi.fn(() => false),
   stopTTS: vi.fn(),
 }));
-vi.mock('../../../../src/side_panel/services/ocr.js', () => ({ clearImagePreviews: vi.fn() }));
+vi.mock('../../../../src/side_panel/services/composer.js', () => ({
+  consumeAttachments: vi.fn(() => ({ imageUris: [] })),
+  attachmentsTooLarge: vi.fn(() => false),
+}));
 vi.mock('../../../../src/side_panel/features/podcast/ui.js', () => ({
   createPodcastCard: vi.fn(() => document.createElement('div')),
   updateCardStatus: vi.fn(),
@@ -71,6 +73,7 @@ import { ensurePageContent } from '../../../../src/side_panel/services/page-extr
 import { generatePodcastScript } from '../../../../src/side_panel/features/podcast/script.js';
 import { appendMessage } from '../../../../src/side_panel/ui/dom-helpers.js';
 import { createPodcastCard } from '../../../../src/side_panel/features/podcast/ui.js';
+import * as composerMock from '../../../../src/side_panel/services/composer.js';
 
 describe('features/podcast/index', () => {
   beforeEach(() => {
@@ -79,12 +82,13 @@ describe('features/podcast/index', () => {
     stateMock.getIsGenerating.mockReturnValue(false);
     stateMock.getIsPodcastGenerating.mockReturnValue(false);
     stateMock.getSelectedText.mockReturnValue('');
-    stateMock.getOcrResults.mockReturnValue([]);
     stateMock.getPageContent.mockReturnValue('');
     (ensurePageContent as ReturnType<typeof vi.fn>).mockReturnValue(
       Promise.resolve({ ok: true, value: null }),
     );
     (generatePodcastScript as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    vi.mocked(composerMock.consumeAttachments).mockReturnValue({ imageUris: [] });
+    vi.mocked(composerMock.attachmentsTooLarge).mockReturnValue(false);
     (createPodcastCard as ReturnType<typeof vi.fn>).mockReturnValue(document.createElement('div'));
     // Set up a podcast button in DOM
     document.body.innerHTML = '<button data-action="podcast"></button>';
@@ -138,20 +142,26 @@ describe('features/podcast/index', () => {
     expect(textContent).toBe('page content');
   });
 
-  it('merges OCR results into text content', async () => {
-    stateMock.getSelectedText.mockReturnValue('main text');
-    stateMock.getOcrResults.mockReturnValue([
-      { text: 'OCR text 1' } as any,
-      { text: '' } as any, // empty OCR, should be filtered
-      { text: 'OCR text 3' } as any,
-    ]);
+  it('passes pending images to the script generator', async () => {
+    stateMock.getPageContent.mockReturnValue('page content');
+    vi.mocked(composerMock.consumeAttachments).mockReturnValue({ imageUris: ['data:image/png;base64,A'] });
 
     await handlePodcastClick();
 
-    const [, textContent] = vi.mocked(generatePodcastScript).mock.calls[0];
-    expect(textContent).toContain('main text');
-    expect(textContent).toContain('OCR text 1');
-    expect(textContent).toContain('OCR text 3');
+    const [, textContent, images] = vi.mocked(generatePodcastScript).mock.calls[0];
+    expect(textContent).toBe('page content');
+    expect(images).toEqual(['data:image/png;base64,A']);
+  });
+
+  it('refuses oversized images without consuming them', async () => {
+    stateMock.getPageContent.mockReturnValue('page content');
+    vi.mocked(composerMock.attachmentsTooLarge).mockReturnValue(true);
+
+    await handlePodcastClick();
+
+    expect(appendMessage).toHaveBeenCalledWith('error', '[error.visionPayloadTooLarge]');
+    expect(composerMock.consumeAttachments).not.toHaveBeenCalled();
+    expect(generatePodcastScript).not.toHaveBeenCalled();
   });
 
   it('shows error when no content available', async () => {

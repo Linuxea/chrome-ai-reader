@@ -19,6 +19,21 @@ let ttsSentenceCount = 0;
 
 let ttsAutoPlayEnabled = false;
 
+/** The TTS button of the message being read — its state tracks this playback. */
+let _playBtn: Element | null = null;
+let _audioStarted = false;
+
+export function getTTSButton(): Element | null { return _playBtn; }
+
+/**
+ * Attach the button of the message being read (autoplay starts before the
+ * answer — and so its button — exists). Shows loading / playing on it.
+ */
+export function setTTSButton(btn: Element | null): void {
+  _playBtn = btn;
+  if (btn && ttsPlaying) btn.classList.add(_audioStarted ? 'tts-playing' : 'tts-loading');
+}
+
 export function initPlayer(chatArea: HTMLElement): void {
   _chatArea = chatArea;
 }
@@ -57,8 +72,9 @@ export function stopTTSPlayback(): void {
   ttsPort = null;
 }
 
-export function initTTSPlayback(): void {
+export function initTTSPlayback(btn: Element | null = null): void {
   ttsPlaying = true;
+  _audioStarted = false;
   ttsSentenceQueue = [];
   ttsTextBuffer = '';
   ttsSentenceCount = 0;
@@ -66,11 +82,11 @@ export function initTTSPlayback(): void {
   ttsChunkQueue = [];
   ttsBufferAppending = false;
 
+  setTTSButton(btn);
   const updateBtnState = (removeCls: string[] | null, addCls: string[] | null) => {
-    const btn = _chatArea.querySelector('.tts-btn');
-    if (btn) {
-      if (removeCls) btn.classList.remove(...removeCls);
-      if (addCls) btn.classList.add(...addCls);
+    if (_playBtn) {
+      if (removeCls) _playBtn.classList.remove(...removeCls);
+      if (addCls) _playBtn.classList.add(...addCls);
     }
   };
 
@@ -92,6 +108,7 @@ export function initTTSPlayback(): void {
       if (!started && ttsAudioEl && ttsSourceBuffer.buffered.length > 0) {
         started = true;
         ttsAudioEl.play().then(() => {
+          _audioStarted = true;
           updateBtnState(['tts-loading'], ['tts-playing']);
         }).catch(() => {});
       }

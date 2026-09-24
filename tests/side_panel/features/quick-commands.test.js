@@ -99,3 +99,42 @@ describe('setCommandSelectedIndex', () => {
     expect(getCommandSelectedIndex()).toBe(0);
   });
 });
+
+describe('executeQuickCommand — shared submit pipeline', () => {
+  let userInput;
+  let onSubmit;
+
+  beforeEach(async () => {
+    mockQuickCommands.length = 0;
+    mockQuickCommands.push({ name: 'translate', prompt: 'Translate this' });
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: { get: vi.fn() },
+        onChanged: { addListener: vi.fn() },
+      },
+    });
+    document.body.innerHTML = '<textarea id="in"></textarea><div id="popup"></div>';
+    userInput = document.getElementById('in');
+    onSubmit = vi.fn(() => Promise.resolve());
+    const { initQuickCommands } = await import('../../../src/side_panel/features/quick-commands.js');
+    initQuickCommands({ userInput, commandPopup: document.getElementById('popup'), onSubmit });
+  });
+
+  it('submits the command prompt with an empty draft (attachments come from submit)', async () => {
+    const { executeQuickCommand } = await import('../../../src/side_panel/features/quick-commands.js');
+    userInput.value = '/translate';
+    executeQuickCommand(mockQuickCommands[0]);
+    expect(onSubmit).toHaveBeenCalledWith({ prompt: 'Translate this', display: '/translate', draft: '' });
+  });
+
+  it('passes text typed after the command name as the draft', async () => {
+    const { executeQuickCommand } = await import('../../../src/side_panel/features/quick-commands.js');
+    userInput.value = '/translate  focus on part 2 ';
+    executeQuickCommand(mockQuickCommands[0]);
+    expect(onSubmit).toHaveBeenCalledWith({ prompt: 'Translate this', display: '/translate', draft: 'focus on part 2' });
+  });
+
+  it('filters on the command token only, so arguments do not break matching', () => {
+    expect(getFilteredCommands('/trans extra words')).toEqual([mockQuickCommands[0]]);
+  });
+});

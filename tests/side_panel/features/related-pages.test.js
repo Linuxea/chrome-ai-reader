@@ -108,7 +108,30 @@ beforeEach(() => {
   resetState();
 });
 
+describe('buildEmbeddingInput', () => {
+  it('combines title, excerpt and the start of the body, capped', async () => {
+    const { buildEmbeddingInput } = await import('../../../src/side_panel/features/related-pages.js');
+    expect(buildEmbeddingInput('T', 'E', 'Body')).toBe('T\n\nE\n\nBody');
+    expect(buildEmbeddingInput('T', '', 'x'.repeat(5000)).length).toBe(2000);
+  });
+});
+
 describe('requestEmbedding', () => {
+  it('records a page with a short excerpt when the body is long enough', async () => {
+    const port = mockPort();
+    chrome.runtime.connect.mockReturnValue(port);
+
+    const promise = requestEmbedding('short meta', 'https://example.com/a', 'Title', 'b'.repeat(500));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const sent = port.postMessage.mock.calls[0][0];
+    expect(sent.text).toContain('Title');
+    expect(sent.text).toContain('short meta');
+    expect(sent.text).toContain('bbbb');
+    port._listeners.disconnect();
+    await promise;
+  });
+
   it('skips when text is too short', async () => {
     await requestEmbedding('short', 'https://example.com', 'Test');
     expect(chrome.runtime.connect).not.toHaveBeenCalled();
@@ -344,7 +367,37 @@ describe('initRelatedPages', () => {
     expect(list.classList.contains('collapsed')).toBe(true);
   });
 
-  it('auto-expands on results and auto-collapses on empty/error/disabled', async () => {
+  it('keeps an error expanded so the message and the retry button are visible', async () => {
+    document.body.innerHTML = '<div id="chatArea"></div>';
+    initRelatedPages({ chatArea: document.getElementById('chatArea') });
+    const list = document.getElementById('relatedList');
+    chrome.runtime.sendMessage.mockResolvedValueOnce({ success: false, error: 'db down' });
+
+    await renderRelatedPages('https://example.com');
+
+    expect(__internals.getState().status).toBe('error');
+    expect(list.classList.contains('collapsed')).toBe(false);
+    expect(list.querySelector('.related-retry-btn')).not.toBeNull();
+  });
+
+  it('drops a slower response for an earlier URL (fast tab switching)', async () => {
+    document.body.innerHTML = '<div id="chatArea"></div>';
+    initRelatedPages({ chatArea: document.getElementById('chatArea') });
+    const list = document.getElementById('relatedList');
+    let releaseFirst;
+    chrome.runtime.sendMessage.mockImplementationOnce(() => new Promise((r) => { releaseFirst = r; }));
+
+    const first = renderRelatedPages('https://slow.com');
+    await new Promise((r) => setTimeout(r, 0));
+    await renderRelatedPages('https://fast.com'); // real handler → empty
+    releaseFirst({ success: true, relations: [{ record: { url: 'https://stale.com', title: 'STALE', excerpt: '', timestamp: Date.now() }, similarity: 0.9 }] });
+    await first;
+
+    expect(list.textContent).not.toContain('STALE');
+    expect(__internals.getState().status).toBe('empty');
+  });
+
+  it('auto-expands on results and auto-collapses on empty/disabled', async () => {
     document.body.innerHTML = '<div id="chatArea"></div>';
     initRelatedPages({ chatArea: document.getElementById('chatArea') });
     const list = document.getElementById('relatedList');

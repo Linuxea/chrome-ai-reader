@@ -6,7 +6,6 @@ const apiBaseInput = document.getElementById('apiBase') as HTMLInputElement;
 const modelNameInput = document.getElementById('modelName') as HTMLInputElement;
 const systemPromptInput = document.getElementById('systemPrompt') as HTMLTextAreaElement;
 const refreshModelsBtn = document.getElementById('refreshModelsBtn') as HTMLButtonElement;
-const visionEnabledInput = document.getElementById('visionEnabled') as HTMLInputElement;
 
 export async function fetchModels(): Promise<void> {
   const apiKey = apiKeyInput.value.trim();
@@ -31,14 +30,15 @@ export function loadLlmValues(data: Record<string, unknown>): void {
   if (data.apiBase) apiBaseInput.value = data.apiBase as string;
   if (data.modelName) modelNameInput.value = data.modelName as string;
   if (data.systemPrompt) systemPromptInput.value = data.systemPrompt as string;
-  visionEnabledInput.checked = data.visionEnabled === true;
 }
 
 export function collectLlmSaveData(): { error?: string; set?: Record<string, string | boolean>; remove?: string[] } {
   const apiKey = apiKeyInput.value.trim(); const apiBase = apiBaseInput.value.trim(); const modelName = modelNameInput.value.trim(); const systemPrompt = systemPromptInput.value.trim();
   if (!apiKey) return { error: t('error.noApiKeySave') };
   if (!apiKey.startsWith('sk-') && !apiBase) return { error: t('error.apiKeyHint') };
-  const set: Record<string, string | boolean> = { apiKey, visionEnabled: visionEnabledInput.checked }; const remove: string[] = [];
+  // visionEnabled / ocrApiKey: retired settings (the chat model is assumed
+  // multimodal, GLM-OCR was removed) — cleared from sync storage on save.
+  const set: Record<string, string | boolean> = { apiKey }; const remove: string[] = ['visionEnabled', 'ocrApiKey'];
   if (apiBase) set.apiBase = apiBase; else remove.push('apiBase');
   if (modelName) set.modelName = modelName; else remove.push('modelName');
   if (systemPrompt) set.systemPrompt = systemPrompt; else remove.push('systemPrompt');

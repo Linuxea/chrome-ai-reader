@@ -16,13 +16,17 @@ export const EVENTS = {
   SHOW_RELATED_PAGES: 'showRelatedPages',
   /** Fired by services/page-extractor after a successful extraction. The
    *  related-pages feature subscribes to it instead of being imported upward
-   *  by the service layer. Payload: excerpt + url + title of the extracted page. */
+   *  by the service layer. Payload: excerpt + url + title (+ body text) of the extracted page. */
   PAGE_EXTRACTED: 'pageExtracted',
   /** Fired by ui/tab-switch-handler after the chat area is rebuilt on a tab
    *  switch / re-render. The podcast feature subscribes to rebuild the full
    *  card if the now-playing podcast originated from the now-active tab. This
    *  keeps ui/** from importing the podcast feature directly. */
   PODCAST_REBUILD_REQUEST: 'podcastRebuildRequest',
+  /** Fired by ui/tab-switch-handler after the chat area was rebuilt from
+   *  history. The stream handler re-attaches an in-flight answer bubble for
+   *  the now-active tab (and saves an answer that finished in the background). */
+  CHAT_RERENDERED: 'chatRerendered',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -40,8 +44,9 @@ interface EventMap {
   [EVENTS.SAVE_CURRENT_CHAT]: () => void;
   [EVENTS.RENDER_HISTORY_LIST]: () => void;
   [EVENTS.SHOW_RELATED_PAGES]: () => void;
-  [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string }) => void;
+  [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string; content?: string }) => void;
   [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
+  [EVENTS.CHAT_RERENDERED]: () => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();

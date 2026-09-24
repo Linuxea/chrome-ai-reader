@@ -77,6 +77,8 @@ import {
   ttsAppendChunk,
   ttsFlushRemaining,
   setFullStopFn,
+  getTTSButton,
+  setTTSButton,
 } from '../../../src/side_panel/services/tts/player.js';
 
 describe('TTS Player', () => {
@@ -141,6 +143,22 @@ describe('TTS Player', () => {
     it('creates an Audio element', () => {
       initTTSPlayback();
       expect(audioInstances.length).toBeGreaterThan(0);
+    });
+
+    it('shows loading on the clicked message\'s button (not the first one in the chat)', () => {
+      const first = document.createElement('button');
+      const clicked = document.createElement('button');
+      initTTSPlayback(clicked);
+      expect(getTTSButton()).toBe(clicked);
+      expect(clicked.classList.contains('tts-loading')).toBe(true);
+      expect(first.classList.contains('tts-loading')).toBe(false);
+    });
+
+    it('setTTSButton attaches a later-created button (autoplay) to the running playback', () => {
+      initTTSPlayback();
+      const btn = document.createElement('button');
+      setTTSButton(btn);
+      expect(btn.classList.contains('tts-loading')).toBe(true);
     });
   });
 

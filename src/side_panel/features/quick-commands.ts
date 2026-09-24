@@ -2,22 +2,23 @@ import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
 import * as state from '../state';
 import type { QuickCommand } from '../state';
+import type { SubmitIntent } from '../services/message-sender';
 
 let _userInput: HTMLTextAreaElement;
 let _commandPopup: HTMLElement;
-let _sendToAI: (text: string, displayText: string) => Promise<void>;
+let _submit: (intent: SubmitIntent) => Promise<void>;
 
 let commandPopupOpen = false;
 let commandSelectedIndex = 0;
 
-export function initQuickCommands({ userInput, commandPopup, onSendToAI }: {
+export function initQuickCommands({ userInput, commandPopup, onSubmit }: {
   userInput: HTMLTextAreaElement;
   commandPopup: HTMLElement;
-  onSendToAI: (text: string, displayText: string) => Promise<void>;
+  onSubmit: (intent: SubmitIntent) => Promise<void>;
 }): void {
   _userInput = userInput;
   _commandPopup = commandPopup;
-  _sendToAI = onSendToAI;
+  _submit = onSubmit;
 
   chrome.storage.local.get(['quickCommands'], (data) => {
     state.setQuickCommands((data.quickCommands as QuickCommand[]) || []);
@@ -61,8 +62,17 @@ export function setCommandSelectedIndex(v: number): void {
   commandSelectedIndex = v;
 }
 
+/** `/name extra words` → { name: 'name', rest: 'extra words' }. */
+function parseCommandInput(input: string): { name: string; rest: string } {
+  const body = input.startsWith('/') ? input.slice(1) : input;
+  const match = body.match(/^(\S*)\s*([\s\S]*)$/);
+  return { name: match?.[1] ?? '', rest: (match?.[2] ?? '').trim() };
+}
+
 export function getFilteredCommands(input: string): QuickCommand[] {
-  const query = input.slice(1).toLowerCase();
+  // Filter on the command token only, so `/translate focus on part 2` still
+  // matches /translate (the rest becomes extra instructions on execute).
+  const query = parseCommandInput(input).name.toLowerCase();
   const quickCommands = state.getQuickCommands();
   if (!query) return quickCommands;
   return quickCommands.filter(cmd => cmd.name.toLowerCase().includes(query));
@@ -103,10 +113,15 @@ export function hideCommandPopup(): void {
   _commandPopup.classList.add('hidden');
 }
 
+/**
+ * Run a quick command through the same submit pipeline as the send button:
+ * pending images are attached, and any text typed after `/name`
+ * rides along as extra instructions (like a draft does for quick actions).
+ */
 export function executeQuickCommand(cmd: QuickCommand): void {
   if (state.getIsGenerating()) return;
 
   hideCommandPopup();
-  _userInput.value = '';
-  _sendToAI(cmd.prompt, `/${cmd.name}`);
+  const { rest } = parseCommandInput(_userInput.value);
+  void _submit({ prompt: cmd.prompt, display: `/${cmd.name}`, draft: rest });
 }

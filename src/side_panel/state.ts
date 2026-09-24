@@ -1,9 +1,9 @@
-import type { TabState, ChatMessage, OcrResult } from '../shared/types';
+import type { TabState, ChatMessage } from '../shared/types';
 import { stripImagesForPersistence } from './services/chat/strip-images';
 
 /**
  * Debounce window for field-setter persistence. High-frequency setters
- * (setPageContent during extraction, OCR progress counters, …) must not
+ * (setPageContent during extraction, image index counter, …) must not
  * serialize the whole TabState — including conversationHistory — into
  * chrome.storage.session on every call. Message-boundary writes
  * (conversation helpers, persistForTab, tab switch) bypass the debounce
@@ -42,8 +42,6 @@ function createFreshTabState(): TabState {
     selectedText: '',
     isGenerating: false,
     isPodcastGenerating: false,
-    ocrRunning: 0,
-    ocrResults: [],
     imageIndex: 0,
   };
 }
@@ -79,6 +77,17 @@ function persistActiveNow(): void {
   if (_activeTabId != null && _activeState) writeTabState(_activeTabId, _activeState);
 }
 
+/**
+ * State restored from chrome.storage.session outlives the panel that wrote
+ * it, but in-flight work does not: a generation / podcast stream dies with the
+ * panel. Restoring those flags as `true` used to leave the tab stuck (every
+ * send silently ignored) until the user switched tabs.
+ */
+function restoreTabState(stored: TabState | undefined): TabState {
+  if (!stored) return createFreshTabState();
+  return { ...stored, isGenerating: false, isPodcastGenerating: false };
+}
+
 export async function switchToTab(newTabId: number): Promise<void> {
   if (!newTabId || newTabId === _activeTabId) return;
 
@@ -89,11 +98,12 @@ export async function switchToTab(newTabId: number): Promise<void> {
     _activeState = _tabStates.get(newTabId)!;
   } else {
     const stored = await chrome.storage.session.get(`tabState_${newTabId}`);
-    _activeState = (stored[`tabState_${newTabId}`] as TabState | undefined) || createFreshTabState();
+    _activeState = restoreTabState(stored[`tabState_${newTabId}`] as TabState | undefined);
     _tabStates.set(newTabId, _activeState);
   }
 
   notify('tabSwitched', undefined);
+  notify('isGenerating', _activeState.isGenerating);
 }
 
 export async function initState(): Promise<void> {
@@ -114,7 +124,7 @@ export async function initState(): Promise<void> {
     const tabId = tabs[0].id;
     _activeTabId = tabId;
     const stored = await chrome.storage.session.get(`tabState_${tabId}`);
-    _activeState = (stored[`tabState_${tabId}`] as TabState | undefined) || createFreshTabState();
+    _activeState = restoreTabState(stored[`tabState_${tabId}`] as TabState | undefined);
     _tabStates.set(tabId, _activeState);
   }
 
@@ -127,6 +137,11 @@ let _tabLifecycleListenerRegistered = false;
 function initTabLifecycleListener(): void {
   if (_tabLifecycleListenerRegistered) return;
   _tabLifecycleListenerRegistered = true;
+  // Same-tab navigation (full load or SPA route change) makes the cached page
+  // content stale — questions would otherwise be answered from the old page.
+  chrome.tabs.onUpdated?.addListener((tabId: number, changeInfo: { url?: string }) => {
+    if (changeInfo.url) invalidatePageIfNavigated(tabId, changeInfo.url);
+  });
   chrome.tabs.onRemoved.addListener((tabId: number) => {
     _tabStates.delete(tabId);
     chrome.storage.session.remove(`tabState_${tabId}`);
@@ -136,6 +151,30 @@ function initTabLifecycleListener(): void {
       _activeTabId = null;
     }
   });
+}
+
+/** URL without its #fragment — in-page anchors don't change the content. */
+export function pageUrlKey(url: string): string {
+  const i = url.indexOf('#');
+  return i === -1 ? url : url.slice(0, i);
+}
+
+/**
+ * Drop the tab's cached page content if `url` is a different page than the
+ * one it was extracted from. The next send re-extracts. Conversation history
+ * is kept. Notifies `pageInvalidated` with the tab id.
+ */
+export function invalidatePageIfNavigated(tabId: number, url: string): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts || !ts.pageContent) return;
+  if (ts.pageUrl && pageUrlKey(ts.pageUrl) === pageUrlKey(url)) return;
+  ts.pageContent = '';
+  ts.pageTitle = '';
+  ts.pageExcerpt = '';
+  ts.pageUrl = '';
+  if (tabId === _activeTabId) ts.selectedText = '';
+  persistForTab(tabId);
+  notify('pageInvalidated', tabId);
 }
 
 // Backwards-compat: register the listener at module load for production use
@@ -196,10 +235,20 @@ export function setPageTitle(v: string): void { if (!_activeState) return; _acti
 
 export function getIsGenerating(): boolean { return _activeState?.isGenerating ?? false; }
 export function setIsGenerating(v: boolean): void {
-  if (!_activeState) return;
-  _activeState.isGenerating = v;
-  schedulePersist();
-  notify('isGenerating', v);
+  if (_activeTabId != null) setGeneratingForTab(_activeTabId, v);
+}
+
+/**
+ * The single writer for a tab's generating flag — the tab may not be the
+ * active one (a stream finishing in the background). Persists immediately and
+ * notifies `isGenerating` subscribers when it is the active tab.
+ */
+export function setGeneratingForTab(tabId: number, v: boolean): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts) return;
+  ts.isGenerating = v;
+  persistForTab(tabId);
+  if (tabId === _activeTabId) notify('isGenerating', v);
 }
 
 export function getCurrentChatId(): string | null { return _activeState?.currentChatId ?? null; }
@@ -207,12 +256,6 @@ export function setCurrentChatId(v: string | null): void { if (!_activeState) re
 
 export function getSelectedText(): string { return _activeState?.selectedText ?? ''; }
 export function setSelectedText(v: string): void { if (!_activeState) return; _activeState.selectedText = v; schedulePersist(); }
-
-export function getOcrRunning(): number { return _activeState?.ocrRunning ?? 0; }
-export function setOcrRunning(v: number): void { if (!_activeState) return; _activeState.ocrRunning = v; schedulePersist(); }
-
-export function getOcrResults(): OcrResult[] { return _activeState?.ocrResults ?? []; }
-export function setOcrResults(v: OcrResult[]): void { if (!_activeState) return; _activeState.ocrResults = v; schedulePersist(); }
 
 export function getImageIndex(): number { return _activeState?.imageIndex ?? 0; }
 export function setImageIndex(v: number): void { if (!_activeState) return; _activeState.imageIndex = v; schedulePersist(); }

@@ -41,12 +41,28 @@ export interface ChatMessage {
    * 持久化时仍保留此字段，用于重载后渲染"图片已失效"提示。
    */
   hadImages?: boolean;
+  /**
+   * User messages only: what the user actually entered, kept next to the
+   * assembled API `content` (which folds in the quote prefix / prompt). Lets
+   * history re-renders show the original bubble and retry / edit it. Never
+   * sent to the API (see toApiMessage).
+   */
+  meta?: UserMessageMeta;
   /** Tool calls emitted by the assistant (agent evolution — not yet wired). */
   tool_calls?: ToolCall[];
   /** When role is 'tool', the id of the tool call this result responds to. */
   tool_call_id?: string;
   /** Optional function/tool name (used with role 'tool' or 'assistant' tool_calls). */
   name?: string;
+}
+
+export interface UserMessageMeta {
+  /** Text handed to sendToAI (a quick action's prompt, or the typed text). */
+  rawText: string;
+  /** Text shown in the bubble (e.g. the quick action's label). */
+  displayText: string;
+  /** Full quoted page text, when the message carried a quote. */
+  quote?: string;
 }
 
 /**
@@ -66,20 +82,14 @@ export interface TabState {
   pageContent: string;
   pageTitle: string;
   pageExcerpt: string;
+  /** URL the cached page content was extracted from (hash stripped). */
+  pageUrl?: string;
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
   selectedText: string;
   isGenerating: boolean;
   isPodcastGenerating: boolean;
-  ocrRunning: number;
-  ocrResults: OcrResult[];
   imageIndex: number;
-}
-
-export interface OcrResult {
-  index: number;
-  fileName: string;
-  text: string;
 }
 
 /**

@@ -25,16 +25,28 @@ vi.mock('../../src/side_panel/state.js', () => ({
   getStateForTab: vi.fn(),
   getActiveTabId: vi.fn(() => 1),
   persistForTab: vi.fn(),
+  setGeneratingForTab: vi.fn(),
 }));
 
+// Real subscription semantics for `on` so CHAT_RERENDERED can be triggered.
+const { eventHandlers } = vi.hoisted(() => ({ eventHandlers: new Map<string, Set<() => void>>() }));
 vi.mock('../../src/side_panel/events.js', () => ({
   emit: vi.fn(),
+  on: vi.fn((event: string, fn: () => void) => {
+    if (!eventHandlers.has(event)) eventHandlers.set(event, new Set());
+    eventHandlers.get(event)!.add(fn);
+    return () => eventHandlers.get(event)?.delete(fn);
+  }),
   EVENTS: {
     REQUEST_RERENDER: 'requestRerender',
     GENERATE_SUGGESTIONS: 'generateSuggestions',
     SAVE_CURRENT_CHAT: 'saveCurrentChat',
+    CHAT_RERENDERED: 'chatRerendered',
   },
 }));
+function fireChatRerendered(): void {
+  eventHandlers.get('chatRerendered')?.forEach(fn => fn());
+}
 
 vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
   // Elements MUST be connected to document so msgEl.isConnected === true.
@@ -55,6 +67,8 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
   setButtonsDisabled: vi.fn(),
   // error-bubble action helpers (stop/error UX)
   addErrorMessageActions: vi.fn(),
+  appendErrorMessage: vi.fn(() => document.createElement('div')),
+  appendMessageFromHistory: vi.fn(() => document.createElement('div')),
   emitRetryFromWrapper: vi.fn(),
   findUserWrapperBefore: vi.fn(() => null),
 }));
@@ -74,7 +88,7 @@ vi.mock('marked', () => ({
 }));
 
 // --- Import after mocks ---
-import { initStreamHandler, callAI, abortGeneration } from '../../src/side_panel/services/stream-handler.js';
+import { initStreamHandler, callAI, abortGeneration, takePendingAbort } from '../../src/side_panel/services/stream-handler.js';
 import { marked } from 'marked';
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
@@ -96,7 +110,9 @@ function createMockPort() {
       addListener: vi.fn((fn: () => void) => disconnectListeners.add(fn)),
       removeListener: vi.fn(),
     },
-    disconnect: vi.fn(() => disconnectListeners.forEach(fn => fn())),
+    // Real Chrome semantics: a port's own onDisconnect does NOT fire for a
+    // disconnect() it initiated — only the other end sees it.
+    disconnect: vi.fn(),
     _simulateMessage(msg: unknown) { messageListeners.forEach(fn => fn(msg)); },
     _simulateDisconnect() { disconnectListeners.forEach(fn => fn()); },
     _messageListeners: messageListeners,
@@ -120,6 +136,7 @@ describe('services/stream-handler', () => {
 
     stateMock.getStateForTab.mockReturnValue(tabState);
     stateMock.getActiveTabId.mockReturnValue(1);
+    stateMock.setGeneratingForTab.mockImplementation((_id: number, v: boolean) => { tabState.isGenerating = v; });
 
     // Set up chrome.runtime.connect to return our mock port
     port = createMockPort();
@@ -145,7 +162,7 @@ describe('services/stream-handler', () => {
   it('sets isGenerating=true and persists state at start', async () => {
     await callAI([], 1);
     expect(tabState.isGenerating).toBe(true);
-    expect(stateMock.persistForTab).toHaveBeenCalledWith(1);
+    expect(stateMock.setGeneratingForTab).toHaveBeenCalledWith(1, true);
     expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(true);
   });
 
@@ -402,6 +419,40 @@ describe('services/stream-handler', () => {
       expect(eventsMock.emit).toHaveBeenCalledWith('saveCurrentChat');
     });
 
+    it('finalizes on Stop even though the port\'s own onDisconnect never fires', async () => {
+      await callAI([], 1);
+      port._simulateMessage({ type: 'chunk', content: 'partial' });
+
+      abortGeneration(1);
+
+      expect(port.disconnect).toHaveBeenCalled();
+      expect(tabState.isGenerating).toBe(false);
+      // a second abort is a no-op (stream already finalized)
+      abortGeneration(1);
+      expect(tabState.conversationHistory).toHaveLength(1);
+    });
+
+    it('Stop before any answer text: drops the turn and shows a note, not an error', async () => {
+      tabState.conversationHistory = [{ role: 'user', content: 'q' }];
+      await callAI([], 1);
+      const msgEl = (domMock.appendMessage as ReturnType<typeof vi.fn>).mock.results[0].value as HTMLElement;
+
+      abortGeneration(1);
+
+      expect(tabState.conversationHistory).toHaveLength(0);
+      expect(tabState.isGenerating).toBe(false);
+      expect(msgEl.className).toBe('message message-note');
+      expect(msgEl.textContent).toBe('[ai.stopped]');
+      expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
+    });
+
+    it('a Stop before the stream opens is remembered for sendToAI to pick up', () => {
+      tabState.isGenerating = true; // sendToAI is still extracting the page
+      abortGeneration(1);
+      expect(takePendingAbort(1)).toBe(true);
+      expect(takePendingAbort(1)).toBe(false); // consumed once
+    });
+
     it('does not touch history when generation is still pending (no content yet)', async () => {
       await callAI([], 1);
       port._simulateDisconnect(); // unexpected disconnect, nothing streamed
@@ -422,7 +473,7 @@ describe('services/stream-handler', () => {
 
       expect(tabState.isGenerating).toBe(false);
       expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
-      expect(stateMock.persistForTab).toHaveBeenCalled();
+      expect(stateMock.setGeneratingForTab).toHaveBeenLastCalledWith(1, false);
     });
 
     it('does NOT treat as error if content was already received (graceful disconnect after done)', async () => {
@@ -550,6 +601,69 @@ describe('services/stream-handler', () => {
         role: 'assistant',
         content: 'response',
       });
+    });
+  });
+
+  // ==========================================================================
+  // background tabs: re-attach / deferred save / deferred error
+  // ==========================================================================
+  describe('background tab lifecycle', () => {
+    it('keeps the thinking block open once the user re-opens it mid-answer', async () => {
+      await callAI([], 1);
+      port._simulateMessage({ type: 'thinking', content: 'hmm' });
+      port._simulateMessage({ type: 'chunk', content: 'a' });
+      const details = document.body.querySelector('details.thinking-block') as HTMLDetailsElement;
+      expect(details.open).toBe(false);
+
+      details.open = true; // user re-opens
+      port._simulateMessage({ type: 'chunk', content: 'b' });
+      expect(details.open).toBe(true);
+    });
+
+    it('re-attaches the live answer bubble when the user returns to the tab', async () => {
+      const chatArea = document.createElement('div');
+      document.body.appendChild(chatArea);
+      initStreamHandler({ chatArea });
+      await callAI([], 1);
+      const msgEl = (domMock.appendMessage as ReturnType<typeof vi.fn>).mock.results[0].value as HTMLElement;
+
+      // switch away: the chat area is rebuilt for tab 2, detaching the bubble
+      stateMock.getActiveTabId.mockReturnValue(2);
+      msgEl.remove();
+      port._simulateMessage({ type: 'chunk', content: 'streamed while away' });
+
+      // back to tab 1: rebuilt from history, then CHAT_RERENDERED
+      stateMock.getActiveTabId.mockReturnValue(1);
+      fireChatRerendered();
+
+      expect(chatArea.contains(msgEl)).toBe(true);
+      expect(msgEl.textContent).toContain('streamed while away');
+    });
+
+    it('saves an answer that finished in the background once the tab is shown again', async () => {
+      await callAI([], 1);
+      stateMock.getActiveTabId.mockReturnValue(2);
+      port._simulateMessage({ type: 'chunk', content: 'answer' });
+      port._simulateMessage({ type: 'done' });
+      expect(eventsMock.emit).not.toHaveBeenCalledWith('saveCurrentChat');
+
+      stateMock.getActiveTabId.mockReturnValue(1);
+      fireChatRerendered();
+      expect(eventsMock.emit).toHaveBeenCalledWith('saveCurrentChat');
+    });
+
+    it('shows a background failure (and the failed message) on return', async () => {
+      const failed = { role: 'user', content: 'q' };
+      tabState.conversationHistory = [failed];
+      await callAI([], 1);
+      stateMock.getActiveTabId.mockReturnValue(2);
+      port._simulateMessage({ type: 'error', error: 'boom' });
+      expect(tabState.conversationHistory).toHaveLength(0);
+
+      stateMock.getActiveTabId.mockReturnValue(1);
+      fireChatRerendered();
+      expect(domMock.appendMessageFromHistory).toHaveBeenCalledWith(failed);
+      expect(domMock.appendErrorMessage).toHaveBeenCalledWith('boom', expect.any(Array));
     });
   });
 });

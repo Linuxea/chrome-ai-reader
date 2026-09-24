@@ -50,6 +50,8 @@ const MAX_RECORDS_DEFAULT = 200;
 const THRESHOLD_DEFAULT = 0.7;
 const MIN_CONTENT_LENGTH = 100;
 const MAX_EXCERPT_LENGTH = 200;
+/** Characters of title + excerpt + body sent to the embedding model. */
+const EMBED_INPUT_CHARS = 2000;
 /** Debounce window for auto-refresh after storePageRecord(). */
 const REFRESH_DEBOUNCE_MS = 300;
 
@@ -125,8 +127,20 @@ async function loadEmbeddingConfig(): Promise<EmbeddingConfig> {
 
 // --- Embedding Request -----------------------------------------------------
 
-export async function requestEmbedding(text: string, url: string, title: string): Promise<void> {
-  if (!text || text.length < MIN_CONTENT_LENGTH) return;
+/**
+ * The text a page is embedded from: title + excerpt + the start of the body.
+ * Embedding the ~200-char excerpt alone gave weak similarities, and pages
+ * whose excerpt is short (common — it is often a one-line meta description)
+ * were never recorded at all.
+ */
+export function buildEmbeddingInput(title: string, excerpt: string, content = ''): string {
+  return [title, excerpt, content].map(p => p.trim()).filter(Boolean).join('\n\n').slice(0, EMBED_INPUT_CHARS);
+}
+
+export async function requestEmbedding(text: string, url: string, title: string, content = ''): Promise<void> {
+  // Gate on the page having real content — the body when we have it.
+  const substance = content || text;
+  if (!substance || substance.length < MIN_CONTENT_LENGTH) return;
 
   const cfg = await loadEmbeddingConfig();
   if (!cfg.enabled) return;
@@ -157,7 +171,7 @@ export async function requestEmbedding(text: string, url: string, title: string)
             url,
             normalizedUrl: normalized,
             title,
-            excerpt: text.slice(0, MAX_EXCERPT_LENGTH),
+            excerpt: (text || content).slice(0, MAX_EXCERPT_LENGTH),
             embedding,
           });
         }
@@ -175,7 +189,7 @@ export async function requestEmbedding(text: string, url: string, title: string)
 
     port.onDisconnect.addListener(() => finish());
 
-    const req: EmbeddingRequest = { type: 'embed', text: text.slice(0, MAX_EXCERPT_LENGTH) };
+    const req: EmbeddingRequest = { type: 'embed', text: buildEmbeddingInput(title, text, content) };
     port.postMessage(req);
   });
 }
@@ -355,7 +369,8 @@ function setCollapsed(collapsed: boolean): void {
 
 /** Apply the auto-collapse policy based on the current status. */
 function applyAutoCollapse(): void {
-  setCollapsed(state.status !== 'results');
+  // Errors stay expanded: collapsing them hid the message and the retry button.
+  setCollapsed(state.status !== 'results' && state.status !== 'error');
 }
 
 /**
@@ -366,11 +381,17 @@ export async function renderRelatedPages(currentUrl: string): Promise<void> {
   await renderRelatedPagesByNormalized(normalizeUrl(currentUrl));
 }
 
+/** Increments per render; a response for an older render (fast tab switching) is dropped. */
+let renderSeq = 0;
+
 async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<void> {
   if (!listEl) return;
   lastRenderedUrl = normalizedUrl;
+  const seq = ++renderSeq;
+  const stale = (): boolean => seq !== renderSeq;
 
   const cfg = await loadEmbeddingConfig();
+  if (stale()) return;
 
   if (!cfg.enabled) {
     setState({ status: 'disabled' });
@@ -394,6 +415,7 @@ async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<vo
 
   try {
     const relations = await findRelatedPages(normalizedUrl);
+    if (stale()) return;
     state.hasNewRelations = false;
     updateBadge();
 
@@ -427,9 +449,10 @@ async function renderRelatedPagesByNormalized(normalizedUrl: string): Promise<vo
     });
     applyAutoCollapse(); // results → expand
   } catch (e) {
+    if (stale()) return;
     state.status = 'error';
     state.errorMessage = (e as Error).message;
-    renderState(); // also auto-collapses
+    renderState(); // error stays expanded (see applyAutoCollapse)
   }
 }
 
@@ -489,8 +512,8 @@ export function initRelatedPages(deps: RelatedPagesDeps): void {
   // Subscribe to PAGE_EXTRACTED instead of being imported upward by the
   // page-extractor service. This keeps the dependency direction
   // (feature → listens to event) instead of (service → feature).
-  on(EVENTS.PAGE_EXTRACTED, ({ excerpt, url, title }) => {
-    void requestEmbedding(excerpt, url, title);
+  on(EVENTS.PAGE_EXTRACTED, ({ excerpt, url, title, content }) => {
+    void requestEmbedding(excerpt, url, title, content);
   });
 }
 

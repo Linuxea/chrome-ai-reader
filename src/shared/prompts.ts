@@ -26,6 +26,7 @@ export type PromptKey =
   | 'translate.quote'
   | 'keyInfo.full'
   | 'keyInfo.quote'
+  | 'draft.supplement'
   | 'suggest'
   | 'suggest.userLabel'
   | 'suggest.aiLabel'
@@ -77,6 +78,10 @@ const ZH: PromptTable = {
 
   'suggest.userLabel': '用户问题：',
   'suggest.aiLabel': 'AI 回复：',
+
+  // Appended to a quick action / quick command prompt when the input box
+  // still holds a draft — the draft rides along as extra instructions.
+  'draft.supplement': '【用户补充要求】\n{draft}',
 
   'outline': [
     '你是一个内容分析专家。请将文章内容分析为结构化大纲。',
@@ -236,6 +241,8 @@ const EN: Partial<PromptTable> = {
 
   'suggest.userLabel': 'User question: ',
   'suggest.aiLabel': 'AI response: ',
+
+  'draft.supplement': '[Additional instructions from the user]\n{draft}',
 
   'outline': [
     'You are a content analysis expert. Analyze the article content into a structured outline.',

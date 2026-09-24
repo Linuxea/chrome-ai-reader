@@ -78,6 +78,18 @@ describe('ui/tts-buttons', () => {
     expect(writeText).toHaveBeenCalledWith('Copy this text');
   });
 
+  it('copy button copies the markdown source when the bubble carries it', () => {
+    msgEl.innerHTML = '<table><tr><td>a</td></tr></table>';
+    msgEl.dataset.markdown = '| a |\n|---|';
+    createTTSButtons(msgEl, { onToggleTTS, onDownload });
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+    (msgEl.querySelector('.ai-action-btn') as HTMLButtonElement).click();
+
+    expect(writeText).toHaveBeenCalledWith('| a |\n|---|');
+  });
+
   it('copy button reads from .thinking-response-content when present', () => {
     const content = document.createElement('div');
     content.className = 'thinking-response-content';

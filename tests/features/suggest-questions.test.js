@@ -51,6 +51,7 @@ import {
   removeSuggestQuestions,
   generateSuggestions,
 } from '../../src/side_panel/features/suggest-questions.js';
+import { initComposer } from '../../src/side_panel/services/composer.js';
 
 describe('initSuggestQuestions', () => {
   beforeEach(() => {
@@ -62,34 +63,34 @@ describe('initSuggestQuestions', () => {
 
   it('reads suggestQuestions setting from storage', () => {
     const chatArea = document.createElement('div');
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     expect(chrome.storage.sync.get).toHaveBeenCalledWith(['suggestQuestions'], expect.any(Function));
   });
 
   it('enables suggestions when storage has suggestQuestions=true', () => {
     chrome.storage.sync.get.mockImplementation((keys, cb) => cb({ suggestQuestions: true }));
     const chatArea = document.createElement('div');
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     expect(stateMock.setSuggestQuestionsEnabled).toHaveBeenCalledWith(true);
   });
 
   it('disables suggestions when storage has suggestQuestions=false', () => {
     chrome.storage.sync.get.mockImplementation((keys, cb) => cb({ suggestQuestions: false }));
     const chatArea = document.createElement('div');
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     expect(stateMock.setSuggestQuestionsEnabled).toHaveBeenCalledWith(false);
   });
 
   it('defaults to enabled when setting is undefined', () => {
     chrome.storage.sync.get.mockImplementation((keys, cb) => cb({}));
     const chatArea = document.createElement('div');
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     expect(stateMock.setSuggestQuestionsEnabled).toHaveBeenCalledWith(true);
   });
 
   it('reacts to storage change events', () => {
     const chatArea = document.createElement('div');
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     const listener = storageSyncListeners.values().next().value;
     listener({ suggestQuestions: { newValue: false } }, 'sync');
     expect(stateMock.setSuggestQuestionsEnabled).toHaveBeenCalledWith(false);
@@ -102,7 +103,7 @@ describe('removeSuggestQuestions', () => {
     const suggestEl = document.createElement('div');
     suggestEl.className = 'suggest-questions';
     chatArea.appendChild(suggestEl);
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     removeSuggestQuestions();
     expect(chatArea.querySelector('.suggest-questions')).toBeNull();
   });
@@ -112,14 +113,14 @@ describe('removeSuggestQuestions', () => {
     const loadingEl = document.createElement('div');
     loadingEl.className = 'suggest-loading';
     chatArea.appendChild(loadingEl);
-    initSuggestQuestions({ chatArea, userInput: document.createElement('input'), onSend: vi.fn() });
+    initSuggestQuestions({ chatArea });
     removeSuggestQuestions();
     expect(chatArea.querySelector('.suggest-loading')).toBeNull();
   });
 });
 
 describe('generateSuggestions', () => {
-  let chatArea, userInput, onSend;
+  let chatArea, userInput;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -130,9 +131,9 @@ describe('generateSuggestions', () => {
       return currentPort;
     });
     chatArea = document.createElement('div');
-    userInput = document.createElement('input');
-    onSend = vi.fn();
-    initSuggestQuestions({ chatArea, userInput, onSend });
+    userInput = document.createElement('textarea');
+    initComposer({ userInput });
+    initSuggestQuestions({ chatArea });
   });
 
   it('does nothing when suggestions are disabled', () => {
@@ -216,7 +217,7 @@ describe('generateSuggestions', () => {
     expect(chatArea.querySelector('.suggest-loading')).toBeNull();
   });
 
-  it('clicking a suggestion button sets input and calls onSend', () => {
+  it('clicking a suggestion fills it into the input without sending', () => {
     const msgEl = document.createElement('div');
     chatArea.appendChild(msgEl);
     generateSuggestions(msgEl, []);
@@ -224,10 +225,27 @@ describe('generateSuggestions', () => {
     currentPort._simulateMessage({ type: 'chunk', content: 'What about X?' });
     currentPort._simulateMessage({ type: 'done' });
 
+    const onInput = vi.fn();
+    userInput.addEventListener('input', onInput);
     const btn = chatArea.querySelector('.suggest-item');
     btn.click();
     expect(userInput.value).toBe('What about X?');
-    expect(onSend).toHaveBeenCalled();
+    // input event fires so auto-resize / send-button dim stay in sync
+    expect(onInput).toHaveBeenCalled();
+    // no send happens — the chips stay for the user to pick again
+    expect(chrome.runtime.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking a suggestion keeps an existing draft', () => {
+    const msgEl = document.createElement('div');
+    chatArea.appendChild(msgEl);
+    generateSuggestions(msgEl, []);
+    currentPort._simulateMessage({ type: 'chunk', content: 'What about X?' });
+    currentPort._simulateMessage({ type: 'done' });
+
+    userInput.value = 'my draft';
+    chatArea.querySelector('.suggest-item').click();
+    expect(userInput.value).toBe('my draft\nWhat about X?');
   });
 
   it('removes loading indicator on error', () => {
@@ -264,6 +282,19 @@ describe('generateSuggestions', () => {
     expect(userMsg.content.length).toBeLessThan(longContent.length + 100);
   });
 
+  it('reads multimodal user content as text (image-only → placeholder)', () => {
+    const msgEl = document.createElement('div');
+    chatArea.appendChild(msgEl);
+    generateSuggestions(msgEl, [
+      { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,A' } }] },
+      { role: 'assistant', content: 'a cat' },
+    ]);
+
+    const userMsg = currentPort.postMessage.mock.calls[0][0].messages[1];
+    expect(userMsg.content).toContain('[suggest.userLabel][chat.imageOnly]');
+    expect(userMsg.content).not.toContain('[object Object]');
+  });
+
   it('does nothing on done if msgEl is removed from DOM', () => {
     const msgEl = document.createElement('div');
     chatArea.appendChild(msgEl);
@@ -283,5 +314,22 @@ describe('generateSuggestions', () => {
     currentPort._simulateMessage({ type: 'chunk', content: '' });
     currentPort._simulateMessage({ type: 'done' });
     expect(chatArea.querySelector('.suggest-questions')).toBeNull();
+  });
+});
+
+describe('stripListMarker', () => {
+  it('removes numbered and bulleted list markers', async () => {
+    const { stripListMarker } = await import('../../src/side_panel/features/suggest-questions.js');
+    expect(stripListMarker('1. What is X?')).toBe('What is X?');
+    expect(stripListMarker('2、为什么？')).toBe('为什么？');
+    expect(stripListMarker('3) How?')).toBe('How?');
+    expect(stripListMarker('4）怎么办？')).toBe('怎么办？');
+    expect(stripListMarker('- bullet?')).toBe('bullet?');
+  });
+
+  it('keeps a question that merely starts with a number', async () => {
+    const { stripListMarker } = await import('../../src/side_panel/features/suggest-questions.js');
+    expect(stripListMarker('2024年发生了什么？')).toBe('2024年发生了什么？');
+    expect(stripListMarker('3D 打印的原理是什么？')).toBe('3D 打印的原理是什么？');
   });
 });

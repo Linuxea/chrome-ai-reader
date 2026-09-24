@@ -1,4 +1,4 @@
-import { vi, describe, it, expect } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
@@ -29,6 +29,11 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   scrollToBottom: vi.fn(),
 }));
 
+vi.mock('../../../src/side_panel/events.js', () => ({
+  emit: vi.fn(),
+  EVENTS: { REQUEST_RERENDER: 'requestRerender' },
+}));
+
 vi.mock('marked', () => ({
   marked: { parse: (text) => `<p>${text}</p>` },
 }));
@@ -40,7 +45,11 @@ import {
   initChatHistory,
   getDisplayMessages,
   stripMessageChrome,
+  renderHistoryList,
+  saveCurrentChat,
 } from '../../../src/side_panel/features/chat-history.js';
+import * as stateMock from '../../../src/side_panel/state.js';
+import { emit } from '../../../src/side_panel/events.js';
 
 describe('generateTitle', () => {
   it('returns full text when user message < 30 chars', () => {
@@ -147,6 +156,16 @@ describe('stripMessageChrome / getDisplayMessages', () => {
       .toBe('<p>hello <strong>world</strong></p><pre><code>x</code></pre>');
   });
 
+  it('getDisplayMessages uses a placeholder for an image-only user message', () => {
+    const chatArea = setupChatArea();
+    const user = document.createElement('div');
+    user.className = 'message message-user';
+    user.innerHTML = '<div class="bubble-images"><img src="data:image/png;base64,A"></div>';
+    chatArea.appendChild(user);
+
+    expect(getDisplayMessages()).toEqual([{ role: 'user', content: '[chat.imageOnly]' }]);
+  });
+
   it('getDisplayMessages persists assistant content without buttons', () => {
     const chatArea = setupChatArea();
 
@@ -163,6 +182,116 @@ describe('stripMessageChrome / getDisplayMessages', () => {
     expect(getDisplayMessages()).toEqual([
       { role: 'assistant', content: '<p>answer</p>' },
       { role: 'user', content: 'question' },
+    ]);
+  });
+});
+
+describe('loading a saved chat', () => {
+  async function openChat(chat) {
+    globalThis.chrome = {
+      storage: { local: { get: vi.fn((_k, cb) => cb({ chatHistories: [chat] })), set: vi.fn() } },
+    };
+    const chatArea = document.createElement('div');
+    const historyPanel = document.createElement('div');
+    const historyList = document.createElement('div');
+    const onLoadChat = vi.fn();
+    initChatHistory({ chatArea, historyPanel, historyList, onLoadChat, onRenderOutline: vi.fn(), onOutlineToMarkdown: vi.fn() });
+    await renderHistoryList();
+    historyList.querySelector('.history-item-info').click();
+    await new Promise(r => setTimeout(r, 0));
+    return { chatArea, historyPanel, onLoadChat };
+  }
+
+  it('renders from conversationHistory via the shared re-render path (retry / edit work)', async () => {
+    emit.mockClear();
+    const { chatArea, historyPanel, onLoadChat } = await openChat({
+      id: 'c1', title: 't', updatedAt: 1,
+      messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: '<p>a</p>' }],
+      conversationHistory: [{ role: 'user', content: 'q', meta: { rawText: 'q', displayText: 'q' } }, { role: 'assistant', content: 'a' }],
+    });
+
+    expect(onLoadChat).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
+    expect(emit).toHaveBeenCalledWith('requestRerender');
+    expect(chatArea.children).toHaveLength(0); // not built from the display snapshot
+    expect(historyPanel.classList.contains('hidden')).toBe(true);
+  });
+
+  it('falls back to the display snapshot for legacy records without history', async () => {
+    emit.mockClear();
+    const { chatArea } = await openChat({
+      id: 'c2', title: 't', updatedAt: 1,
+      messages: [{ role: 'user', content: 'legacy q' }],
+      conversationHistory: [],
+    });
+
+    expect(emit).not.toHaveBeenCalledWith('requestRerender');
+    expect(chatArea.textContent).toContain('legacy q');
+  });
+});
+
+describe('saveCurrentChat', () => {
+  let saved;
+  let chatArea;
+  let currentId;
+
+  beforeEach(() => {
+    saved = [];
+    currentId = null;
+    stateMock.getCurrentChatId.mockImplementation(() => currentId);
+    stateMock.setCurrentChatId.mockImplementation((id) => { currentId = id; });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          // async like the real API, so overlapping saves really interleave
+          get: vi.fn((_k, cb) => setTimeout(() => cb({ chatHistories: JSON.parse(JSON.stringify(saved)) }), 0)),
+          set: vi.fn((items, cb) => setTimeout(() => { saved = items.chatHistories; cb(); }, 0)),
+        },
+      },
+    };
+    chatArea = document.createElement('div');
+    initChatHistory({
+      chatArea, historyPanel: document.createElement('div'), historyList: document.createElement('div'),
+      onLoadChat: vi.fn(), onRenderOutline: vi.fn(), onOutlineToMarkdown: vi.fn(),
+    });
+  });
+
+  function addUserMessage(text) {
+    const el = document.createElement('div');
+    el.className = 'message message-user';
+    el.textContent = text;
+    chatArea.appendChild(el);
+  }
+
+  it('overlapping saves of a new chat create ONE history entry', async () => {
+    addUserMessage('hello');
+    await Promise.all([saveCurrentChat(), saveCurrentChat()]);
+    expect(saved).toHaveLength(1);
+  });
+
+  it('"new chat" right after a save keeps the two conversations apart', async () => {
+    addUserMessage('first chat');
+    const pending = saveCurrentChat();
+    // new chat: clears the id and the chat area before the save finishes
+    stateMock.setCurrentChatId(null);
+    chatArea.innerHTML = '';
+    await pending;
+    expect(currentId).toBeNull(); // the old id was not stamped onto the new chat
+
+    addUserMessage('second chat');
+    await saveCurrentChat();
+    expect(saved.map(h => h.title)).toEqual(['first chat', 'second chat']);
+  });
+
+  it('keeps the quote apart from the question (titles show the question)', () => {
+    const el = document.createElement('div');
+    el.className = 'message message-user';
+    el.dataset.rawDisplay = 'What does this mean?';
+    el.dataset.rawQuote = 'A long quoted paragraph from the page';
+    el.innerHTML = '<blockquote class="quote-in-bubble">A long quoted…</blockquote><span>What does this mean?</span>';
+    chatArea.appendChild(el);
+
+    expect(getDisplayMessages()).toEqual([
+      { role: 'user', content: 'What does this mean?', quote: 'A long quoted paragraph from the page' },
     ]);
   });
 });

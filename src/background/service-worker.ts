@@ -1,10 +1,11 @@
 import { callOpenAI, callSuggestQuestions, callEmbedding } from './sw-openai';
 import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
-import { handleOcrParse } from './sw-ocr';
 import { annotateChunk } from './sw-annotation';
 import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
+import type { PodcastLLMRequest } from '../shared/protocol';
+import type { MessageContentPart } from '../shared/types';
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
@@ -26,8 +27,7 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   } else if (port.name === 'podcast-llm') {
     port.onMessage.addListener(async (msg: Record<string, unknown>) => {
       if (msg.type === 'generate') {
-        const messages = [{ role: 'user' as const, content: `${msg.prompt}\n\n${msg.text}` }];
-        await callOpenAI(messages, port, { response_format: { type: 'json_object' } });
+        await callOpenAI([buildPodcastUserMessage(msg as unknown as PodcastLLMRequest)], port, { response_format: { type: 'json_object' } });
       }
     });
   } else if (port.name === 'podcast-audio') {
@@ -68,9 +68,17 @@ chrome.runtime.onMessage.addListener((msg: Record<string, unknown>, sender: chro
     return true;
   }
 
-  if (msg.action === 'ocrParse') return handleOcrParse(msg as Parameters<typeof handleOcrParse>[0], sendResponse);
 
   if (msg.action === 'pageRecords:store' || msg.action === 'pageRecords:findRelated') {
     return handlePageRecordsMessage(msg, sendResponse);
   }
 });
+
+/** Podcast script request → one user message; pending images become image_url parts. */
+export function buildPodcastUserMessage(req: PodcastLLMRequest): { role: 'user'; content: string | MessageContentPart[] } {
+  const text = `${req.prompt}\n\n${req.text}`;
+  if (!req.images || req.images.length === 0) return { role: 'user', content: text };
+  const parts: MessageContentPart[] = [{ type: 'text', text }];
+  for (const url of req.images) parts.push({ type: 'image_url', image_url: { url } });
+  return { role: 'user', content: parts };
+}

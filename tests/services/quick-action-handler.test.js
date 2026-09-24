@@ -16,17 +16,6 @@ vi.mock('../../src/side_panel/events.js', () => ({
   },
 }));
 
-vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
-  appendMessage: vi.fn(),
-}));
-
-vi.mock('../../src/side_panel/services/ocr.js', () => ({
-  hasImageErrors: vi.fn(() => false),
-  buildOcrContext: vi.fn(() => ''),
-  collectImageDataUris: vi.fn(() => []),
-  clearImagePreviews: vi.fn(),
-  validateImageState: vi.fn(() => null),
-}));
 
 vi.mock('../../src/side_panel/state.js', () => ({
   getIsGenerating: vi.fn(() => false),
@@ -40,8 +29,6 @@ import {
 } from '../../src/side_panel/services/quick-action-handler.js';
 
 import * as eventsMock from '../../src/side_panel/events.js';
-import * as domHelpersMock from '../../src/side_panel/ui/dom-helpers.js';
-import * as ocrMock from '../../src/side_panel/services/ocr.js';
 import * as stateMock from '../../src/side_panel/state.js';
 
 describe('handleQuickAction', () => {
@@ -53,11 +40,7 @@ describe('handleQuickAction', () => {
     stateMock.getIsGenerating.mockReturnValue(false);
     stateMock.getOcrRunning.mockReturnValue(0);
     stateMock.getSelectedText.mockReturnValue('');
-    ocrMock.hasImageErrors.mockReturnValue(false);
-    ocrMock.buildOcrContext.mockReturnValue('');
-    ocrMock.collectImageDataUris.mockReturnValue([]);
-    ocrMock.validateImageState.mockReturnValue(null);
-    initQuickActionHandler({ sendToAI });
+    initQuickActionHandler({ submit: sendToAI });
   });
 
   it('returns early when AI is generating', async () => {
@@ -82,98 +65,38 @@ describe('handleQuickAction', () => {
     expect(sendToAI).not.toHaveBeenCalled();
   });
 
-  it('shows error when OCR is running', async () => {
-    ocrMock.validateImageState.mockReturnValue('[error.ocrRunning]');
-    await handleQuickAction('summarize');
-    expect(domHelpersMock.appendMessage).toHaveBeenCalledWith('error', '[error.ocrRunning]');
-    expect(sendToAI).not.toHaveBeenCalled();
-  });
-
-  it('shows error when image has errors (OCR partial fail)', async () => {
-    document.body.innerHTML = '<div class="image-preview-item error" title="bad image"></div>';
-    ocrMock.validateImageState.mockReturnValue('[error.ocrPartialFail]：bad image');
-    await handleQuickAction('summarize');
-    expect(domHelpersMock.appendMessage).toHaveBeenCalledWith('error', '[error.ocrPartialFail]：bad image');
-    expect(sendToAI).not.toHaveBeenCalled();
-    document.body.innerHTML = '';
-  });
-
-  it('shows error without reason when error element has no title', async () => {
-    document.body.innerHTML = '<div class="image-preview-item error"></div>';
-    ocrMock.validateImageState.mockReturnValue('[error.ocrPartialFail]');
-    await handleQuickAction('summarize');
-    expect(domHelpersMock.appendMessage).toHaveBeenCalledWith('error', '[error.ocrPartialFail]');
-    document.body.innerHTML = '';
-  });
-
   it('calls sendToAI with full summarize prompt when no selection', async () => {
     await handleQuickAction('summarize');
-    expect(sendToAI).toHaveBeenCalledWith(
-      '[summarize.full]',
-      '[action.summarize]',
-      undefined,
-      '',
-      [],
-    );
+    expect(sendToAI).toHaveBeenCalledWith({ prompt: '[summarize.full]', display: '[action.summarize]' });
   });
 
   it('calls sendToAI with quote summarize prompt when text is selected', async () => {
     stateMock.getSelectedText.mockReturnValue('some selected text');
     await handleQuickAction('summarize');
-    expect(sendToAI).toHaveBeenCalledWith(
-      '[summarize.quote]',
-      '[action.summarize]',
-      undefined,
-      '',
-      [],
-    );
+    expect(sendToAI).toHaveBeenCalledWith({ prompt: '[summarize.quote]', display: '[action.summarize]' });
   });
 
   it('calls sendToAI with translate prompts', async () => {
     await handleQuickAction('translate');
-    expect(sendToAI).toHaveBeenCalledWith(
-      '[translate.full]',
-      '[action.translate]',
-      undefined,
-      '',
-      [],
-    );
+    expect(sendToAI).toHaveBeenCalledWith({ prompt: '[translate.full]', display: '[action.translate]' });
   });
 
   it('calls sendToAI with keyInfo prompts', async () => {
     await handleQuickAction('keyInfo');
-    expect(sendToAI).toHaveBeenCalledWith(
-      '[keyInfo.full]',
-      '[action.keyInfo]',
-      undefined,
-      '',
-      [],
-    );
+    expect(sendToAI).toHaveBeenCalledWith({ prompt: '[keyInfo.full]', display: '[action.keyInfo]' });
   });
 
-  it('passes OCR context and image URIs to sendToAI', async () => {
-    ocrMock.buildOcrContext.mockReturnValue('OCR result text');
-    ocrMock.collectImageDataUris.mockReturnValue(['data:image/png;base64,abc']);
+  it('delegates validation and attachments to the shared submit pipeline', async () => {
+    // Images / OCR text / draft handling live in submit() (message-sender),
+    // so a quick action only states its prompt + label.
     await handleQuickAction('summarize');
-    expect(sendToAI).toHaveBeenCalledWith(
-      '[summarize.full]',
-      '[action.summarize]',
-      undefined,
-      'OCR result text',
-      ['data:image/png;base64,abc'],
-    );
-    expect(ocrMock.clearImagePreviews).toHaveBeenCalled();
+    expect(sendToAI).toHaveBeenCalledTimes(1);
+    expect(sendToAI.mock.calls[0]).toHaveLength(1);
   });
 
   it('ignores whitespace-only selected text (treats as no selection)', async () => {
     stateMock.getSelectedText.mockReturnValue('   ');
     await handleQuickAction('summarize');
-    expect(sendToAI).toHaveBeenCalledWith(
-      '[summarize.full]',
-      '[action.summarize]',
-      undefined,
-      '',
-      [],
-    );
+    expect(sendToAI).toHaveBeenCalledWith({ prompt: '[summarize.full]', display: '[action.summarize]' });
   });
 });

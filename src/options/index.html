@@ -6,19 +6,8 @@
   <title data-i18n="app.settingsTitle">小🍐子阅读助手 - 设置</title>
   <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="options.css">
-  <script>
-    /* Re-apply the cached theme before first paint (avoids a light flash in
-       dark mode). chrome.storage is the source of truth; theme-settings
-       corrects this once it resolves and keeps the cache fresh. */
-    try {
-      var c = JSON.parse(localStorage.getItem('themeCache') || 'null');
-      if (c) {
-        var de = document.documentElement;
-        de.setAttribute('data-theme', c.dark ? 'dark' : 'light');
-        de.setAttribute('data-theme-name', c.themeName || 'sujian');
-      }
-    } catch (e) {}
-  </script>
+  <!-- CSP forbids inline scripts in extension pages; see public/theme-boot.js -->
+  <script src="/theme-boot.js"></script>
 </head>
 <body>
   <div class="container">
@@ -96,18 +85,12 @@
               <button id="refreshModelsBtn" class="refresh-btn" type="button" data-i18n="settings.llm.refreshModels">刷新模型列表</button>
             </div>
             <datalist id="model-list"></datalist>
-            <p class="hint" data-i18n="settings.llm.model.hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。</p>
+            <p class="hint" data-i18n="settings.llm.model.hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。上传和截图的图片会直接发给模型，请使用支持图片输入的多模态模型。</p>
           </div>
           <div class="form-group">
             <label for="systemPrompt" data-i18n="settings.llm.systemPrompt">自定义 System Prompt（可选）</label>
             <textarea id="systemPrompt" rows="4" data-i18n-placeholder="settings.llm.systemPrompt.ph" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>
             <p class="hint" data-i18n="settings.llm.systemPrompt.hint">追加到默认 prompt 之后，用于个性化 AI 的回答风格或行为。留空则使用默认设置。</p>
-
-            <label class="toggle-row">
-              <span data-i18n="settings.vision.enabled">模型支持视觉能力</span>
-              <input type="checkbox" id="visionEnabled">
-            </label>
-            <p class="hint" data-i18n="settings.vision.hint">勾选后需使用 OpenAI 兼容的视觉模型（如 gpt-4o、qwen-vl）。勾选后上传与截图的图片将直接发给模型，不再走 OCR。</p>
           </div>
         </div>
       </details>
@@ -146,17 +129,6 @@
         </div>
       </details>
 
-      <!-- OCR 文字识别配置 -->
-      <details class="config-details">
-        <summary class="config-summary" data-i18n="settings.ocr">OCR 文字识别配置</summary>
-        <div class="config-fields">
-          <div class="form-group">
-            <label for="ocrApiKey" data-i18n="settings.ocr.apiKey">API Key</label>
-            <input type="password" id="ocrApiKey" data-i18n-placeholder="settings.ocr.apiKey.ph" placeholder="智谱 AI 开放平台获取的 API Key" autocomplete="off">
-            <p class="hint" data-i18n="settings.ocr.apiKey.hint">用于 GLM-OCR 文字识别服务。前往 <a href="https://open.bigmodel.cn" target="_blank">open.bigmodel.cn</a> 获取 API Key。</p>
-          </div>
-        </div>
-      </details>
 
       <!-- 知识关联 -->
       <details class="config-details">

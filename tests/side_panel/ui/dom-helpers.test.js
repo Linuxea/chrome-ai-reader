@@ -335,6 +335,22 @@ describe('dom-helpers', () => {
       });
     });
 
+    it('Enter saves, Shift+Enter does not, and Enter during IME composition does not', () => {
+      const msgEl = appendMessage('user', 'orig');
+      msgEl.dataset.rawText = 'orig';
+      chatArea.querySelector('.msg-action-btn[title="[action.edit]"]').click();
+      const ta = msgEl.querySelector('.msg-edit-textarea');
+      ta.value = 'changed';
+      emit.mockClear();
+
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, cancelable: true }));
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, cancelable: true }));
+      expect(emit).not.toHaveBeenCalled();
+
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+      expect(emit).toHaveBeenCalledWith(EVENTS.EDIT, expect.objectContaining({ editedText: 'changed' }));
+    });
+
     it('does not emit EDIT when saving empty text', () => {
       const msgEl = appendMessage('user', 'keep me');
       msgEl.dataset.rawDisplay = 'keep me';
@@ -345,6 +361,18 @@ describe('dom-helpers', () => {
       emit.mockClear();
       msgEl.querySelector('.msg-edit-save').click();
       expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('allows saving empty text when the message carries images (image-only)', () => {
+      const msgEl = appendMessage('user', 'caption', ['data:image/png;base64,A']);
+      msgEl.dataset.rawText = 'caption';
+
+      chatArea.querySelector('.msg-action-btn[title="[action.edit]"]').click();
+      msgEl.querySelector('.msg-edit-textarea').value = '';
+      emit.mockClear();
+      msgEl.querySelector('.msg-edit-save').click();
+
+      expect(emit).toHaveBeenCalledWith(EVENTS.EDIT, expect.objectContaining({ editedText: '' }));
     });
 
     it('restores original bubble on cancel', () => {
@@ -361,6 +389,22 @@ describe('dom-helpers', () => {
       // actions row re-shown
       const actions = msgEl.closest('.user-msg-group').querySelector('.msg-actions');
       expect(actions.style.display).not.toBe('none');
+    });
+  });
+
+  describe('updateSendButtonDim', () => {
+    it('dims with no text and no images, undims when images are pending', async () => {
+      const { updateSendButtonDim } = await import('../../../src/side_panel/ui/dom-helpers.js');
+      const userInput = document.createElement('textarea');
+      let pending = false;
+      initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput, hasAttachments: () => pending });
+
+      updateSendButtonDim();
+      expect(sendBtn.classList.contains('send-dim')).toBe(true);
+
+      pending = true;
+      updateSendButtonDim();
+      expect(sendBtn.classList.contains('send-dim')).toBe(false);
     });
   });
 
@@ -399,6 +443,38 @@ describe('dom-helpers', () => {
 
       expect(div.textContent).toContain('纯文字');
       expect(div.querySelector('.image-lost-hint')).toBeNull();
+    });
+
+    it('restores a user bubble from meta: display text, quote, and retry data', () => {
+      const msg = {
+        role: 'user',
+        content: '[ai.quotePrefix]\n\nquoted page text\n\nPlease summarize',
+        meta: { rawText: 'Please summarize', displayText: 'Summarize', quote: 'quoted page text' },
+      };
+      const div = appendMessageFromHistory(msg);
+
+      // bubble shows what the user saw when sending — not the assembled prompt
+      expect(div.querySelector('blockquote.quote-in-bubble').textContent).toBe('quoted page text');
+      expect(div.textContent).toContain('Summarize');
+      expect(div.textContent).not.toContain('[ai.quotePrefix]');
+      // retry / edit read these
+      expect(div.dataset.rawText).toBe('Please summarize');
+      expect(div.dataset.rawDisplay).toBe('Summarize');
+      expect(div.dataset.rawQuote).toBe('quoted page text');
+      expect(div.closest('.user-msg-group').querySelector('.msg-actions')).not.toBeNull();
+    });
+
+    it('retry on a restored bubble re-sends the original input', () => {
+      const msg = { role: 'user', content: 'x', meta: { rawText: 'orig', displayText: 'Orig' } };
+      const div = appendMessageFromHistory(msg);
+      div.closest('.user-msg-group').querySelector('.msg-action-btn[title="[action.retry]"]').click();
+
+      expect(emit).toHaveBeenCalledWith(EVENTS.RETRY, expect.objectContaining({ rawText: 'orig', rawDisplay: 'Orig' }));
+    });
+
+    it('legacy user entries (no meta) still carry retry data = their content', () => {
+      const div = appendMessageFromHistory({ role: 'user', content: 'legacy text' });
+      expect(div.dataset.rawText).toBe('legacy text');
     });
 
     it('renders assistant message as ai role (markdown)', () => {

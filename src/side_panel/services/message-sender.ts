@@ -3,35 +3,31 @@ import { getCurrentLang } from '../../shared/i18n.js';
 import { getPrompt } from '../../shared/prompts';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
-import { getSync } from '../../platform/storage';
-import type { ChatMessage, MessageContentPart } from '../../shared/types';
+import type { ChatMessage, MessageContentPart, UserMessageMeta } from '../../shared/types';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
-  appendMessage, appendMessageWithQuote,
+  appendMessage, appendUserMessage, appendNoteMessage,
   appendErrorMessage, emitRetryFromWrapper,
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
-import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
+import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES } from './composer';
 import { ensurePageContent } from './page-extractor';
-import { callAI, abortGeneration } from './stream-handler';
-import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
+import { callAI, takePendingAbort } from './stream-handler';
+import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, toApiMessage } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
 let _chatArea: HTMLElement;
-let _userInput: HTMLTextAreaElement;
 
-export function initMessageSender({ chatArea, userInput }: { chatArea: HTMLElement; userInput: HTMLTextAreaElement }): void {
+export function initMessageSender({ chatArea }: { chatArea: HTMLElement }): void {
   _chatArea = chatArea;
-  _userInput = userInput;
 }
 
 export async function sendToAI(
   text: string,
   displayText: string,
   retryQuote?: string,
-  ocrContext?: string,
   imageUris?: string[],
 ): Promise<void> {
   emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
@@ -40,33 +36,31 @@ export async function sendToAI(
   const tabState = state.getStateForTab(startTabId!);
   if (!tabState) return;
 
-  tabState.isGenerating = true;
-  state.persistForTab(startTabId!);
+  state.setGeneratingForTab(startTabId!, true);
   setButtonsDisabled(true);
 
   const quoteForContext = retryQuote || tabState.selectedText;
 
-  let userMsgEl: HTMLDivElement;
-  if (quoteForContext) {
-    const truncated = quoteForContext.length > 50
-      ? quoteForContext.slice(0, 50) + '...'
-      : quoteForContext;
-    userMsgEl = appendMessageWithQuote(truncated, displayText, imageUris);
-    userMsgEl.dataset.rawText = text;
-    userMsgEl.dataset.rawQuote = quoteForContext;
-    userMsgEl.dataset.rawDisplay = displayText;
-    emit(EVENTS.CLEAR_QUOTE_PREVIEW);
-  } else {
-    userMsgEl = appendMessage('user', displayText, imageUris);
-    userMsgEl.dataset.rawText = text;
-    userMsgEl.dataset.rawDisplay = displayText;
-  }
+  const meta: UserMessageMeta = { rawText: text, displayText };
+  if (quoteForContext) meta.quote = quoteForContext;
+  const userMsgEl = appendUserMessage({ ...meta, imageUris });
+  if (quoteForContext) emit(EVENTS.CLEAR_QUOTE_PREVIEW);
 
   try {
     // Ensure the page has been extracted at least once for this tab. This is
     // the single entry point for extraction — history state is irrelevant;
     // only the pageContent cache decides whether to actually extract.
     const extractResult = await ensurePageContent(startTabId);
+    if (takePendingAbort(startTabId!)) {
+      // Stop was pressed while the page was being extracted: nothing was
+      // sent or added to history — just end the turn (the bubble keeps retry).
+      state.setGeneratingForTab(startTabId!, false);
+      if (state.getActiveTabId() === startTabId) {
+        appendNoteMessage(t('ai.stopped'));
+        setButtonsDisabled(false);
+      }
+      return;
+    }
     if (!extractResult.ok) throw extractResult.error;
 
     const messages: ChatMessage[] = [];
@@ -93,7 +87,7 @@ export async function sendToAI(
     }
 
     const conversationHistory = tabState.conversationHistory || [];
-    messages.push(...conversationHistory);
+    messages.push(...conversationHistory.map(toApiMessage));
 
     let apiContent = text;
 
@@ -103,32 +97,30 @@ export async function sendToAI(
       apiContent = withQuote;
     }
 
-    const { visionEnabled } = await getSync<{ visionEnabled?: boolean }>(['visionEnabled']);
-    const visionOn = visionEnabled === true;
-    const hasImages = visionOn && imageUris !== undefined && imageUris.length > 0;
+    const hasImages = imageUris !== undefined && imageUris.length > 0;
 
     let userMessage: ChatMessage;
     if (hasImages) {
       const parts: MessageContentPart[] = [];
       if (apiContent) parts.push({ type: 'text', text: apiContent });
       for (const uri of imageUris!) parts.push({ type: 'image_url', image_url: { url: uri } });
-      userMessage = { role: 'user', content: parts, hadImages: true };
+      userMessage = { role: 'user', content: parts, hadImages: true, meta };
     } else {
-      if (ocrContext) apiContent = apiContent + '\n\n' + ocrContext;
-      userMessage = { role: 'user', content: apiContent };
+      userMessage = { role: 'user', content: apiContent, meta };
     }
-    messages.push(userMessage);
+    messages.push(toApiMessage(userMessage));
     appendHistory(tabState, userMessage, startTabId!);
 
     if (hasImages) {
       const totalBytes = imageUris!.reduce((sum, u) => sum + u.length, 0);
-      if (totalBytes > 10 * 1024 * 1024) {
+      if (totalBytes > MAX_IMAGE_PAYLOAD_BYTES) {
         throw new Error(t('error.visionPayloadTooLarge'));
       }
     }
 
     await callAI(messages, startTabId);
   } catch (e: unknown) {
+    takePendingAbort(startTabId!); // a Stop racing the failure is moot now
     const errMsg = toErrorMessage(e);
     if (state.getActiveTabId() === startTabId) {
       // Keep the user bubble — removing it used to destroy the typed text with
@@ -139,41 +131,74 @@ export async function sendToAI(
         ? [{ label: t('action.retry'), onClick: () => emitRetryFromWrapper(wrapper) }]
         : [];
       appendErrorMessage(errMsg, actions);
-      state.setIsGenerating(false);
       setButtonsDisabled(false);
     }
     rollbackTrailingUserMessage(tabState, startTabId!);
-    tabState.isGenerating = false;
-    state.persistForTab(startTabId!);
+    state.setGeneratingForTab(startTabId!, false);
   }
 }
 
-export async function sendMessage(): Promise<void> {
+/**
+ * What an entry point wants to send. The composer supplies the rest (draft
+ * text, images), so every entry point sends the same way.
+ *
+ * - No `prompt` (Enter / send button): the draft text itself is the message
+ *   (may be empty when images are pending — an image-only message).
+ * - With `prompt` (quick action, quick command): the prompt is sent and
+ *   `display` shown in the bubble; a non-empty draft rides along as extra
+ *   instructions. `draft` overrides the input value (quick commands pass the
+ *   text typed after `/name`).
+ */
+export interface SubmitIntent {
+  prompt?: string;
+  display?: string;
+  draft?: string;
+}
+
+/**
+ * The single "send" pipeline: guard → take the draft (text + images) out of
+ * the composer → sendToAI. sendToAI marks the tab as generating before its
+ * first await, so a second submit is rejected by the guard.
+ */
+export async function submit(intent: SubmitIntent = {}): Promise<void> {
   /* While a generation is running the send button shows the stop icon; its
      click aborts (handled by the ai-chat click listener). Keyboard sends
      (Enter) must never abort — typing ahead is normal, so just ignore. */
   if (state.getIsGenerating()) return;
 
-  const text = _userInput.value.trim();
-  if (!text) {
+  const draft = intent.draft ?? getDraftText();
+  const isFreeText = intent.prompt === undefined;
+  // A free-text send needs text or images — images alone are a valid message.
+  if (isFreeText && !draft && !hasAttachments()) {
     updateSendButtonDim();
     return;
   }
 
-  const imageError = validateImageState();
-  if (imageError) {
-    appendMessage('error', imageError);
-    return;
+  if (attachmentsTooLarge()) {
+    appendMessage('error', t('error.visionPayloadTooLarge'));
+    return; // nothing consumed: text and images stay for the user to trim
   }
 
-  _userInput.value = '';
-  _userInput.style.height = 'auto';
+  let text: string;
+  let display: string;
+  if (isFreeText) {
+    text = draft;
+    display = draft;
+  } else {
+    const supplement = draft ? getPrompt('draft.supplement', getCurrentLang(), { draft }) : '';
+    text = supplement ? `${intent.prompt}\n\n${supplement}` : intent.prompt!;
+    const label = intent.display ?? intent.prompt!;
+    display = draft ? `${label} · ${draft}` : label;
+  }
 
-  const ocrContext = buildOcrContext();
-  const imageUris = collectImageDataUris();
-  clearImagePreviews();
+  clearDraftText();
+  const { imageUris } = consumeAttachments();
+  await sendToAI(text, display, undefined, imageUris);
+}
 
-  await sendToAI(text, text, undefined, ocrContext, imageUris);
+/** Enter / send button. */
+export async function sendMessage(): Promise<void> {
+  await submit();
 }
 
 export async function retryMessage(
@@ -223,6 +248,11 @@ async function resendUserMessage(opts: {
   if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;
   state.persistForTab(startTabId!);
 
+  // Capture the bubble's image thumbnails before it is torn down — the
+  // fallback when a failed send already rolled the history entry (and its
+  // images) back.
+  const bubbleImages = Array.from(wrapper.querySelectorAll<HTMLImageElement>('.bubble-images img')).map(img => img.src);
+
   const children = [..._chatArea.children];
   let found = false;
   for (const child of children) {
@@ -237,11 +267,12 @@ async function resendUserMessage(opts: {
   // Before truncating, extract any images from the user message being retried
   // (visual messages store image_url blocks in content array). After truncate
   // these are gone from history, so we capture them now to re-send.
-  const retriedImages = extractImagesForRetry(tabState, userContent);
+  const retriedImages = extractImagesForRetry(tabState, userContent)
+    ?? (bubbleImages.length > 0 ? bubbleImages : undefined);
 
   truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
-  await sendToAI(sendText, sendDisplay, rawQuote, undefined, retriedImages);
+  await sendToAI(sendText, sendDisplay, rawQuote, retriedImages);
 }
 
 /**

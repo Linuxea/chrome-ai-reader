@@ -5,7 +5,7 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (932 tests across 63 files; proxy test file needs `ws` installed — see Testing)
+npm run test   # vitest run (1009 tests across 65 files; proxy test file needs `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint src/ proxy/
@@ -30,7 +30,7 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 - **strict: true** — all `.ts` files are strict-mode TypeScript
 - `tsconfig.json` — `noEmit: true`, `allowJs: true` (JS/TS coexist)
 - Only `src/shared/i18n.js` and `src/shared/types.js` remain as JS (JSDoc typedefs for legacy consumers; TS types are in `types.ts`)
-- Type definitions: `src/shared/types.ts` (TabState, ChatMessage, OcrResult, ToolCall)
+- Type definitions: `src/shared/types.ts` (TabState, ChatMessage, ToolCall)
 - Error handling: `src/shared/result.ts` (Result<T,E>, ok(), err())
 - `ChatMessage.role` includes reserved `'tool'` + optional `tool_calls`/`tool_call_id` fields — **reserved for future agent architecture, not yet wired** (see sw-openai.ts AGENT TODO markers)
 
@@ -55,7 +55,9 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
 **Key sub-modules (services):**
 - `page-extractor.ts` — page content extraction (returns `Result<ExtractResult>`); emits `PAGE_EXTRACTED` event instead of importing the related-pages feature upward
-- `message-sender.ts` — message assembly and sending; delegates history ops to `chat/history-ops.ts`
+- `message-sender.ts` — message assembly and sending; `submit(intent)` is the single send pipeline (send button, quick actions, quick commands); delegates history ops to `chat/history-ops.ts`
+- `composer.ts` — owns the draft (input text + pending images): `consumeAttachments()` and `setDraftText/appendDraftText/clearDraftText` (fire `input` so resize / send-button dim stay in sync)
+- `images.ts` — image intake + preview bar
 - `stream-handler.ts` — SSE streaming + thinking block rendering
 - `quick-action-handler.ts` — quick action dispatch
 - `ai-chat.ts` — chat UI orchestration (sendBtn/keydown/action-btn wiring); **no longer re-exports** extractPageContent/sendToAI — import those from their real home
@@ -73,14 +75,14 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 
 - `src/side_panel/events.ts` — lightweight synchronous event bus
 - `EVENTS` constant enum — all event names are typed constants, no string magic keys
-- Events: RETRY, EDIT, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, CLEAR_QUOTE_PREVIEW, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST, SHOW_RELATED_PAGES, PAGE_EXTRACTED, PODCAST_REBUILD_REQUEST
+- Events: RETRY, EDIT, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, CLEAR_QUOTE_PREVIEW, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST, SHOW_RELATED_PAGES, PAGE_EXTRACTED, PODCAST_REBUILD_REQUEST, CHAT_RERENDERED
 - `PAGE_EXTRACTED` decouples `page-extractor` (service) from `related-pages` (feature) — the service emits, the feature subscribes
 - `PODCAST_REBUILD_REQUEST` is the same pattern: `ui/tab-switch-handler` emits after rebuilding the chat area on tab switch, the podcast feature subscribes to rebuild its card — keeps `ui/**` from importing the feature
 
 ## Chrome Extension Messaging
 
 - **Streaming** (AI chat, TTS, suggest questions): `chrome.runtime.connect` with named ports (`ai-chat`, `tts`, `suggest`). Prefer `src/platform/ports.ts` openers + `src/shared/protocol.ts` types over raw `chrome.runtime.connect`.
-- **One-shot** (page extract, selection relay, model list, OCR): `chrome.tabs.sendMessage` / `chrome.runtime.sendMessage`. Prefer `src/platform/messaging.ts` wrappers.
+- **One-shot** (page extract, selection relay, model list): `chrome.tabs.sendMessage` / `chrome.runtime.sendMessage`. Prefer `src/platform/messaging.ts` wrappers.
 - **Config sync**: `chrome.storage.onChanged` listeners — prefer `platform/storage.ts` `onSyncChange(key, cb)` over raw listeners (replaces previously duplicated boilerplate). Changes apply live without reload.
 
 ## API Path Convention
@@ -97,7 +99,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 932 tests across 63 files
+- **Vitest** with jsdom environment, 1009 tests across 65 files
 - **Proxy tests need proxy deps**: `tests/proxy/protocol.test.js` imports `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
@@ -110,6 +112,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Key Gotchas
 
+- **No inline `<script>` in extension pages**: MV3's CSP (`script-src 'self'`) silently blocks them — put pre-paint code in `public/` (e.g. `public/theme-boot.js`) and reference it with `<script src>`
 - `dist/` is the loadable extension — do not reference `public/manifest.json` paths directly when reasoning about the running extension
 - Content script and service worker must be IIFE — they cannot use `import` at runtime
 - `Readability` is imported from `@mozilla/readability` npm package, not a local file
@@ -117,11 +120,17 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
 - TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure
 - `vitest.config.js` coverage enforces thresholds (lines 55 / functions 50 / branches 45 / statements 52) — regressing coverage fails `npm run test:coverage`
-- **Stop button**: while streaming, the send button becomes Stop; `abortGeneration(tabId)` in `services/stream-handler.ts` aborts by calling `port.disconnect()` — there is no wire-level abort message, the SW keys cleanup off port disconnect
+- **Stop button**: while streaming, the send button becomes Stop; `abortGeneration(tabId)` in `services/stream-handler.ts` disconnects the port AND finalizes directly — a port's own `onDisconnect` never fires for a `disconnect()` it initiated (only the SW end sees it; the SW keys its fetch abort off that). Every end of a stream (done / error / stop / SW gone) goes through the one idempotent `finalize()`
+- **Background streams**: switching tabs never clears the outgoing tab's `isGenerating` (write it only via `state.setGeneratingForTab`). After the chat area is rebuilt, `CHAT_RERENDERED` lets the stream handler re-attach the live answer bubble, or show / save the outcome of a stream that ended while the tab was hidden. Restored session state never restores in-flight flags (`isGenerating` / `isPodcastGenerating`)
+- **Page cache vs navigation**: `TabState.pageUrl` records where `pageContent` was extracted; `state.invalidatePageIfNavigated` (wired to `chrome.tabs.onUpdated`) drops the cache when the tab moves to another URL (hash ignored) and notifies `pageInvalidated`
+- **Talking to the content script**: use `sendToContentScript()` (`platform/messaging.ts`) — it injects `content.js` and retries when the tab has none (tabs opened before install/update). A failure means the page can't host one (chrome://, Web Store) → show `error.pageUnsupported`
+- **Annotation state is per tab**: `features/annotation.ts` keys state by `sender.tab.id` and renders the active tab's on `tabSwitched`
+- **User message meta**: user `ChatMessage`s carry `meta` (`rawText` / `displayText` / `quote`) next to the assembled API `content`; `appendUserMessage()` renders bubbles from it for live sends, tab switches, reopen and history loads alike (so retry / edit keep working). `toApiMessage()` strips local fields (`meta`, `hadImages`, `type`) before anything goes to the model
 - **IME-safe Enter**: keydown handlers that send on Enter must guard `e.isComposing || e.keyCode === 229` (IME composition, see `ai-chat.ts`) — otherwise Chinese/Japanese input sends mid-composition
 - `scripts/watch-iife.js` does NOT include the esbuild plugin (unlike `build-extension.js`) — TypeScript in content/background is only transpiled during production build, not in dev watch mode
 - **Layering guardrail**: ESLint `no-restricted-imports` for `side_panel/ui/**` is `warn` (base rule is `off` during the refactor); it blocks ui/ imports of services/, features/, and a planned `shell/` orchestration layer that does **not exist yet** — `ui/global-events.ts` is slated to move there in a future phase. Note: ESLint only lints `.js` by default (no typescript-eslint plugin); `.ts` layering is enforced via tsc + review.
-- **Image intake**: `services/ocr.ts` `ingestImages()` is the single entry point for adding images (upload button + paste + drag-drop all funnel through it). Do not re-duplicate the index+FileReader+OCR loop.
+- **Image intake**: `services/images.ts` `ingestImages()` is the single entry point for adding images (upload button + paste + drag-drop all funnel through it). The chat model is assumed multimodal: images are always sent as `image_url` parts — there is no OCR fallback and no vision toggle (GLM-OCR and `visionEnabled` were removed; the options page clears the stale keys on save).
+- **Sending**: every entry point that sends to the model goes through `submit()` / `services/composer.ts` — never read `userInput.value` or the preview bar directly. A non-empty draft rides along with quick actions / quick commands as extra instructions (`draft.supplement` prompt); suggestion chips only fill the input.
 - **History operations**: use `services/chat/history-ops.ts` (`appendMessage`/`rollbackTrailingUserMessage`/`truncateHistoryFromUserContent`) instead of mutating `tabState.conversationHistory` directly — it centralizes persistence + rollback policy.
 - **State persistence**: `state.ts` field setters persist to `chrome.storage.session` debounced (250ms); conversation helpers + `persistForTab()` flush immediately, and `switchToTab()` flushes the outgoing tab. Add new TabState fields as explicit getter/setter pairs — the runtime `defineTabField` name-synthesis was removed.
 - **SW chat streaming**: all chat-completions SSE goes through one pipeline — `streamChatCompletion()` in `sw-openai.ts` (callers: `callOpenAI`, `callSuggestQuestions`, podcast-llm via `callOpenAI`). The delta-parse point for future `tool_calls` is that single function.

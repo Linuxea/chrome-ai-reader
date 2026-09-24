@@ -1,8 +1,9 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { setButtonsDisabled, updateSendButtonDim } from './dom-helpers';
+import { showToast } from './toast';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
-import { clearImagePreviews } from '../services/ocr.js';
+import { clearImagePreviews } from '../services/images.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
 import { emit, EVENTS } from '../events';
 import { resetUIForTabSwitch, cleanupActiveFeatures } from './tab-switch-handler.js';
@@ -48,7 +49,10 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
   els.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
   els.newChatBtn.addEventListener('click', () => {
-    if (state.getIsGenerating()) return;
+    if (state.getIsGenerating()) {
+      showToast(t('toast.busyGenerating'), 2500);
+      return;
+    }
     cleanupActiveFeatures(els, deps);
     saveCurrentChat();
     deps.removeSuggestQuestions();
@@ -104,13 +108,30 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     else if (isCommandPopupOpen()) hideCommandPopup();
   });
 
+  // The side panel belongs to one window; tab activations in other windows
+  // must not swap this panel's conversation.
+  let panelWindowId: number | undefined;
+  chrome.windows?.getCurrent?.().then((w) => { panelWindowId = w.id; }).catch(() => { /* keep unfiltered */ });
+
   chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    if (panelWindowId !== undefined && activeInfo.windowId !== panelWindowId) return;
     if (activeInfo.tabId === state.getActiveTabId()) return;
-    state.setIsGenerating(false);
+    // The outgoing tab's generation keeps running in the background — do NOT
+    // clear its generating flag (that used to let a second send interleave
+    // with the first and hid the Stop button on return).
     cleanupActiveFeatures(els, deps);
     await state.switchToTab(activeInfo.tabId);
-    setButtonsDisabled(false);
+    // Send vs Stop reflects the tab now shown.
+    setButtonsDisabled(state.getIsGenerating());
     resetUIForTabSwitch(els, deps);
+    emit(EVENTS.SHOW_RELATED_PAGES);
+  });
+
+  // The active tab navigated to another page: its quote belongs to the old
+  // page, and the related-reading panel should reflect the new URL.
+  state.subscribe('pageInvalidated', (tabId) => {
+    if (tabId !== state.getActiveTabId()) return;
+    updateQuotePreview(els, '');
     emit(EVENTS.SHOW_RELATED_PAGES);
   });
 

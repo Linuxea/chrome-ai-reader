@@ -290,3 +290,17 @@ describe('services/chat/history-ops', () => {
     });
   });
 });
+
+describe('toApiMessage', () => {
+  it('keeps only the OpenAI chat fields', async () => {
+    const { toApiMessage } = await import('../../../src/side_panel/services/chat/history-ops');
+    const out = toApiMessage({
+      role: 'user',
+      content: 'hi',
+      hadImages: true,
+      type: 'x',
+      meta: { rawText: 'hi', displayText: 'hi' },
+    });
+    expect(out).toEqual({ role: 'user', content: 'hi' });
+  });
+});

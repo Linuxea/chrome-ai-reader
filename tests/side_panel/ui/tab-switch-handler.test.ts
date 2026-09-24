@@ -31,7 +31,7 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
     return el;
   }),
 }));
-vi.mock('../../../src/side_panel/services/ocr.js', () => ({ clearImagePreviews: vi.fn() }));
+vi.mock('../../../src/side_panel/services/images.js', () => ({ clearImagePreviews: vi.fn() }));
 vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
   updateQuotePreview: vi.fn(),
 }));
@@ -178,6 +178,21 @@ describe('ui/tab-switch-handler', () => {
     it('clears suggest questions and image previews', () => {
       resetUIForTabSwitch(els, deps);
       expect(deps.removeSuggestQuestions).toHaveBeenCalled();
+    });
+
+    it('announces CHAT_RERENDERED after the chat area is rebuilt (live stream re-attach)', async () => {
+      const { on, EVENTS } = await import('../../../src/side_panel/events');
+      stateMock.getConversationHistory.mockReturnValue([{ role: 'user', content: 'q' }]);
+      let renderedAtEvent = -1;
+      const off = on(EVENTS.CHAT_RERENDERED, () => {
+        renderedAtEvent = vi.mocked(appendMessageFromHistory).mock.calls.length;
+      });
+
+      resetUIForTabSwitch(els, deps);
+      off();
+
+      // fired, and only after the history messages were rendered
+      expect(renderedAtEvent).toBeGreaterThan(0);
     });
   });
 });

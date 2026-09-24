@@ -28,8 +28,10 @@ export function createTTSButtons(msgEl: HTMLElement, deps: TTSButtonDeps): void 
   copyBtn.innerHTML = copyIcon;
 
   copyBtn.addEventListener('click', () => {
+    // Prefer the answer's markdown source (keeps tables, code fences, lists);
+    // fall back to rendered text for legacy bubbles that don't carry it.
     const contentEl = msgEl.querySelector(CSS.THINKING_CONTENT);
-    const text = contentEl ? contentEl.textContent : msgEl.textContent;
+    const text = msgEl.dataset.markdown || (contentEl ? contentEl.textContent : msgEl.textContent);
     if (text && text.trim()) {
       navigator.clipboard.writeText(text.trim()).then(() => {
         // Visible feedback: icon swaps to a check for 1.5s (a title-only swap

@@ -2,7 +2,7 @@ import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import { appendMessageFromHistory, scrollToBottom } from './dom-helpers';
-import { clearImagePreviews } from '../services/ocr.js';
+import { clearImagePreviews } from '../services/images.js';
 import { updateQuotePreview } from './global-events';
 import type { ChatMessage } from '../../shared/types';
 import type { UIElements, GlobalEventDeps } from './global-events';
@@ -61,4 +61,7 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
   // full card if the now-playing podcast originated from this tab. Decouples
   // ui/** from the podcast feature (mirrors the PAGE_EXTRACTED pattern).
   emit(EVENTS.PODCAST_REBUILD_REQUEST);
+  // Let an in-flight answer for this tab re-attach its live bubble (and a
+  // stream that ended while the tab was hidden show / save its outcome).
+  emit(EVENTS.CHAT_RERENDERED);
 }

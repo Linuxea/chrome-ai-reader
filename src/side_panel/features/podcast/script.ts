@@ -6,6 +6,7 @@ import { SPEAKER_MAP, DEFAULT_SPEAKER } from './constants';
 import { renderTranscript, resetHighlightState } from './ui';
 import { setPodcastTitle, resetRoundTimings, generatePodcastAudio } from './audio';
 import { isNowPlayingGenerating, updateNowPlaying, type NlpRound } from './now-playing';
+import type { PodcastLLMRequest } from '../../../shared/protocol';
 
 let podcastLlmPort: chrome.runtime.Port | null = null;
 
@@ -120,11 +121,13 @@ async function onScriptDone(card: HTMLElement, fullScript: string): Promise<void
   await generatePodcastAudio(card, nlpTexts);
 }
 
-async function generatePodcastScript(card: HTMLElement, textContent: string): Promise<void> {
+async function generatePodcastScript(card: HTMLElement, textContent: string, images: string[] = []): Promise<void> {
   const port = chrome.runtime.connect({ name: 'podcast-llm' });
   podcastLlmPort = port;
   let fullScript = '';
-  port.postMessage({ type: 'generate', prompt: getPrompt('podcast.system', getCurrentLang()), text: textContent });
+  const req: PodcastLLMRequest = { type: 'generate', prompt: getPrompt('podcast.system', getCurrentLang()), text: textContent };
+  if (images.length > 0) req.images = images;
+  port.postMessage(req);
   return new Promise((resolve) => {
     port.onMessage.addListener((msg: { type: string; content?: string; error?: string; errorKey?: string }) => {
       if (msg.type === 'chunk' && msg.content) fullScript += msg.content;

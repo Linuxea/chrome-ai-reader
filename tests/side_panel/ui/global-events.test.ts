@@ -21,6 +21,7 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   getConversationHistory: vi.fn(() => []),
   getPageTitle: vi.fn(() => ''),
   switchToTab: vi.fn(() => Promise.resolve()),
+  subscribe: vi.fn(() => () => {}),
 }));
 vi.mock('../../../src/side_panel/events.js', () => ({
   emit: vi.fn(),
@@ -30,12 +31,13 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   setButtonsDisabled: vi.fn(),
   updateSendButtonDim: vi.fn(),
 }));
+vi.mock('../../../src/side_panel/ui/toast.js', () => ({ showToast: vi.fn() }));
 vi.mock('../../../src/side_panel/features/quick-commands.js', () => ({
   isCommandPopupOpen: vi.fn(() => false),
   hideCommandPopup: vi.fn(),
   updateCommandPopup: vi.fn(),
 }));
-vi.mock('../../../src/side_panel/services/ocr.js', () => ({ clearImagePreviews: vi.fn() }));
+vi.mock('../../../src/side_panel/services/images.js', () => ({ clearImagePreviews: vi.fn() }));
 vi.mock('../../../src/side_panel/features/chat-history.js', () => ({
   saveCurrentChat: vi.fn(),
   getDisplayMessages: vi.fn(() => []),
@@ -53,6 +55,8 @@ import * as stateMock from '../../../src/side_panel/state.js';
 import * as eventsMock from '../../../src/side_panel/events.js';
 import * as chatHistoryMock from '../../../src/side_panel/features/chat-history.js';
 import * as quickCommandsMock from '../../../src/side_panel/features/quick-commands.js';
+import * as domMock from '../../../src/side_panel/ui/dom-helpers.js';
+import { showToast } from '../../../src/side_panel/ui/toast.js';
 
 function createUIElements(): UIElements {
   return {
@@ -156,6 +160,8 @@ describe('ui/global-events', () => {
       els.newChatBtn.click();
 
       expect(stateMock.clearConversation).not.toHaveBeenCalled();
+      // …but says why instead of ignoring the click
+      expect(showToast).toHaveBeenCalledWith('[toast.busyGenerating]', expect.any(Number));
     });
 
     it('exportBtn calls exportChatAsMarkdown when messages exist', () => {
@@ -202,6 +208,39 @@ describe('ui/global-events', () => {
     it('registers chrome.tabs.onActivated listener', () => {
       bindGlobalEvents(els, deps);
       expect(chrome.tabs.onActivated.addListener).toHaveBeenCalled();
+    });
+
+    describe('tab activation', () => {
+      type Activated = (info: { tabId: number; windowId: number }) => Promise<void>;
+      function activatedListener(): Activated {
+        return vi.mocked(chrome.tabs.onActivated.addListener).mock.calls[0][0] as unknown as Activated;
+      }
+
+      beforeEach(() => {
+        (chrome as unknown as { windows: unknown }).windows = { getCurrent: vi.fn(() => Promise.resolve({ id: 7 })) };
+        stateMock.getActiveTabId.mockReturnValue(1);
+      });
+
+      it('does not clear the outgoing tab\'s generating flag, and shows Stop if the new tab is generating', async () => {
+        bindGlobalEvents(els, deps);
+        await Promise.resolve(); // windows.getCurrent resolves
+        stateMock.getIsGenerating.mockReturnValue(true); // the tab being switched TO is generating
+
+        await activatedListener()({ tabId: 2, windowId: 7 });
+
+        expect(stateMock.setIsGenerating).not.toHaveBeenCalled();
+        expect(stateMock.switchToTab).toHaveBeenCalledWith(2);
+        expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(true);
+      });
+
+      it('ignores tab activations in other browser windows', async () => {
+        bindGlobalEvents(els, deps);
+        await Promise.resolve();
+
+        await activatedListener()({ tabId: 2, windowId: 99 });
+
+        expect(stateMock.switchToTab).not.toHaveBeenCalled();
+      });
     });
 
     it('registers chrome.runtime.onMessage listener', () => {
