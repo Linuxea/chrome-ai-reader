@@ -10,6 +10,7 @@ import {
   initTTSPlayback as _initTTSPlayback,
   ttsAppendChunk as _ttsAppendChunk,
   ttsEnqueue, ttsFlushRemaining, stopTTSPlayback,
+  getTTSButton, setTTSButton,
 } from './player';
 import { initDownloader, stopTTSDownload, handleTTSDownloadClick } from './downloader';
 
@@ -39,10 +40,13 @@ export function stopTTS(): void {
   stopTTSDownload();
   stopTTSPlayback();
 
-  const btn = _chatArea.querySelector(CSS.TTS_BTN);
+  // Reset the button of the message that was being read (not just the first
+  // one in the chat).
+  const btn = getTTSButton();
   if (btn) {
     btn.classList.remove(CSS.TTS_PLAYING.replace('.', ''), CSS.TTS_LOADING.replace('.', ''));
   }
+  setTTSButton(null);
 }
 
 export { _initTTSPlayback as initTTSPlayback };
@@ -58,7 +62,7 @@ function handleTTSButtonClick(msgEl: HTMLElement): void {
   const text = contentEl ? contentEl.textContent : msgEl.textContent;
   if (!text || !text.trim()) return;
 
-  _initTTSPlayback();
+  _initTTSPlayback(msgEl.querySelector(CSS.TTS_BTN));
   const segments = splitToSegments(text.trim());
   segments.forEach(seg => ttsEnqueue(seg));
 }
@@ -70,9 +74,11 @@ export function addTTSButton(msgEl: HTMLElement): void {
   });
 }
 
-export function initTTSAutoPlay(): void {
+/** Answer finished: flush the autoplay tail and show its state on the answer's TTS button. */
+export function initTTSAutoPlay(msgEl?: HTMLElement): void {
   if (!_isTTSAutoPlay()) return;
   if (!_isTTSPlaying()) return;
 
+  if (msgEl) setTTSButton(msgEl.querySelector(CSS.TTS_BTN));
   ttsFlushRemaining();
 }

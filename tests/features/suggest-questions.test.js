@@ -316,3 +316,20 @@ describe('generateSuggestions', () => {
     expect(chatArea.querySelector('.suggest-questions')).toBeNull();
   });
 });
+
+describe('stripListMarker', () => {
+  it('removes numbered and bulleted list markers', async () => {
+    const { stripListMarker } = await import('../../src/side_panel/features/suggest-questions.js');
+    expect(stripListMarker('1. What is X?')).toBe('What is X?');
+    expect(stripListMarker('2、为什么？')).toBe('为什么？');
+    expect(stripListMarker('3) How?')).toBe('How?');
+    expect(stripListMarker('4）怎么办？')).toBe('怎么办？');
+    expect(stripListMarker('- bullet?')).toBe('bullet?');
+  });
+
+  it('keeps a question that merely starts with a number', async () => {
+    const { stripListMarker } = await import('../../src/side_panel/features/suggest-questions.js');
+    expect(stripListMarker('2024年发生了什么？')).toBe('2024年发生了什么？');
+    expect(stripListMarker('3D 打印的原理是什么？')).toBe('3D 打印的原理是什么？');
+  });
+});

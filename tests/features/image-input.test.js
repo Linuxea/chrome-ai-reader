@@ -146,7 +146,7 @@ describe('initImageInput', () => {
       document.body.classList.add('drag-over');
       const mockFile = new File([''], 'drop.png', { type: 'image/png' });
       const event = new Event('drop', { bubbles: true, cancelable: true });
-      event.dataTransfer = { files: [mockFile] };
+      event.dataTransfer = { types: ['Files'], files: [mockFile] };
 
       document.body.dispatchEvent(event);
       expect(document.body.classList.contains('drag-over')).toBe(false);
@@ -156,15 +156,28 @@ describe('initImageInput', () => {
     it('ignores drop of non-image files', () => {
       const mockFile = new File(['text'], 'doc.txt', { type: 'text/plain' });
       const event = new Event('drop', { bubbles: true, cancelable: true });
-      event.dataTransfer = { files: [mockFile] };
+      event.dataTransfer = { types: ['Files'], files: [mockFile] };
 
       document.body.dispatchEvent(event);
       expect(ingestImages).not.toHaveBeenCalled();
     });
 
+    it('lets a text drag through (dropping page text into the input box works)', () => {
+      const over = new Event('dragover', { bubbles: true, cancelable: true });
+      over.dataTransfer = { types: ['text/plain'] };
+      document.body.dispatchEvent(over);
+      expect(over.defaultPrevented).toBe(false);
+
+      const drop = new Event('drop', { bubbles: true, cancelable: true });
+      drop.dataTransfer = { types: ['text/plain'], files: [] };
+      document.body.dispatchEvent(drop);
+      expect(drop.defaultPrevented).toBe(false);
+      expect(ingestImages).not.toHaveBeenCalled();
+    });
+
     it('handles empty file list on drop', () => {
       const event = new Event('drop', { bubbles: true, cancelable: true });
-      event.dataTransfer = { files: [] };
+      event.dataTransfer = { types: ['Files'], files: [] };
 
       document.body.dispatchEvent(event);
       expect(ingestImages).not.toHaveBeenCalled();

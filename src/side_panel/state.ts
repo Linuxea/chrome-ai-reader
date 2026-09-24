@@ -137,6 +137,11 @@ let _tabLifecycleListenerRegistered = false;
 function initTabLifecycleListener(): void {
   if (_tabLifecycleListenerRegistered) return;
   _tabLifecycleListenerRegistered = true;
+  // Same-tab navigation (full load or SPA route change) makes the cached page
+  // content stale — questions would otherwise be answered from the old page.
+  chrome.tabs.onUpdated?.addListener((tabId: number, changeInfo: { url?: string }) => {
+    if (changeInfo.url) invalidatePageIfNavigated(tabId, changeInfo.url);
+  });
   chrome.tabs.onRemoved.addListener((tabId: number) => {
     _tabStates.delete(tabId);
     chrome.storage.session.remove(`tabState_${tabId}`);
@@ -146,6 +151,30 @@ function initTabLifecycleListener(): void {
       _activeTabId = null;
     }
   });
+}
+
+/** URL without its #fragment — in-page anchors don't change the content. */
+export function pageUrlKey(url: string): string {
+  const i = url.indexOf('#');
+  return i === -1 ? url : url.slice(0, i);
+}
+
+/**
+ * Drop the tab's cached page content if `url` is a different page than the
+ * one it was extracted from. The next send re-extracts. Conversation history
+ * is kept. Notifies `pageInvalidated` with the tab id.
+ */
+export function invalidatePageIfNavigated(tabId: number, url: string): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts || !ts.pageContent) return;
+  if (ts.pageUrl && pageUrlKey(ts.pageUrl) === pageUrlKey(url)) return;
+  ts.pageContent = '';
+  ts.pageTitle = '';
+  ts.pageExcerpt = '';
+  ts.pageUrl = '';
+  if (tabId === _activeTabId) ts.selectedText = '';
+  persistForTab(tabId);
+  notify('pageInvalidated', tabId);
 }
 
 // Backwards-compat: register the listener at module load for production use

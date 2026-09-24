@@ -31,6 +31,15 @@ export function removeSuggestQuestions(): void {
   if (el) el.remove();
 }
 
+/**
+ * Drop a leading list marker ("1.", "2、", "3)", "4）", "-", "*", "•") from a
+ * suggested question. A bare leading number is content, not a marker —
+ * "2024年发生了什么？" must stay intact.
+ */
+export function stripListMarker(line: string): string {
+  return line.replace(/^\s*(?:\d+\s*[.、)）:：]|[-*•])\s*/, '').trim();
+}
+
 /** Text of a (possibly multimodal) message; an image-only message reads as a placeholder. */
 function contentAsText(content: ChatMessage['content']): string {
   if (typeof content === 'string') return content;
@@ -94,7 +103,7 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
       if (!msgEl.parentNode) return;
       const questions = fullText
         .split('\n')
-        .map(q => q.replace(/^[\d]+[.、)\s]*/, '').trim())
+        .map(stripListMarker)
         .filter(q => q.length > 0)
         .slice(0, 3);
 

@@ -82,6 +82,8 @@ export interface TabState {
   pageContent: string;
   pageTitle: string;
   pageExcerpt: string;
+  /** URL the cached page content was extracted from (hash stripped). */
+  pageUrl?: string;
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
   selectedText: string;

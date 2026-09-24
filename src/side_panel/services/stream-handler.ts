@@ -352,7 +352,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     setButtonsDisabled(false);
     if (!answerEl) return;
     if (complete) {
-      initTTSAutoPlay();
+      initTTSAutoPlay(answerEl);
       // Suggestions attach below the answer; this also saves the chat.
       emit(EVENTS.GENERATE_SUGGESTIONS, { msgEl: answerEl, history: tabState!.conversationHistory });
     } else {

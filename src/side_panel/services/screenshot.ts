@@ -1,5 +1,5 @@
 import { getActiveTab } from '../../platform/tabs';
-import { sendTabMessage } from '../../platform/messaging';
+import { sendToContentScript } from '../../platform/messaging';
 import type { ScrollPageState } from '../../shared/protocol';
 
 /**
@@ -86,7 +86,8 @@ export async function captureFullPage(onProgress?: FullPageProgress): Promise<Fu
     return uri;
   };
 
-  const send = (action: string): Promise<unknown> => sendTabMessage(tabId, { action });
+  // Injects the content script first on tabs that predate the extension.
+  const send = (action: string): Promise<unknown> => sendToContentScript(tabId, { action });
 
   const dataUris: string[] = [];
   let error: string | undefined;

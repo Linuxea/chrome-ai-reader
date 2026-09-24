@@ -10,6 +10,8 @@ let ttsDownloadSegments: string[] = [];
 let ttsDownloadSegmentIndex = 0;
 let ttsDownloadSending = false;
 let ttsDownloading = false;
+/** The download button of the message being downloaded. */
+let _downloadBtn: HTMLButtonElement | null = null;
 
 export function initDownloader(chatArea: HTMLElement): void {
   _chatArea = chatArea;
@@ -27,10 +29,12 @@ export function stopTTSDownload(): void {
     ttsDownloadPort = null;
   }
 
-  const btn = _chatArea.querySelector('.tts-download-btn') as HTMLButtonElement | null;
+  const btn = _downloadBtn;
+  _downloadBtn = null;
   if (btn) {
     btn.classList.remove('tts-loading');
     btn.disabled = false;
+    btn.title = t('action.ttsDownload');
   }
 }
 
@@ -94,13 +98,14 @@ function finishTTSDownload(): void {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   downloadFile(blob, `voice-${timestamp}.mp3`, 'audio/mpeg');
 
-  const btn = _chatArea.querySelector('.tts-download-btn') as HTMLButtonElement | null;
+  const btn = _downloadBtn;
+  _downloadBtn = null;
   if (btn) {
     btn.classList.remove('tts-loading');
     btn.disabled = false;
     const origHtml = btn.innerHTML;
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-    btn.title = t('action.copied');
+    btn.title = t('action.downloaded');
     setTimeout(() => {
       btn.innerHTML = origHtml;
       btn.title = t('action.ttsDownload');
@@ -120,7 +125,9 @@ export function handleTTSDownloadClick(msgEl: HTMLElement): void {
   const text = contentEl ? contentEl.textContent : msgEl.textContent;
   if (!text || !text.trim()) return;
 
-  const btn = _chatArea.querySelector('.tts-download-btn') as HTMLButtonElement | null;
+  // The clicked message's own button — not the first one in the chat.
+  const btn = msgEl.querySelector('.tts-download-btn') as HTMLButtonElement | null;
+  _downloadBtn = btn;
   if (btn) {
     btn.classList.add('tts-loading');
     btn.disabled = true;

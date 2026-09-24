@@ -34,6 +34,8 @@ vi.mock('../../../src/side_panel/services/tts/player.js', () => ({
   ttsEnqueue: vi.fn(),
   ttsFlushRemaining: vi.fn(),
   stopTTSPlayback: vi.fn(),
+  getTTSButton: vi.fn(() => null),
+  setTTSButton: vi.fn(),
 }));
 vi.mock('../../../src/side_panel/services/tts/downloader.js', () => ({
   initDownloader: vi.fn(),
@@ -92,11 +94,13 @@ describe('services/tts/index', () => {
       const btn = document.createElement('button');
       btn.className = 'tts-btn tts-playing tts-loading';
       chatArea.appendChild(btn);
+      vi.mocked(playerMock.getTTSButton).mockReturnValueOnce(btn);
 
       stopTTS();
 
       expect(btn.classList.contains('tts-playing')).toBe(false);
       expect(btn.classList.contains('tts-loading')).toBe(false);
+      expect(playerMock.setTTSButton).toHaveBeenCalledWith(null);
     });
 
     it('does not crash when no TTS button exists', () => {

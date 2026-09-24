@@ -12,6 +12,8 @@ function mockChrome(handlers: {
   sendMessage?: (msg: { action: string }) => unknown;
 }): void {
   vi.stubGlobal('chrome', {
+    // sendToContentScript injects content.js once when the first message fails
+    scripting: { executeScript: vi.fn(() => Promise.resolve()) },
     tabs: {
       captureVisibleTab: handlers.captureVisibleTab ?? vi.fn(),
       sendMessage: vi.fn((tabId: number, msg: { action: string }) => {
@@ -166,6 +168,7 @@ describe('services/screenshot captureFullPage', () => {
 
     expect(result.dataUris).toEqual([]);
     expect(result.error).toContain('Could not establish connection');
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: expect.any(Number) }, files: ['content.js'] });
     expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
     vi.useRealTimers();
   });

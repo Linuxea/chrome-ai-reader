@@ -103,3 +103,29 @@ describe('extractPageContent', () => {
     expect(persistForTab).not.toHaveBeenCalled();
   });
 });
+
+describe('extractPageContent — missing content script', () => {
+  it('injects content.js and retries when the tab has no content script yet', async () => {
+    const { extractPageContent } = await import('../../src/side_panel/services/page-extractor.js');
+    chrome.scripting = { executeScript: vi.fn(() => Promise.resolve()) };
+    chrome.tabs.sendMessage
+      .mockRejectedValueOnce(new Error('Receiving end does not exist'))
+      .mockResolvedValueOnce({ success: true, data: { textContent: 'body', excerpt: 'ex', title: 'T' } });
+
+    const result = await extractPageContent(7);
+
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 7 }, files: ['content.js'] });
+    expect(result.ok).toBe(true);
+  });
+
+  it('reports a friendly error on pages that cannot host a content script', async () => {
+    const { extractPageContent } = await import('../../src/side_panel/services/page-extractor.js');
+    chrome.scripting = { executeScript: vi.fn(() => Promise.reject(new Error('Cannot access a chrome:// URL'))) };
+    chrome.tabs.sendMessage.mockRejectedValueOnce(new Error('Receiving end does not exist'));
+
+    const result = await extractPageContent(7);
+
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toBe('[error.pageUnsupported]');
+  });
+});

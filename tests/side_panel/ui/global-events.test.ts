@@ -21,6 +21,7 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   getConversationHistory: vi.fn(() => []),
   getPageTitle: vi.fn(() => ''),
   switchToTab: vi.fn(() => Promise.resolve()),
+  subscribe: vi.fn(() => () => {}),
 }));
 vi.mock('../../../src/side_panel/events.js', () => ({
   emit: vi.fn(),

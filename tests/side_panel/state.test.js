@@ -427,3 +427,35 @@ describe('Tab cleanup on chrome.tabs.onRemoved', () => {
     expect(state.getActiveTabId()).toBe(50);
   });
 });
+
+describe('invalidatePageIfNavigated (same-tab navigation)', () => {
+  beforeEach(async () => {
+    store.session = {};
+    await state.initState();
+    const ts = state.getStateForTab(42);
+    ts.pageContent = 'old article';
+    ts.pageTitle = 'Old';
+    ts.pageUrl = 'https://a.com/post-1#intro';
+    ts.selectedText = 'old quote';
+    ts.conversationHistory = [{ role: 'user', content: 'q' }];
+  });
+
+  it('drops the cached page when the tab navigates to another page (keeps the conversation)', () => {
+    const cb = vi.fn();
+    const unsub = state.subscribe('pageInvalidated', cb);
+    state.invalidatePageIfNavigated(42, 'https://a.com/post-2');
+    unsub();
+
+    const ts = state.getStateForTab(42);
+    expect(ts.pageContent).toBe('');
+    expect(ts.pageTitle).toBe('');
+    expect(ts.selectedText).toBe('');
+    expect(ts.conversationHistory).toHaveLength(1);
+    expect(cb).toHaveBeenCalledWith(42);
+  });
+
+  it('ignores in-page anchor changes (#hash)', () => {
+    state.invalidatePageIfNavigated(42, 'https://a.com/post-1#comments');
+    expect(state.getStateForTab(42).pageContent).toBe('old article');
+  });
+});

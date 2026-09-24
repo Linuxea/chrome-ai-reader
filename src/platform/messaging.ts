@@ -19,6 +19,22 @@ export function sendTabMessage(tabId: number, message: unknown): Promise<unknown
 }
 
 /**
+ * Send a message to the tab's content script, injecting `content.js` first if
+ * the tab has none (tabs opened before the extension was installed / updated).
+ * Throws when the page cannot host a content script (chrome://, the Web
+ * Store, …) — callers map that to a user-facing "page not supported" message.
+ */
+export async function sendToContentScript<T = unknown>(tabId: number, message: unknown): Promise<T> {
+  try {
+    return await chrome.tabs.sendMessage(tabId, message) as T;
+  } catch {
+    // "Receiving end does not exist" — no content script in this tab yet.
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+    return await chrome.tabs.sendMessage(tabId, message) as T;
+  }
+}
+
+/**
  * Register a one-shot message listener.
  *
  * The handler returns `true` to signal async sendResponse, `undefined`/`false`

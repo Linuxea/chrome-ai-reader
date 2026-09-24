@@ -20,9 +20,12 @@ export function initImageInput({ userInput }: { userInput: HTMLElement }): void 
   document.body.addEventListener('dragleave', handleDragLeave);
   document.body.addEventListener('drop', (e) => handleDrop(e));
 
+  // Only file drags are ours: preventing the default for every drag used to
+  // block dropping selected page text into the input box.
   function handleDragOver(e: DragEvent): void {
+    if (!hasImageFiles(e.dataTransfer)) return;
     e.preventDefault();
-    if (hasImageFiles(e.dataTransfer)) document.body.classList.add('drag-over');
+    document.body.classList.add('drag-over');
   }
 
   function handleDragLeave(e: DragEvent): void {
@@ -32,8 +35,9 @@ export function initImageInput({ userInput }: { userInput: HTMLElement }): void 
   }
 
   function handleDrop(e: DragEvent): void {
-    e.preventDefault();
     document.body.classList.remove('drag-over');
+    if (!hasImageFiles(e.dataTransfer)) return; // text drop → native insert
+    e.preventDefault();
     const imageFiles = extractImageFilesFromFileList(e.dataTransfer!.files);
     if (imageFiles.length > 0) void ingestImages(imageFiles);
   }
