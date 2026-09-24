@@ -335,6 +335,22 @@ describe('dom-helpers', () => {
       });
     });
 
+    it('Enter saves, Shift+Enter does not, and Enter during IME composition does not', () => {
+      const msgEl = appendMessage('user', 'orig');
+      msgEl.dataset.rawText = 'orig';
+      chatArea.querySelector('.msg-action-btn[title="[action.edit]"]').click();
+      const ta = msgEl.querySelector('.msg-edit-textarea');
+      ta.value = 'changed';
+      emit.mockClear();
+
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, cancelable: true }));
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, cancelable: true }));
+      expect(emit).not.toHaveBeenCalled();
+
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+      expect(emit).toHaveBeenCalledWith(EVENTS.EDIT, expect.objectContaining({ editedText: 'changed' }));
+    });
+
     it('does not emit EDIT when saving empty text', () => {
       const msgEl = appendMessage('user', 'keep me');
       msgEl.dataset.rawDisplay = 'keep me';

@@ -91,6 +91,7 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => {
       return el;
     }),
     appendErrorMessage: vi.fn(makeEl),
+    appendNoteMessage: vi.fn(makeEl),
     emitRetryFromWrapper: vi.fn(),
     updateSendButtonDim: vi.fn(),
     removeLastMessage: vi.fn(),
@@ -115,6 +116,7 @@ vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
 
 vi.mock('../../src/side_panel/services/stream-handler.js', () => ({
   callAI: vi.fn(() => Promise.resolve()),
+  takePendingAbort: vi.fn(() => false),
 }));
 
 vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
@@ -155,7 +157,7 @@ import * as eventsMock from '../../src/side_panel/events.js';
 import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
 import * as imagesMock from '../../src/side_panel/services/images.js';
 import { ensurePageContent } from '../../src/side_panel/services/page-extractor.js';
-import { callAI } from '../../src/side_panel/services/stream-handler.js';
+import { callAI, takePendingAbort } from '../../src/side_panel/services/stream-handler.js';
 import { appendMessage as appendHistory, truncateHistoryFromUserContent } from '../../src/side_panel/services/chat/history-ops.js';
 
 describe('services/message-sender', () => {
@@ -192,6 +194,7 @@ describe('services/message-sender', () => {
       Promise.resolve({ ok: true, value: null }),
     );
     (callAI as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    vi.mocked(takePendingAbort).mockReturnValue(false);
     imagesMock.collectImageDataUris.mockReturnValue([]);
     imagesMock.clearImagePreviews.mockImplementation(() => {});
     imagesMock.hasPendingImages.mockReturnValue(false);
@@ -361,6 +364,18 @@ describe('services/message-sender', () => {
       expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
     });
 
+    it('Stop during page extraction cancels the send (nothing reaches the model or history)', async () => {
+      vi.mocked(takePendingAbort).mockReturnValueOnce(true);
+
+      await sendToAI('q', 'q');
+
+      expect(callAI).not.toHaveBeenCalled();
+      expect(tabState.conversationHistory).toHaveLength(0);
+      expect(tabState.isGenerating).toBe(false);
+      expect(domMock.appendNoteMessage).toHaveBeenCalledWith('[ai.stopped]');
+      expect(domMock.setButtonsDisabled).toHaveBeenLastCalledWith(false);
+    });
+
     it('rolls back on ensurePageContent failure', async () => {
       tabState.pageContent = '';
       tabState.conversationHistory = [];
@@ -395,6 +410,18 @@ describe('services/message-sender', () => {
       userInput.value = '   ';
       await sendMessage();
 
+      expect(callAI).not.toHaveBeenCalled();
+    });
+
+    it('keeps text and images when the images are too large to send', async () => {
+      userInput.value = 'look';
+      imagesMock.collectImageDataUris.mockReturnValue(['x'.repeat(11 * 1024 * 1024)]);
+
+      await sendMessage();
+
+      expect(domMock.appendMessage).toHaveBeenCalledWith('error', '[error.visionPayloadTooLarge]');
+      expect(userInput.value).toBe('look');
+      expect(imagesMock.clearImagePreviews).not.toHaveBeenCalled();
       expect(callAI).not.toHaveBeenCalled();
     });
 

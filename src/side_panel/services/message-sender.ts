@@ -7,14 +7,14 @@ import type { ChatMessage, MessageContentPart, UserMessageMeta } from '../../sha
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import {
-  appendMessage, appendUserMessage,
+  appendMessage, appendUserMessage, appendNoteMessage,
   appendErrorMessage, emitRetryFromWrapper,
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
-import { getDraftText, clearDraftText, consumeAttachments, hasAttachments } from './composer';
+import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES } from './composer';
 import { ensurePageContent } from './page-extractor';
-import { callAI, abortGeneration } from './stream-handler';
+import { callAI, takePendingAbort } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, toApiMessage } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
@@ -51,6 +51,16 @@ export async function sendToAI(
     // the single entry point for extraction — history state is irrelevant;
     // only the pageContent cache decides whether to actually extract.
     const extractResult = await ensurePageContent(startTabId);
+    if (takePendingAbort(startTabId!)) {
+      // Stop was pressed while the page was being extracted: nothing was
+      // sent or added to history — just end the turn (the bubble keeps retry).
+      state.setGeneratingForTab(startTabId!, false);
+      if (state.getActiveTabId() === startTabId) {
+        appendNoteMessage(t('ai.stopped'));
+        setButtonsDisabled(false);
+      }
+      return;
+    }
     if (!extractResult.ok) throw extractResult.error;
 
     const messages: ChatMessage[] = [];
@@ -103,13 +113,14 @@ export async function sendToAI(
 
     if (hasImages) {
       const totalBytes = imageUris!.reduce((sum, u) => sum + u.length, 0);
-      if (totalBytes > 10 * 1024 * 1024) {
+      if (totalBytes > MAX_IMAGE_PAYLOAD_BYTES) {
         throw new Error(t('error.visionPayloadTooLarge'));
       }
     }
 
     await callAI(messages, startTabId);
   } catch (e: unknown) {
+    takePendingAbort(startTabId!); // a Stop racing the failure is moot now
     const errMsg = toErrorMessage(e);
     if (state.getActiveTabId() === startTabId) {
       // Keep the user bubble — removing it used to destroy the typed text with
@@ -161,6 +172,11 @@ export async function submit(intent: SubmitIntent = {}): Promise<void> {
   if (isFreeText && !draft && !hasAttachments()) {
     updateSendButtonDim();
     return;
+  }
+
+  if (attachmentsTooLarge()) {
+    appendMessage('error', t('error.visionPayloadTooLarge'));
+    return; // nothing consumed: text and images stay for the user to trim
   }
 
   let text: string;

@@ -31,6 +31,7 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   setButtonsDisabled: vi.fn(),
   updateSendButtonDim: vi.fn(),
 }));
+vi.mock('../../../src/side_panel/ui/toast.js', () => ({ showToast: vi.fn() }));
 vi.mock('../../../src/side_panel/features/quick-commands.js', () => ({
   isCommandPopupOpen: vi.fn(() => false),
   hideCommandPopup: vi.fn(),
@@ -55,6 +56,7 @@ import * as eventsMock from '../../../src/side_panel/events.js';
 import * as chatHistoryMock from '../../../src/side_panel/features/chat-history.js';
 import * as quickCommandsMock from '../../../src/side_panel/features/quick-commands.js';
 import * as domMock from '../../../src/side_panel/ui/dom-helpers.js';
+import { showToast } from '../../../src/side_panel/ui/toast.js';
 
 function createUIElements(): UIElements {
   return {
@@ -158,6 +160,8 @@ describe('ui/global-events', () => {
       els.newChatBtn.click();
 
       expect(stateMock.clearConversation).not.toHaveBeenCalled();
+      // …but says why instead of ignoring the click
+      expect(showToast).toHaveBeenCalledWith('[toast.busyGenerating]', expect.any(Number));
     });
 
     it('exportBtn calls exportChatAsMarkdown when messages exist', () => {

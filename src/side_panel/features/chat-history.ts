@@ -4,6 +4,7 @@ import { formatDate, formatDateTime, formatDateOnly } from '../../shared/format'
 import { downloadFile } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
+import { showToast } from '../ui/toast';
 import { stripImagesForPersistence } from '../services/chat/strip-images';
 import { addTTSButton } from '../services/tts/index.js';
 import { marked } from 'marked';
@@ -24,6 +25,8 @@ interface DisplayMessage {
   role: string;
   content: string;
   type?: string;
+  /** User messages: the quoted page text (kept apart so titles show the question). */
+  quote?: string;
 }
 
 interface ChatHistoryEntry {
@@ -100,11 +103,20 @@ export function getDisplayMessages(): DisplayMessage[] {
   const messages: DisplayMessage[] = [];
   msgEls.forEach(el => {
     if (el.classList.contains('message-user')) {
+      const userEl = el as HTMLElement;
+      // The quote renders inside the bubble; keep it apart from the question
+      // so titles show what the user asked, not the quoted page text.
+      const quoteEl = userEl.querySelector('.quote-in-bubble');
+      const quote = quoteEl ? (userEl.dataset.rawQuote || quoteEl.textContent || '') : '';
+      const text = (quoteEl
+        ? (userEl.dataset.rawDisplay ?? userEl.querySelector(':scope > span')?.textContent ?? '')
+        : (userEl.textContent || '')).trim();
       // An image-only message has no text — keep a placeholder so titles and
       // exports don't show an empty turn.
-      const text = el.textContent?.trim() || '';
-      const imageOnly = !text && el.querySelector('.bubble-images') !== null;
-      messages.push({ role: 'user', content: imageOnly ? t('chat.imageOnly') : (el.textContent || '') });
+      const imageOnly = !text && userEl.querySelector('.bubble-images') !== null;
+      const msg: DisplayMessage = { role: 'user', content: imageOnly ? t('chat.imageOnly') : text };
+      if (quote) msg.quote = quote;
+      messages.push(msg);
     } else if (el.classList.contains('message-ai')) {
       if ((el as HTMLElement).dataset.type === 'outline') {
         messages.push({
@@ -120,45 +132,69 @@ export function getDisplayMessages(): DisplayMessage[] {
   return messages;
 }
 
-export async function saveCurrentChat(): Promise<void> {
+/**
+ * Snapshot synchronously, write asynchronously and in order.
+ *
+ * The DOM, history and chat id are captured at call time (callers such as
+ * "new chat" clear them right after calling), and a new chat gets its id
+ * immediately — assigning it after an await used to (a) let two overlapping
+ * saves both create an entry, and (b) stamp the OLD chat's id onto the fresh
+ * conversation "new chat" had just started, so later saves overwrote it.
+ */
+let _saveQueue: Promise<void> = Promise.resolve();
+
+export function saveCurrentChat(): Promise<void> {
   const messages = getDisplayMessages();
-  if (messages.length === 0) return;
+  if (messages.length === 0) return _saveQueue;
 
   const now = Date.now();
-  const currentChatId = state.getCurrentChatId();
-  const conversationHistory = state.getConversationHistory();
-  const pageTitle = state.getPageTitle();
-
-  if (currentChatId) {
-    const histories = await getChatHistories();
-    const idx = histories.findIndex(h => h.id === currentChatId);
-    if (idx !== -1) {
-      histories[idx].messages = messages;
-      histories[idx].conversationHistory = conversationHistory
-        .filter(m => m.role !== 'system')
-        .map(stripImagesForPersistence);
-      histories[idx].pageTitle = pageTitle;
-      histories[idx].updatedAt = now;
-      await saveChatHistories(histories);
-    }
-  } else {
-    const title = generateTitle(messages);
-    const chat: ChatHistoryEntry = {
-      id: 'chat_' + now,
-      title,
-      pageTitle,
-      messages,
-      conversationHistory: conversationHistory
-        .filter(m => m.role !== 'system')
-        .map(stripImagesForPersistence),
-      createdAt: now,
-      updatedAt: now,
-    };
-    const histories = await getChatHistories();
-    histories.push(chat);
-    state.setCurrentChatId(chat.id);
-    await saveChatHistories(histories);
+  let chatId = state.getCurrentChatId();
+  const isNew = !chatId;
+  if (!chatId) {
+    chatId = 'chat_' + now;
+    state.setCurrentChatId(chatId);
   }
+  const snapshot = {
+    id: chatId,
+    isNew,
+    now,
+    messages,
+    pageTitle: state.getPageTitle(),
+    conversationHistory: state.getConversationHistory()
+      .filter(m => m.role !== 'system')
+      .map(stripImagesForPersistence),
+  };
+
+  const run = _saveQueue.then(() => writeChat(snapshot));
+  _saveQueue = run.catch(() => { /* keep the queue alive */ });
+  return run;
+}
+
+async function writeChat(snap: {
+  id: string; isNew: boolean; now: number; messages: DisplayMessage[];
+  pageTitle: string; conversationHistory: ChatMessage[];
+}): Promise<void> {
+  const histories = await getChatHistories();
+  const idx = histories.findIndex(h => h.id === snap.id);
+  if (idx !== -1) {
+    histories[idx].messages = snap.messages;
+    histories[idx].conversationHistory = snap.conversationHistory;
+    histories[idx].pageTitle = snap.pageTitle;
+    histories[idx].updatedAt = snap.now;
+  } else if (snap.isNew) {
+    histories.push({
+      id: snap.id,
+      title: generateTitle(snap.messages),
+      pageTitle: snap.pageTitle,
+      messages: snap.messages,
+      conversationHistory: snap.conversationHistory,
+      createdAt: snap.now,
+      updatedAt: snap.now,
+    });
+  } else {
+    return; // the chat was deleted meanwhile — don't resurrect it
+  }
+  await saveChatHistories(histories);
 }
 
 export function generateTitle(messages: DisplayMessage[]): string {
@@ -181,7 +217,10 @@ export async function deleteChat(id: string): Promise<void> {
 }
 
 async function loadChat(id: string): Promise<void> {
-  if (state.getIsGenerating()) return;
+  if (state.getIsGenerating()) {
+    showToast(t('toast.busyGenerating'), 2500);
+    return;
+  }
 
   const histories = await getChatHistories();
   const chat = histories.find(h => h.id === id);
@@ -337,7 +376,8 @@ export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[
 
   messages.forEach(msg => {
     if (msg.role === 'user') {
-      md += '## ' + t('chat.user') + '\n\n' + msg.content + '\n\n';
+      const quoteMd = msg.quote ? '> ' + msg.quote.replace(/\n/g, '\n> ') + '\n\n' : '';
+      md += '## ' + t('chat.user') + '\n\n' + quoteMd + msg.content + '\n\n';
     } else if (msg.role === 'assistant') {
       if (msg.type === 'outline') {
         try {

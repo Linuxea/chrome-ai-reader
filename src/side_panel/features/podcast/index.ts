@@ -4,7 +4,7 @@ import { on, emit, EVENTS } from '../../events';
 import { appendMessage } from '../../ui/dom-helpers';
 import { ensurePageContent } from '../../services/page-extractor';
 import { isTTSPlaying, stopTTS } from '../../services/tts/index.js';
-import { consumeAttachments } from '../../services/composer';
+import { consumeAttachments, attachmentsTooLarge } from '../../services/composer';
 import { createPodcastCard, updateCardStatus, restoreWelcomeIfNeeded, resetHighlightState, initUICallbacks, rebuildPodcastCard } from './ui';
 import { handlePlayPause, seekToMouse, seekToTouch, addDownloadButton, downloadPodcastAudio, replayAudio, cleanupPodcastAudio, initAudioCallbacks, reattachCard } from './audio';
 import { generatePodcastScript, cleanupScriptPort, initScriptCallbacks } from './script';
@@ -85,6 +85,8 @@ export async function handlePodcastClick(): Promise<void> {
   podcastCancelled = false;
   if (isTTSPlaying()) stopTTS();
   cleanupPodcast(); state.setIsPodcastGenerating(true); if (_podcastBtn) _podcastBtn.disabled = true;
+
+  if (attachmentsTooLarge()) { appendMessage('error', t('error.visionPayloadTooLarge')); resetPodcastState(); return; }
 
   const selectedText = state.getSelectedText();
   const hasSelection = selectedText && selectedText.trim().length > 0;

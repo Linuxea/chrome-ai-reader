@@ -76,7 +76,22 @@ function errorActions(wrapper: HTMLElement | null, errorKey?: string): ErrorMess
  * worker's end sees it), so the panel must not wait for that event.
  */
 export function abortGeneration(tabId: number): void {
-  _activeStreams.get(tabId)?.abort();
+  const stream = _activeStreams.get(tabId);
+  if (stream) {
+    stream.abort();
+  } else if (state.getStateForTab(tabId)?.isGenerating) {
+    // Stop pressed before the stream opened (page extraction still running):
+    // sendToAI checks this once extraction returns and cancels the send.
+    _pendingAborts.add(tabId);
+  }
+}
+
+/** Stops requested before a stream existed, by tab id. */
+const _pendingAborts = new Set<number>();
+
+/** Consume a Stop that was pressed before the stream opened. */
+export function takePendingAbort(tabId: number): boolean {
+  return _pendingAborts.delete(tabId);
 }
 
 type Outcome =
@@ -339,6 +354,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       _pendingSaves.add(tabId!);
       return;
     }
+    msgEl.dataset.markdown = fullText; // copy button copies the markdown source
     let answerEl: HTMLElement | null = msgEl;
     if (!msgEl.isConnected) {
       emit(EVENTS.REQUEST_RERENDER);

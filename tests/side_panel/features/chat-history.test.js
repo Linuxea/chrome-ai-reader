@@ -1,4 +1,4 @@
-import { vi, describe, it, expect } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
@@ -46,7 +46,9 @@ import {
   getDisplayMessages,
   stripMessageChrome,
   renderHistoryList,
+  saveCurrentChat,
 } from '../../../src/side_panel/features/chat-history.js';
+import * as stateMock from '../../../src/side_panel/state.js';
 import { emit } from '../../../src/side_panel/events.js';
 
 describe('generateTitle', () => {
@@ -224,5 +226,72 @@ describe('loading a saved chat', () => {
 
     expect(emit).not.toHaveBeenCalledWith('requestRerender');
     expect(chatArea.textContent).toContain('legacy q');
+  });
+});
+
+describe('saveCurrentChat', () => {
+  let saved;
+  let chatArea;
+  let currentId;
+
+  beforeEach(() => {
+    saved = [];
+    currentId = null;
+    stateMock.getCurrentChatId.mockImplementation(() => currentId);
+    stateMock.setCurrentChatId.mockImplementation((id) => { currentId = id; });
+    globalThis.chrome = {
+      storage: {
+        local: {
+          // async like the real API, so overlapping saves really interleave
+          get: vi.fn((_k, cb) => setTimeout(() => cb({ chatHistories: JSON.parse(JSON.stringify(saved)) }), 0)),
+          set: vi.fn((items, cb) => setTimeout(() => { saved = items.chatHistories; cb(); }, 0)),
+        },
+      },
+    };
+    chatArea = document.createElement('div');
+    initChatHistory({
+      chatArea, historyPanel: document.createElement('div'), historyList: document.createElement('div'),
+      onLoadChat: vi.fn(), onRenderOutline: vi.fn(), onOutlineToMarkdown: vi.fn(),
+    });
+  });
+
+  function addUserMessage(text) {
+    const el = document.createElement('div');
+    el.className = 'message message-user';
+    el.textContent = text;
+    chatArea.appendChild(el);
+  }
+
+  it('overlapping saves of a new chat create ONE history entry', async () => {
+    addUserMessage('hello');
+    await Promise.all([saveCurrentChat(), saveCurrentChat()]);
+    expect(saved).toHaveLength(1);
+  });
+
+  it('"new chat" right after a save keeps the two conversations apart', async () => {
+    addUserMessage('first chat');
+    const pending = saveCurrentChat();
+    // new chat: clears the id and the chat area before the save finishes
+    stateMock.setCurrentChatId(null);
+    chatArea.innerHTML = '';
+    await pending;
+    expect(currentId).toBeNull(); // the old id was not stamped onto the new chat
+
+    addUserMessage('second chat');
+    await saveCurrentChat();
+    expect(saved.map(h => h.title)).toEqual(['first chat', 'second chat']);
+  });
+
+  it('keeps the quote apart from the question (titles show the question)', () => {
+    const el = document.createElement('div');
+    el.className = 'message message-user';
+    el.dataset.rawDisplay = 'What does this mean?';
+    el.dataset.rawQuote = 'A long quoted paragraph from the page';
+    el.innerHTML = '<blockquote class="quote-in-bubble">A long quoted…</blockquote><span>What does this mean?</span>';
+    chatArea.appendChild(el);
+
+    expect(getDisplayMessages()).toEqual([
+      { role: 'user', content: 'What does this mean?', quote: 'A long quoted paragraph from the page' },
+    ]);
   });
 });

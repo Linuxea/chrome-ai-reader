@@ -1,6 +1,7 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { setButtonsDisabled, updateSendButtonDim } from './dom-helpers';
+import { showToast } from './toast';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
 import { clearImagePreviews } from '../services/images.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
@@ -48,7 +49,10 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
   els.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
   els.newChatBtn.addEventListener('click', () => {
-    if (state.getIsGenerating()) return;
+    if (state.getIsGenerating()) {
+      showToast(t('toast.busyGenerating'), 2500);
+      return;
+    }
     cleanupActiveFeatures(els, deps);
     saveCurrentChat();
     deps.removeSuggestQuestions();

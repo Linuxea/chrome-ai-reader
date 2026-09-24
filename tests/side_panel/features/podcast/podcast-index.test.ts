@@ -32,6 +32,7 @@ vi.mock('../../../../src/side_panel/services/tts/index.js', () => ({
 }));
 vi.mock('../../../../src/side_panel/services/composer.js', () => ({
   consumeAttachments: vi.fn(() => ({ imageUris: [] })),
+  attachmentsTooLarge: vi.fn(() => false),
 }));
 vi.mock('../../../../src/side_panel/features/podcast/ui.js', () => ({
   createPodcastCard: vi.fn(() => document.createElement('div')),
@@ -87,6 +88,7 @@ describe('features/podcast/index', () => {
     );
     (generatePodcastScript as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     vi.mocked(composerMock.consumeAttachments).mockReturnValue({ imageUris: [] });
+    vi.mocked(composerMock.attachmentsTooLarge).mockReturnValue(false);
     (createPodcastCard as ReturnType<typeof vi.fn>).mockReturnValue(document.createElement('div'));
     // Set up a podcast button in DOM
     document.body.innerHTML = '<button data-action="podcast"></button>';
@@ -149,6 +151,17 @@ describe('features/podcast/index', () => {
     const [, textContent, images] = vi.mocked(generatePodcastScript).mock.calls[0];
     expect(textContent).toBe('page content');
     expect(images).toEqual(['data:image/png;base64,A']);
+  });
+
+  it('refuses oversized images without consuming them', async () => {
+    stateMock.getPageContent.mockReturnValue('page content');
+    vi.mocked(composerMock.attachmentsTooLarge).mockReturnValue(true);
+
+    await handlePodcastClick();
+
+    expect(appendMessage).toHaveBeenCalledWith('error', '[error.visionPayloadTooLarge]');
+    expect(composerMock.consumeAttachments).not.toHaveBeenCalled();
+    expect(generatePodcastScript).not.toHaveBeenCalled();
   });
 
   it('shows error when no content available', async () => {

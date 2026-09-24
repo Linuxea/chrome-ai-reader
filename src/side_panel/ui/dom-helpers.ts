@@ -232,11 +232,14 @@ function openInlineEditor(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void 
   const saveBtn = msgEl.querySelector<HTMLButtonElement>('.msg-edit-save');
   cancelBtn?.addEventListener('click', restore);
   saveBtn?.addEventListener('click', save);
+  // Same keys as the main input: Enter saves, Shift+Enter is a newline,
+  // Escape cancels. Enter during IME composition picks a candidate instead.
   ta.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       restore();
-    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       save();
     }
@@ -282,6 +285,16 @@ function buildErrorActionsRow(actions: ErrorMessageAction[]): HTMLDivElement {
     row.appendChild(btn);
   }
   return row;
+}
+
+/** A quiet centered status line (e.g. "generation stopped"). */
+export function appendNoteMessage(text: string): HTMLDivElement {
+  const div = document.createElement('div');
+  div.className = 'message message-note';
+  div.textContent = text;
+  _chatArea.appendChild(div);
+  smartScrollToBottom();
+  return div;
 }
 
 /** Create a new error bubble with an action row (retry / settings / …). */
@@ -418,6 +431,7 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
     );
   } else {
     div = appendMessage(msg.role === 'assistant' ? 'ai' : msg.role, text, imageUris, options);
+    if (msg.role === 'assistant') div.dataset.markdown = text; // copy button source
   }
 
   // Restored messages get their action buttons back (copy/TTS/download) via

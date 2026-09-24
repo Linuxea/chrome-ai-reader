@@ -88,7 +88,7 @@ vi.mock('marked', () => ({
 }));
 
 // --- Import after mocks ---
-import { initStreamHandler, callAI, abortGeneration } from '../../src/side_panel/services/stream-handler.js';
+import { initStreamHandler, callAI, abortGeneration, takePendingAbort } from '../../src/side_panel/services/stream-handler.js';
 import { marked } from 'marked';
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
@@ -444,6 +444,13 @@ describe('services/stream-handler', () => {
       expect(msgEl.className).toBe('message message-note');
       expect(msgEl.textContent).toBe('[ai.stopped]');
       expect(domMock.setButtonsDisabled).toHaveBeenCalledWith(false);
+    });
+
+    it('a Stop before the stream opens is remembered for sendToAI to pick up', () => {
+      tabState.isGenerating = true; // sendToAI is still extracting the page
+      abortGeneration(1);
+      expect(takePendingAbort(1)).toBe(true);
+      expect(takePendingAbort(1)).toBe(false); // consumed once
     });
 
     it('does not touch history when generation is still pending (no content yet)', async () => {

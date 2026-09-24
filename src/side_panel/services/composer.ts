@@ -57,6 +57,14 @@ export interface Attachments {
   imageUris: string[];
 }
 
+/** Upper bound for the images of one message (data-URI characters). */
+export const MAX_IMAGE_PAYLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Checked BEFORE consuming, so an oversized draft stays put for the user to trim. */
+export function attachmentsTooLarge(): boolean {
+  return collectImageDataUris().reduce((sum, u) => sum + u.length, 0) > MAX_IMAGE_PAYLOAD_BYTES;
+}
+
 /** True when images are waiting to be sent (an image-only message is valid). */
 export function hasAttachments(): boolean {
   return hasPendingImages();
