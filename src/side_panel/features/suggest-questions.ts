@@ -4,21 +4,14 @@ import { getPrompt } from '../../shared/prompts';
 import { onSyncChange } from '../../platform/storage';
 import * as state from '../state';
 import { smartScrollToBottom } from '../ui/dom-helpers';
+import { appendDraftText } from '../services/composer';
 import type { ChatMessage } from '../../shared/types';
 
 let _chatArea: HTMLElement;
-let _userInput: HTMLTextAreaElement;
-let _onSend: () => Promise<void>;
 let suggestPort: chrome.runtime.Port | null = null;
 
-export function initSuggestQuestions({ chatArea, userInput, onSend }: {
-  chatArea: HTMLElement;
-  userInput: HTMLTextAreaElement;
-  onSend: () => Promise<void>;
-}): void {
+export function initSuggestQuestions({ chatArea }: { chatArea: HTMLElement }): void {
   _chatArea = chatArea;
-  _userInput = userInput;
-  _onSend = onSend;
 
   chrome.storage.sync.get(['suggestQuestions'], (data) => {
     state.setSuggestQuestionsEnabled(data.suggestQuestions !== false);
@@ -105,10 +98,10 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
         const item = document.createElement('button');
         item.className = 'suggest-item';
         item.textContent = q;
+        // Fill the question into the input (never auto-send, never clobber a
+        // draft) so the user can adjust it and send it with the normal button.
         item.addEventListener('click', () => {
-          suggestEl.remove();
-          _userInput.value = q;
-          _onSend();
+          appendDraftText(q, { focus: true });
         });
         suggestEl.appendChild(item);
       });

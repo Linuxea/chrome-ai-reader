@@ -20,6 +20,7 @@ vi.mock('../../src/side_panel/services/quick-action-handler.js', () => ({
 vi.mock('../../src/side_panel/services/message-sender.js', () => ({
   initMessageSender: vi.fn(),
   sendToAI: vi.fn(),
+  submit: vi.fn(),
   sendMessage: vi.fn(),
   retryMessage: vi.fn(),
 }));
@@ -28,7 +29,7 @@ vi.mock('../../src/side_panel/services/message-sender.js', () => ({
 import { initAIChat } from '../../src/side_panel/services/ai-chat.js';
 import { initStreamHandler } from '../../src/side_panel/services/stream-handler.js';
 import { initQuickActionHandler, handleQuickAction } from '../../src/side_panel/services/quick-action-handler.js';
-import { initMessageSender, sendToAI, sendMessage } from '../../src/side_panel/services/message-sender.js';
+import { initMessageSender, submit, sendMessage } from '../../src/side_panel/services/message-sender.js';
 
 /**
  * Build a minimal set of AIChatDeps for testing.
@@ -89,11 +90,8 @@ describe('services/ai-chat', () => {
       initAIChat(deps);
 
       expect(initStreamHandler).toHaveBeenCalledWith({ chatArea: deps.chatArea });
-      expect(initMessageSender).toHaveBeenCalledWith({
-        chatArea: deps.chatArea,
-        userInput: deps.userInput,
-      });
-      expect(initQuickActionHandler).toHaveBeenCalledWith(expect.objectContaining({ sendToAI }));
+      expect(initMessageSender).toHaveBeenCalledWith({ chatArea: deps.chatArea });
+      expect(initQuickActionHandler).toHaveBeenCalledWith(expect.objectContaining({ submit }));
     });
 
     it('attaches click listener to send button', () => {

@@ -15,6 +15,7 @@
  */
 import { t } from '../../shared/i18n.js';
 import { updateQuotePreview, type UIElements } from '../ui/global-events.js';
+import { appendDraftText } from '../services/composer';
 
 type AnnotationState = 'idle' | 'annotating' | 'done' | 'error';
 
@@ -96,7 +97,7 @@ function onRuntimeMessage(msg: Record<string, unknown>): void {
     // quote preview (and set it as selectedText so the next send attaches it),
     // then put the AI comment into the input for the user to follow up.
     if (_uiEls) updateQuotePreview(_uiEls, quote);
-    if (_userInput) _userInput.value = _userInput.value ? `${_userInput.value}\n${comment}` : comment;
+    if (_userInput && comment) appendDraftText(comment, { focus: true });
   }
 }
 

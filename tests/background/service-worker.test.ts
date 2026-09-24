@@ -192,6 +192,25 @@ describe('background/service-worker', () => {
       );
     });
 
+    it('sends podcast images (vision mode) as image_url parts', async () => {
+      const port = createMockPortForRoute('podcast-llm');
+      onConnectListener()!(port);
+      port._receiveMessage({ type: 'generate', prompt: 'sys', text: 'content', images: ['data:image/png;base64,A'] });
+
+      await vi.waitFor(() => expect(callOpenAI).toHaveBeenCalled());
+      expect(callOpenAI).toHaveBeenCalledWith(
+        [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'sys\n\ncontent' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,A' } },
+          ],
+        }],
+        expect.objectContaining({ name: 'podcast-llm' }),
+        expect.objectContaining({ response_format: { type: 'json_object' } }),
+      );
+    });
+
     it('routes podcast-audio port to callPodcast', async () => {
       const port = createMockPortForRoute('podcast-audio');
       onConnectListener()!(port);

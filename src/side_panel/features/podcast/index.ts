@@ -1,10 +1,10 @@
 import { t } from '../../../shared/i18n.js';
 import * as state from '../../state';
-import { on, EVENTS } from '../../events';
+import { on, emit, EVENTS } from '../../events';
 import { appendMessage } from '../../ui/dom-helpers';
 import { ensurePageContent } from '../../services/page-extractor';
 import { isTTSPlaying, stopTTS } from '../../services/tts/index.js';
-import { clearImagePreviews } from '../../services/ocr.js';
+import { validateAttachments, consumeAttachments } from '../../services/composer';
 import { createPodcastCard, updateCardStatus, restoreWelcomeIfNeeded, resetHighlightState, initUICallbacks, rebuildPodcastCard } from './ui';
 import { handlePlayPause, seekToMouse, seekToTouch, addDownloadButton, downloadPodcastAudio, replayAudio, cleanupPodcastAudio, initAudioCallbacks, reattachCard } from './audio';
 import { generatePodcastScript, cleanupScriptPort, initScriptCallbacks } from './script';
@@ -86,11 +86,15 @@ export async function handlePodcastClick(): Promise<void> {
   if (isTTSPlaying()) stopTTS();
   cleanupPodcast(); state.setIsPodcastGenerating(true); if (_podcastBtn) _podcastBtn.disabled = true;
 
+  // Pending images are podcast material too — validated and consumed through
+  // the same composer pipeline as a chat send (nothing is taken on error).
+  const attachmentError = await validateAttachments();
+  if (attachmentError) { appendMessage('error', attachmentError); resetPodcastState(); return; }
+
   const selectedText = state.getSelectedText();
   const hasSelection = selectedText && selectedText.trim().length > 0;
-  const quotePreview = document.getElementById('quotePreview');
-  if (quotePreview) quotePreview.classList.add('hidden');
-  state.setSelectedText(''); clearImagePreviews();
+  emit(EVENTS.CLEAR_QUOTE_PREVIEW);
+  const { ocrContext, imageUris } = await consumeAttachments();
 
   // Always ensure the page has been extracted, even when the user selected
   // text — a few sentences are not enough material for a 20-25 round dialogue,
@@ -103,8 +107,9 @@ export async function handlePodcastClick(): Promise<void> {
   if (hasSelection) { textContent = selectedText.trim(); }
   else { textContent = state.getPageContent(); }
 
-  const ocrResults = state.getOcrResults();
-  if (ocrResults?.length) { const ocrText = ocrResults.map(r => r.text).filter(Boolean).join('\n\n'); if (ocrText) textContent = textContent ? textContent + '\n\n' + ocrText : ocrText; }
+  // Vision off: image text arrives as OCR text. Vision on: the images go to
+  // the model as image_url parts (see generatePodcastScript).
+  if (ocrContext) textContent = textContent ? textContent + '\n\n' + ocrContext : ocrContext;
 
   if (!textContent?.trim()) { appendMessage('error', t('podcast.noContent')); resetPodcastState(); return; }
 
@@ -112,5 +117,5 @@ export async function handlePodcastClick(): Promise<void> {
   setNowPlaying({ originTabId: originTabId!, originTabTitle: state.getPageTitle() || '', title: '', script: [], status: 'generating_script', sourcePreview });
   const card = createPodcastCard(sourcePreview, _chatArea);
   _currentCard = card;
-  await generatePodcastScript(card, textContent);
+  await generatePodcastScript(card, textContent, imageUris);
 }

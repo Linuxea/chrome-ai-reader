@@ -20,6 +20,7 @@ vi.stubGlobal('chrome', {
 });
 
 import { initAnnotation, __getAnnotationState } from '../../../src/side_panel/features/annotation.js';
+import { initComposer } from '../../../src/side_panel/services/composer.js';
 
 function fireRuntime(msg: Record<string, unknown>): void {
   for (const cb of runtimeListeners) cb(msg);
@@ -104,6 +105,7 @@ describe('side_panel/features/annotation', () => {
     const input = document.createElement('textarea');
     input.id = 'userInput';
     document.body.appendChild(input);
+    initComposer({ userInput: input });
     const quoteText = document.createElement('span');
     quoteText.id = 'quoteText';
     const quotePreview = document.createElement('div');

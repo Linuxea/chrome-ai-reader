@@ -13,18 +13,16 @@ import {
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
-import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
+import { getDraftText, clearDraftText, validateAttachments, consumeAttachments } from './composer';
 import { ensurePageContent } from './page-extractor';
 import { callAI, abortGeneration } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
 let _chatArea: HTMLElement;
-let _userInput: HTMLTextAreaElement;
 
-export function initMessageSender({ chatArea, userInput }: { chatArea: HTMLElement; userInput: HTMLTextAreaElement }): void {
+export function initMessageSender({ chatArea }: { chatArea: HTMLElement }): void {
   _chatArea = chatArea;
-  _userInput = userInput;
 }
 
 export async function sendToAI(
@@ -114,7 +112,12 @@ export async function sendToAI(
       for (const uri of imageUris!) parts.push({ type: 'image_url', image_url: { url: uri } });
       userMessage = { role: 'user', content: parts, hadImages: true };
     } else {
-      if (ocrContext) apiContent = apiContent + '\n\n' + ocrContext;
+      if (ocrContext) {
+        apiContent = apiContent + '\n\n' + ocrContext;
+        // Retry/edit must re-send the same OCR text (and match this history
+        // entry, whose content includes it).
+        userMsgEl.dataset.ocrContext = ocrContext;
+      }
       userMessage = { role: 'user', content: apiContent };
     }
     messages.push(userMessage);
@@ -148,32 +151,74 @@ export async function sendToAI(
   }
 }
 
-export async function sendMessage(): Promise<void> {
+/**
+ * What an entry point wants to send. The composer supplies the rest (draft
+ * text, images / OCR text), so every entry point sends the same way.
+ *
+ * - No `prompt` (Enter / send button): the draft text itself is the message.
+ * - With `prompt` (quick action, quick command): the prompt is sent and
+ *   `display` shown in the bubble; a non-empty draft rides along as extra
+ *   instructions. `draft` overrides the input value (quick commands pass the
+ *   text typed after `/name`).
+ */
+export interface SubmitIntent {
+  prompt?: string;
+  display?: string;
+  draft?: string;
+}
+
+/** Guards the async validate → consume window against double submits. */
+let _submitting = false;
+
+/**
+ * The single "send" pipeline: guard → validate attachments → take the draft
+ * (text + images / OCR) out of the composer → sendToAI. On a validation error
+ * nothing is consumed, so the user's draft and images stay where they were.
+ */
+export async function submit(intent: SubmitIntent = {}): Promise<void> {
   /* While a generation is running the send button shows the stop icon; its
      click aborts (handled by the ai-chat click listener). Keyboard sends
      (Enter) must never abort — typing ahead is normal, so just ignore. */
-  if (state.getIsGenerating()) return;
+  if (_submitting || state.getIsGenerating()) return;
 
-  const text = _userInput.value.trim();
-  if (!text) {
+  const draft = intent.draft ?? getDraftText();
+  const isFreeText = intent.prompt === undefined;
+  if (isFreeText && !draft) {
     updateSendButtonDim();
     return;
   }
 
-  const imageError = validateImageState();
-  if (imageError) {
-    appendMessage('error', imageError);
-    return;
+  _submitting = true;
+  try {
+    const attachmentError = await validateAttachments();
+    if (attachmentError) {
+      appendMessage('error', attachmentError);
+      return;
+    }
+
+    let text: string;
+    let display: string;
+    if (isFreeText) {
+      text = draft;
+      display = draft;
+    } else {
+      const supplement = draft ? getPrompt('draft.supplement', getCurrentLang(), { draft }) : '';
+      text = supplement ? `${intent.prompt}\n\n${supplement}` : intent.prompt!;
+      const label = intent.display ?? intent.prompt!;
+      display = draft ? `${label} · ${draft}` : label;
+    }
+
+    clearDraftText();
+    const { ocrContext, imageUris } = await consumeAttachments();
+    await sendToAI(text, display, undefined, ocrContext, imageUris);
+  } finally {
+    _submitting = false;
   }
+}
 
-  _userInput.value = '';
-  _userInput.style.height = 'auto';
-
-  const ocrContext = buildOcrContext();
-  const imageUris = collectImageDataUris();
-  clearImagePreviews();
-
-  await sendToAI(text, text, undefined, ocrContext, imageUris);
+/** Enter / send button. */
+export async function sendMessage(): Promise<void> {
+  await submit();
 }
 
 export async function retryMessage(
@@ -223,6 +268,14 @@ async function resendUserMessage(opts: {
   if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;
   state.persistForTab(startTabId!);
 
+  // Read what the original send carried before the bubble is torn down: the
+  // OCR text (part of the history entry, so also needed to match it) and the
+  // bubble's image thumbnails (the fallback when a failed send already rolled
+  // the history entry — and its images — back).
+  const userEl = wrapper.querySelector<HTMLElement>('.message-user');
+  const ocrContext = userEl?.dataset.ocrContext || undefined;
+  const bubbleImages = Array.from(wrapper.querySelectorAll<HTMLImageElement>('.bubble-images img')).map(img => img.src);
+
   const children = [..._chatArea.children];
   let found = false;
   for (const child of children) {
@@ -230,18 +283,20 @@ async function resendUserMessage(opts: {
     if (found) child.remove();
   }
 
-  const userContent = rawQuote
+  const baseContent = rawQuote
     ? t('ai.quotePrefix') + '\n\n' + safeTruncate(rawQuote, TRUNCATE_LIMITS.QUOTE, t('ai.quoteTruncated')) + '\n\n' + lookupText
     : lookupText;
+  const userContent = ocrContext ? baseContent + '\n\n' + ocrContext : baseContent;
 
   // Before truncating, extract any images from the user message being retried
   // (visual messages store image_url blocks in content array). After truncate
   // these are gone from history, so we capture them now to re-send.
-  const retriedImages = extractImagesForRetry(tabState, userContent);
+  const retriedImages = extractImagesForRetry(tabState, baseContent)
+    ?? (bubbleImages.length > 0 ? bubbleImages : undefined);
 
   truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
-  await sendToAI(sendText, sendDisplay, rawQuote, undefined, retriedImages);
+  await sendToAI(sendText, sendDisplay, rawQuote, ocrContext, retriedImages);
 }
 
 /**

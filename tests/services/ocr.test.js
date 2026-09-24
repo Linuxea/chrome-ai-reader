@@ -18,6 +18,9 @@ vi.mock('../../src/side_panel/state.js', () => ({
   setOcrResults: vi.fn(),
   getOcrRunning: vi.fn(() => 0),
   setOcrRunning: vi.fn(),
+  getActiveTabId: vi.fn(() => 1),
+  getStateForTab: vi.fn(() => null),
+  persistForTab: vi.fn(),
 }));
 
 vi.mock('../../src/platform/storage.js', () => ({
@@ -43,6 +46,7 @@ import {
   buildOcrContext,
   hasImageErrors,
   getOcrRunning,
+  hasImagesWithoutOcr,
 } from '../../src/side_panel/services/ocr.js';
 
 describe('OCR service', () => {
@@ -51,6 +55,8 @@ describe('OCR service', () => {
     stateMock.getOcrResults.mockReturnValue([]);
     stateMock.getOcrRunning.mockReturnValue(0);
     stateMock.getImageIndex.mockReturnValue(0);
+    stateMock.getActiveTabId.mockReturnValue(1);
+    stateMock.getStateForTab.mockReturnValue(null);
     chrome.runtime.sendMessage.mockResolvedValue({ success: true, data: {} });
 
     // Set up DOM elements BEFORE calling initOCR
@@ -247,6 +253,25 @@ describe('OCR service', () => {
       expect(calls.length).toBeGreaterThanOrEqual(2);
     });
 
+    it('decrements the ORIGIN tab counter when the user switched tabs mid-OCR', async () => {
+      addPreviewItem(11);
+      const originState = { ocrRunning: 1 };
+      stateMock.getStateForTab.mockImplementation((id) => (id === 1 ? originState : null));
+      let resolveOcr;
+      chrome.runtime.sendMessage.mockReturnValue(new Promise((r) => { resolveOcr = r; }));
+
+      const pending = runOCR(11, 'test11.png', 'data:image/png;base64,bb');
+      stateMock.setOcrRunning.mockClear();
+      stateMock.getActiveTabId.mockReturnValue(2); // user switched to tab 2
+      resolveOcr({ success: true, data: { text: 'ok' } });
+      await pending;
+
+      expect(originState.ocrRunning).toBe(0);
+      expect(stateMock.persistForTab).toHaveBeenCalledWith(1);
+      // the new active tab's counter is untouched
+      expect(stateMock.setOcrRunning).not.toHaveBeenCalled();
+    });
+
     it('handles null data in response', async () => {
       addPreviewItem(10);
       chrome.runtime.sendMessage.mockResolvedValue({ success: true, data: null });
@@ -270,6 +295,8 @@ describe('OCR service', () => {
       expect(bar.classList.contains('hidden')).toBe(false);
       expect(bar.querySelectorAll('.image-preview-item').length).toBe(1);
       expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+      // no OCR runs, so no OCR spinner either (it used to spin forever)
+      expect(bar.querySelector('.image-status')).toBeNull();
     });
 
     it('runs OCR when visionEnabled is false', async () => {
@@ -322,6 +349,19 @@ describe('OCR service', () => {
 
       await expect(addImageDataUri('data:image/png;base64,XXXX', '截图')).rejects.toThrow('Vision not enabled');
       expect(bar.classList.contains('hidden')).toBe(true);
+    });
+  });
+
+  describe('hasImagesWithoutOcr', () => {
+    it('is true for an image that was never OCR\'d (added in vision mode)', () => {
+      document.getElementById('imagePreviewBar').innerHTML = '<div class="image-preview-item"></div>';
+      expect(hasImagesWithoutOcr()).toBe(true);
+    });
+
+    it('is false when every image finished or failed OCR', () => {
+      document.getElementById('imagePreviewBar').innerHTML =
+        '<div class="image-preview-item done"></div><div class="image-preview-item error"></div>';
+      expect(hasImagesWithoutOcr()).toBe(false);
     });
   });
 });

@@ -94,6 +94,8 @@ export interface PodcastLLMRequest {
   type: 'generate';
   prompt: string;
   text: string;
+  /** Image data URIs (vision mode) — sent to the model as image_url parts. */
+  images?: string[];
 }
 
 // ---------------------------------------------------------------------------

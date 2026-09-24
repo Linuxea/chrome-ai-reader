@@ -3,12 +3,11 @@ import { getCurrentLang } from '../../shared/i18n.js';
 import { getPrompt } from '../../shared/prompts';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
-import { appendMessage } from '../ui/dom-helpers';
-import { hasImageErrors, buildOcrContext, collectImageDataUris, clearImagePreviews, validateImageState } from './ocr.js';
+import type { SubmitIntent } from './message-sender';
 
-type SendToAIFn = (text: string, displayText: string, retryQuote?: string, ocrContext?: string, imageUris?: string[]) => Promise<void>;
+type SubmitFn = (intent: SubmitIntent) => Promise<void>;
 
-let _sendToAI: SendToAIFn;
+let _submit: SubmitFn;
 
 /**
  * Actions that handleQuickAction knows how to run as a quick chat action
@@ -18,8 +17,8 @@ let _sendToAI: SendToAIFn;
  */
 const KNOWN_ACTIONS = new Set(['summarize', 'translate', 'keyInfo']);
 
-export function initQuickActionHandler({ sendToAI }: { sendToAI: SendToAIFn }): void {
-  _sendToAI = sendToAI;
+export function initQuickActionHandler({ submit }: { submit: SubmitFn }): void {
+  _submit = submit;
 }
 
 export async function handleQuickAction(action: string): Promise<void> {
@@ -36,12 +35,6 @@ export async function handleQuickAction(action: string): Promise<void> {
   // {role:'user', content:undefined} into the chat history.
   if (!KNOWN_ACTIONS.has(action)) return;
 
-  const imageError = validateImageState();
-  if (imageError) {
-    appendMessage('error', imageError);
-    return;
-  }
-
   const selectedText = state.getSelectedText();
   const hasSelection = selectedText && selectedText.trim().length > 0;
 
@@ -57,9 +50,7 @@ export async function handleQuickAction(action: string): Promise<void> {
     keyInfo: t('action.keyInfo'),
   };
 
-  const ocrContext = buildOcrContext();
-  const imageUris = collectImageDataUris();
-  clearImagePreviews();
-
-  await _sendToAI(actionPrompts[action], actionNames[action], undefined, ocrContext, imageUris);
+  // Same pipeline as the send button: the draft text rides along as extra
+  // instructions and pending images / OCR text are attached.
+  await _submit({ prompt: actionPrompts[action], display: actionNames[action] });
 }

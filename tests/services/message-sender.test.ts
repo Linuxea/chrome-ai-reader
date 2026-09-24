@@ -96,6 +96,7 @@ vi.mock('../../src/side_panel/services/ocr.js', () => ({
   collectImageDataUris: vi.fn(() => []),
   clearImagePreviews: vi.fn(),
   validateImageState: vi.fn(() => null),
+  hasImagesWithoutOcr: vi.fn(() => false),
 }));
 
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
@@ -138,7 +139,9 @@ import {
   sendMessage,
   retryMessage,
   editMessage,
+  submit,
 } from '../../src/side_panel/services/message-sender.js';
+import { initComposer } from '../../src/side_panel/services/composer.js';
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
 import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
@@ -183,13 +186,15 @@ describe('services/message-sender', () => {
     ocrMock.collectImageDataUris.mockReturnValue([]);
     ocrMock.clearImagePreviews.mockImplementation(() => {});
     ocrMock.validateImageState.mockReturnValue(null);
+    ocrMock.hasImagesWithoutOcr.mockReturnValue(false);
     (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: false });
 
     userInput = document.createElement('textarea');
     chatArea = document.createElement('div');
     document.body.appendChild(chatArea);
 
-    initMessageSender({ chatArea, userInput });
+    initMessageSender({ chatArea });
+    initComposer({ userInput });
   });
 
   // ==========================================================================
@@ -411,6 +416,80 @@ describe('services/message-sender', () => {
   });
 
   // ==========================================================================
+  // submit — the single send pipeline shared by every entry point
+  // ==========================================================================
+  describe('submit', () => {
+    const lastUserMessage = () => {
+      const hist = tabState.conversationHistory as { role: string; content: unknown }[];
+      return hist[hist.length - 1];
+    };
+
+    it('sends a prompt intent without a draft as-is', async () => {
+      await submit({ prompt: 'PROMPT', display: 'Label' });
+      expect(lastUserMessage().content).toBe('PROMPT');
+      expect(domMock.appendMessage).toHaveBeenCalledWith('user', 'Label', []);
+    });
+
+    it('rides the draft along as extra instructions and clears the input', async () => {
+      userInput.value = 'focus on part 2';
+      await submit({ prompt: 'PROMPT', display: 'Label' });
+      expect(lastUserMessage().content).toBe('PROMPT\n\n[draft.supplement:{draft=focus on part 2}]');
+      expect(domMock.appendMessage).toHaveBeenCalledWith('user', 'Label · focus on part 2', []);
+      expect(userInput.value).toBe('');
+    });
+
+    it('uses an explicit draft instead of the input value', async () => {
+      userInput.value = '/cmd extra';
+      await submit({ prompt: 'PROMPT', display: '/cmd', draft: '' });
+      expect(lastUserMessage().content).toBe('PROMPT');
+      expect(userInput.value).toBe('');
+    });
+
+    it('attaches OCR text for prompt intents (vision off)', async () => {
+      ocrMock.buildOcrContext.mockReturnValue('OCR TEXT');
+      await submit({ prompt: 'PROMPT', display: 'Label' });
+      expect(lastUserMessage().content).toBe('PROMPT\n\nOCR TEXT');
+      expect(ocrMock.clearImagePreviews).toHaveBeenCalled();
+    });
+
+    it('attaches images for prompt intents (vision on)', async () => {
+      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
+      ocrMock.collectImageDataUris.mockReturnValue(['data:image/png;base64,A']);
+      await submit({ prompt: 'PROMPT', display: 'Label' });
+      expect(lastUserMessage().content).toEqual([
+        { type: 'text', text: 'PROMPT' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,A' } },
+      ]);
+    });
+
+    it('keeps the draft and images when attachments are invalid', async () => {
+      userInput.value = 'keep me';
+      ocrMock.validateImageState.mockReturnValue('ocr running');
+      await submit({ prompt: 'PROMPT', display: 'Label' });
+      expect(domMock.appendMessage).toHaveBeenCalledWith('error', 'ocr running');
+      expect(userInput.value).toBe('keep me');
+      expect(ocrMock.clearImagePreviews).not.toHaveBeenCalled();
+      expect(callAI).not.toHaveBeenCalled();
+    });
+
+    it('refuses images that were never OCR\'d while vision is off', async () => {
+      userInput.value = 'q';
+      ocrMock.hasImagesWithoutOcr.mockReturnValue(true);
+      await submit();
+      expect(domMock.appendMessage).toHaveBeenCalledWith('error', '[error.imageNeedsVision]');
+      expect(callAI).not.toHaveBeenCalled();
+    });
+
+    it('ignores a second submit while the first is still validating', async () => {
+      userInput.value = 'once';
+      const first = submit();
+      const second = submit();
+      await Promise.all([first, second]);
+      expect(callAI).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ==========================================================================
   // retryMessage
   // ==========================================================================
   describe('retryMessage', () => {
@@ -464,6 +543,41 @@ describe('services/message-sender', () => {
       expect(tabState.conversationHistory).not.toContainEqual(
         expect.objectContaining({ content: 'later question' }),
       );
+    });
+
+    it('re-sends the original OCR text and matches the history entry that contains it', async () => {
+      tabState.conversationHistory = [
+        { role: 'user', content: 'question\n\nOCR TEXT' },
+        { role: 'assistant', content: 'old answer' },
+      ];
+      const wrapper = document.createElement('div');
+      const userEl = document.createElement('div');
+      userEl.className = 'message-user';
+      userEl.dataset.ocrContext = 'OCR TEXT';
+      wrapper.appendChild(userEl);
+      chatArea.appendChild(wrapper);
+
+      await retryMessage(wrapper, 'question', 'question');
+
+      // Old pair truncated, then the same user content re-appended.
+      expect(tabState.conversationHistory).toEqual([
+        { role: 'user', content: 'question\n\nOCR TEXT' },
+      ]);
+    });
+
+    it('falls back to the bubble thumbnails when the history entry was rolled back', async () => {
+      (getSync as ReturnType<typeof vi.fn>).mockResolvedValue({ visionEnabled: true });
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = '<div class="message-user"><div class="bubble-images"><img src="data:image/png;base64,B"></div>q</div>';
+      chatArea.appendChild(wrapper);
+
+      await retryMessage(wrapper, 'q', 'q');
+
+      const hist = tabState.conversationHistory as { content: unknown }[];
+      expect(hist[hist.length - 1].content).toEqual([
+        { type: 'text', text: 'q' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,B' } },
+      ]);
     });
 
     it('calls sendToAI with the retried text and quote', async () => {

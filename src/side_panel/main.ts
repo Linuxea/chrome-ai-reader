@@ -12,7 +12,8 @@ import { captureVisibleTab, captureFullPage } from './services/screenshot';
 import { getSync, onSyncChange } from '../platform/storage';
 import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
-import { sendToAI, sendMessage, retryMessage, editMessage } from './services/message-sender';
+import { submit, retryMessage, editMessage } from './services/message-sender';
+import { initComposer } from './services/composer';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
 import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands';
 import { initSuggestQuestions, removeSuggestQuestions, generateSuggestions } from './features/suggest-questions';
@@ -60,6 +61,7 @@ async function init(): Promise<void> {
 
   initTTS({ chatArea: els.chatArea });
   initOCR();
+  initComposer({ userInput: els.userInput });
 
   // 视觉分析按钮：显隐由 visionEnabled 控制，onSyncChange 实时联动
   const visionCaptureBtn = document.getElementById('visionCaptureBtn')!;
@@ -123,8 +125,8 @@ async function init(): Promise<void> {
     onRenderOutline: renderOutlineFromJSON,
     onOutlineToMarkdown: outlineToMarkdown as (data: unknown) => string,
   });
-  initQuickCommands({ userInput: els.userInput, commandPopup, onSendToAI: sendToAI });
-  initSuggestQuestions({ chatArea: els.chatArea, userInput: els.userInput, onSend: sendMessage });
+  initQuickCommands({ userInput: els.userInput, commandPopup, onSubmit: submit });
+  initSuggestQuestions({ chatArea: els.chatArea });
   initImageInput({ userInput: els.userInput });
   initPodcast({ chatArea: els.chatArea });
   initMiniPlayer();

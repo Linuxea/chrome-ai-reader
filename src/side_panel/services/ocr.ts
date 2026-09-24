@@ -46,7 +46,9 @@ export async function ingestImages(files: File[]): Promise<void> {
     idx++;
     state.setImageIndex(idx);
     const dataUri = await readAsDataURL(file);
-    addImagePreview(idx, file.name, dataUri);
+    // Vision mode never runs OCR, so it must not show the OCR spinner either
+    // (it used to spin forever).
+    addImagePreview(idx, file.name, dataUri, !visionOn);
     if (!visionOn) runOCR(idx, file.name, dataUri);
   }
 }
@@ -109,9 +111,11 @@ export function addImagePreview(index: number, fileName: string, dataUri: string
 
 export async function runOCR(index: number, fileName: string, dataUri: string): Promise<void> {
   const generation = _ocrGeneration;
-  let ocrRunning = state.getOcrRunning();
-  ocrRunning++;
-  state.setOcrRunning(ocrRunning);
+  // The running counter belongs to the tab the image was added in — the user
+  // may switch tabs before OCR finishes, and decrementing the *new* active
+  // tab's counter would leave the origin tab stuck at "OCR in progress".
+  const originTabId = state.getActiveTabId();
+  adjustOcrRunning(originTabId, +1);
   const item = _imagePreviewBar.querySelector(`[data-index="${index}"]`) as HTMLElement | null;
   const statusEl = item?.querySelector(CSS.IMAGE_STATUS) as HTMLElement | null;
 
@@ -145,10 +149,20 @@ export async function runOCR(index: number, fileName: string, dataUri: string): 
   } catch (e: unknown) {
     setError((e as Error).message || t('error.ocrFailed'));
   } finally {
-    let running = state.getOcrRunning();
-    running--;
-    state.setOcrRunning(running);
+    adjustOcrRunning(originTabId, -1);
   }
+}
+
+function adjustOcrRunning(tabId: number | null, delta: number): void {
+  if (tabId != null && tabId !== state.getActiveTabId()) {
+    const ts = state.getStateForTab(tabId);
+    if (ts) {
+      ts.ocrRunning = Math.max(0, (ts.ocrRunning || 0) + delta);
+      state.persistForTab(tabId);
+    }
+    return;
+  }
+  state.setOcrRunning(Math.max(0, state.getOcrRunning() + delta));
 }
 
 interface OcrData {
@@ -199,6 +213,19 @@ export function buildOcrContext(): string {
   return sorted.map((r, i) => {
     return t('ai.ocrContext', { n: i + 1 }) + r.text;
   }).join('\n\n');
+}
+
+/**
+ * True when the preview bar holds images that have no OCR result and are not
+ * being OCR'd — i.e. they were added while vision mode was on. With vision off
+ * those images would otherwise be silently dropped at send time.
+ */
+export function hasImagesWithoutOcr(): boolean {
+  const items = _imagePreviewBar.querySelectorAll<HTMLElement>(CSS.IMAGE_PREVIEW_ITEM);
+  for (const item of items) {
+    if (!item.classList.contains('done') && !item.classList.contains('error')) return true;
+  }
+  return false;
 }
 
 export function hasImageErrors(): boolean {
