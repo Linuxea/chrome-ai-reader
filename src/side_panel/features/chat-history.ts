@@ -99,7 +99,11 @@ export function getDisplayMessages(): DisplayMessage[] {
   const messages: DisplayMessage[] = [];
   msgEls.forEach(el => {
     if (el.classList.contains('message-user')) {
-      messages.push({ role: 'user', content: el.textContent || '' });
+      // An image-only message has no text — keep a placeholder so titles and
+      // exports don't show an empty turn.
+      const text = el.textContent?.trim() || '';
+      const imageOnly = !text && el.querySelector('.bubble-images') !== null;
+      messages.push({ role: 'user', content: imageOnly ? t('chat.imageOnly') : (el.textContent || '') });
     } else if (el.classList.contains('message-ai')) {
       if ((el as HTMLElement).dataset.type === 'outline') {
         messages.push({

@@ -347,6 +347,18 @@ describe('dom-helpers', () => {
       expect(emit).not.toHaveBeenCalled();
     });
 
+    it('allows saving empty text when the message carries images (image-only)', () => {
+      const msgEl = appendMessage('user', 'caption', ['data:image/png;base64,A']);
+      msgEl.dataset.rawText = 'caption';
+
+      chatArea.querySelector('.msg-action-btn[title="[action.edit]"]').click();
+      msgEl.querySelector('.msg-edit-textarea').value = '';
+      emit.mockClear();
+      msgEl.querySelector('.msg-edit-save').click();
+
+      expect(emit).toHaveBeenCalledWith(EVENTS.EDIT, expect.objectContaining({ editedText: '' }));
+    });
+
     it('restores original bubble on cancel', () => {
       const msgEl = appendMessage('user', 'restore me');
       msgEl.dataset.rawDisplay = 'restore me';
@@ -361,6 +373,22 @@ describe('dom-helpers', () => {
       // actions row re-shown
       const actions = msgEl.closest('.user-msg-group').querySelector('.msg-actions');
       expect(actions.style.display).not.toBe('none');
+    });
+  });
+
+  describe('updateSendButtonDim', () => {
+    it('dims with no text and no images, undims when images are pending', async () => {
+      const { updateSendButtonDim } = await import('../../../src/side_panel/ui/dom-helpers.js');
+      const userInput = document.createElement('textarea');
+      let pending = false;
+      initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput, hasAttachments: () => pending });
+
+      updateSendButtonDim();
+      expect(sendBtn.classList.contains('send-dim')).toBe(true);
+
+      pending = true;
+      updateSendButtonDim();
+      expect(sendBtn.classList.contains('send-dim')).toBe(false);
     });
   });
 

@@ -31,6 +31,16 @@ export function removeSuggestQuestions(): void {
   if (el) el.remove();
 }
 
+/** Text of a (possibly multimodal) message; an image-only message reads as a placeholder. */
+function contentAsText(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return content;
+  const text = content
+    .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+    .map(p => p.text)
+    .join('\n');
+  return text || t('chat.imageOnly');
+}
+
 export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]): void {
   if (!state.isSuggestQuestionsEnabled()) return;
 
@@ -49,13 +59,14 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
 
   let userContent = '';
   const lastUser = userMessages[userMessages.length - 1];
-  if (lastUser) userContent += getPrompt('suggest.userLabel', getCurrentLang()) + lastUser.content + '\n\n';
+  if (lastUser) userContent += getPrompt('suggest.userLabel', getCurrentLang()) + contentAsText(lastUser.content) + '\n\n';
 
   const lastAssistant = assistantMessages[assistantMessages.length - 1];
   if (lastAssistant) {
-    const truncated = lastAssistant.content.length > 2000
-      ? lastAssistant.content.slice(0, 2000) + '...'
-      : lastAssistant.content;
+    const assistantText = contentAsText(lastAssistant.content);
+    const truncated = assistantText.length > 2000
+      ? assistantText.slice(0, 2000) + '...'
+      : assistantText;
     userContent += getPrompt('suggest.aiLabel', getCurrentLang()) + truncated;
   }
 

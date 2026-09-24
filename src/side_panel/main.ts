@@ -7,7 +7,7 @@ import { initDOMHelpers, appendMessage } from './ui/dom-helpers';
 import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
-import { initImages, clearImagePreviews, addImageDataUri } from './services/images.js';
+import { initImages, clearImagePreviews, addImageDataUri, hasPendingImages } from './services/images.js';
 import { captureVisibleTab, captureFullPage } from './services/screenshot';
 import { getSync } from '../platform/storage';
 import { openOptionsPage } from '../platform/messaging';
@@ -55,7 +55,7 @@ const deps = { isTTSPlaying, stopTTS, removeSuggestQuestions, clearImagePreviews
 async function init(): Promise<void> {
   await Promise.all([loadLanguage(), initState()]);
 
-  initDOMHelpers({ chatArea: els.chatArea, actionBtns, sendBtn, userInput: els.userInput });
+  initDOMHelpers({ chatArea: els.chatArea, actionBtns, sendBtn, userInput: els.userInput, hasAttachments: hasPendingImages });
   initTheme();
   initModelStatus();
 

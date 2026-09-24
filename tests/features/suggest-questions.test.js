@@ -282,6 +282,19 @@ describe('generateSuggestions', () => {
     expect(userMsg.content.length).toBeLessThan(longContent.length + 100);
   });
 
+  it('reads multimodal user content as text (image-only → placeholder)', () => {
+    const msgEl = document.createElement('div');
+    chatArea.appendChild(msgEl);
+    generateSuggestions(msgEl, [
+      { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,A' } }] },
+      { role: 'assistant', content: 'a cat' },
+    ]);
+
+    const userMsg = currentPort.postMessage.mock.calls[0][0].messages[1];
+    expect(userMsg.content).toContain('[suggest.userLabel][chat.imageOnly]');
+    expect(userMsg.content).not.toContain('[object Object]');
+  });
+
   it('does nothing on done if msgEl is removed from DOM', () => {
     const msgEl = document.createElement('div');
     chatArea.appendChild(msgEl);

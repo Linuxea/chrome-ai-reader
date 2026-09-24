@@ -12,7 +12,7 @@ import {
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
-import { getDraftText, clearDraftText, consumeAttachments } from './composer';
+import { getDraftText, clearDraftText, consumeAttachments, hasAttachments } from './composer';
 import { ensurePageContent } from './page-extractor';
 import { callAI, abortGeneration } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent } from './chat/history-ops';
@@ -145,7 +145,8 @@ export async function sendToAI(
  * What an entry point wants to send. The composer supplies the rest (draft
  * text, images), so every entry point sends the same way.
  *
- * - No `prompt` (Enter / send button): the draft text itself is the message.
+ * - No `prompt` (Enter / send button): the draft text itself is the message
+ *   (may be empty when images are pending — an image-only message).
  * - With `prompt` (quick action, quick command): the prompt is sent and
  *   `display` shown in the bubble; a non-empty draft rides along as extra
  *   instructions. `draft` overrides the input value (quick commands pass the
@@ -170,7 +171,8 @@ export async function submit(intent: SubmitIntent = {}): Promise<void> {
 
   const draft = intent.draft ?? getDraftText();
   const isFreeText = intent.prompt === undefined;
-  if (isFreeText && !draft) {
+  // A free-text send needs text or images — images alone are a valid message.
+  if (isFreeText && !draft && !hasAttachments()) {
     updateSendButtonDim();
     return;
   }

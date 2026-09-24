@@ -147,6 +147,16 @@ describe('stripMessageChrome / getDisplayMessages', () => {
       .toBe('<p>hello <strong>world</strong></p><pre><code>x</code></pre>');
   });
 
+  it('getDisplayMessages uses a placeholder for an image-only user message', () => {
+    const chatArea = setupChatArea();
+    const user = document.createElement('div');
+    user.className = 'message message-user';
+    user.innerHTML = '<div class="bubble-images"><img src="data:image/png;base64,A"></div>';
+    chatArea.appendChild(user);
+
+    expect(getDisplayMessages()).toEqual([{ role: 'user', content: '[chat.imageOnly]' }]);
+  });
+
   it('getDisplayMessages persists assistant content without buttons', () => {
     const chatArea = setupChatArea();
 

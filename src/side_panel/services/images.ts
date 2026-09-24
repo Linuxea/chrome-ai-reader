@@ -8,6 +8,7 @@ import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
 import { CSS } from '../../shared/css-selectors';
 import * as state from '../state';
+import { updateSendButtonDim } from '../ui/dom-helpers';
 
 let _imageUploadBtn: HTMLElement;
 let _imageFileInput: HTMLInputElement;
@@ -82,9 +83,16 @@ export function addImagePreview(index: number, fileName: string, dataUri: string
     if (_imagePreviewBar.children.length === 0) {
       _imagePreviewBar.classList.add('hidden');
     }
+    updateSendButtonDim();
   });
 
   _imagePreviewBar.appendChild(item);
+  updateSendButtonDim();
+}
+
+/** True when the preview bar holds images waiting to be sent. */
+export function hasPendingImages(): boolean {
+  return _imagePreviewBar?.querySelector(CSS.IMAGE_PREVIEW_ITEM) != null;
 }
 
 export function collectImageDataUris(): string[] {
@@ -103,4 +111,5 @@ export function clearImagePreviews(): void {
   state.setImageIndex(0);
   _imagePreviewBar.innerHTML = '';
   _imagePreviewBar.classList.add('hidden');
+  updateSendButtonDim();
 }

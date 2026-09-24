@@ -15,7 +15,7 @@
  * (setDraftText/appendDraftText/clearDraftText) so auto-resize, the send
  * button dim state and the command popup stay in sync with the value.
  */
-import { collectImageDataUris, clearImagePreviews } from './images.js';
+import { collectImageDataUris, clearImagePreviews, hasPendingImages } from './images.js';
 
 let _userInput: HTMLTextAreaElement | null = null;
 
@@ -55,6 +55,11 @@ export function clearDraftText(): void {
 export interface Attachments {
   /** Image data URIs, sent to the model as image_url parts. */
   imageUris: string[];
+}
+
+/** True when images are waiting to be sent (an image-only message is valid). */
+export function hasAttachments(): boolean {
+  return hasPendingImages();
 }
 
 /** Take the pending attachments out of the composer (clearing the preview bar). */

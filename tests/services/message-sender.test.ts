@@ -93,6 +93,7 @@ vi.mock('../../src/side_panel/services/tts/index.js', () => ({
 vi.mock('../../src/side_panel/services/images.js', () => ({
   collectImageDataUris: vi.fn(() => []),
   clearImagePreviews: vi.fn(),
+  hasPendingImages: vi.fn(() => false),
 }));
 
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
@@ -175,6 +176,7 @@ describe('services/message-sender', () => {
     (callAI as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     imagesMock.collectImageDataUris.mockReturnValue([]);
     imagesMock.clearImagePreviews.mockImplementation(() => {});
+    imagesMock.hasPendingImages.mockReturnValue(false);
 
     userInput = document.createElement('textarea');
     chatArea = document.createElement('div');
@@ -361,6 +363,21 @@ describe('services/message-sender', () => {
       await sendMessage();
 
       expect(callAI).not.toHaveBeenCalled();
+    });
+
+    it('sends an image-only message (no text, pending images)', async () => {
+      userInput.value = '';
+      imagesMock.hasPendingImages.mockReturnValue(true);
+      imagesMock.collectImageDataUris.mockReturnValue(['data:image/png;base64,A']);
+
+      await sendMessage();
+
+      expect(domMock.appendMessage).toHaveBeenCalledWith('user', '', ['data:image/png;base64,A']);
+      const hist = tabState.conversationHistory as { content: unknown }[];
+      // no empty text part — just the image
+      expect(hist[hist.length - 1].content).toEqual([
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,A' } },
+      ]);
     });
 
     it('returns early when isGenerating is true', async () => {

@@ -10,6 +10,7 @@ let _chatArea: HTMLElement;
 let _actionBtns: NodeListOf<HTMLButtonElement>;
 let _sendBtn: HTMLButtonElement;
 let _userInput: HTMLTextAreaElement | null = null;
+let _hasAttachments: () => boolean = () => false;
 let _sendBtnDefaultHtml = '';
 
 interface DOMHelperDeps {
@@ -17,13 +18,16 @@ interface DOMHelperDeps {
   actionBtns: NodeListOf<HTMLButtonElement>;
   sendBtn: HTMLButtonElement;
   userInput?: HTMLTextAreaElement;
+  /** Pending images count as content: an image-only message can be sent. */
+  hasAttachments?: () => boolean;
 }
 
-export function initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput }: DOMHelperDeps): void {
+export function initDOMHelpers({ chatArea, actionBtns, sendBtn, userInput, hasAttachments }: DOMHelperDeps): void {
   _chatArea = chatArea;
   _actionBtns = actionBtns;
   _sendBtn = sendBtn;
   _userInput = userInput ?? null;
+  if (hasAttachments) _hasAttachments = hasAttachments;
   _sendBtnDefaultHtml = sendBtn.innerHTML;
   autoScroll.initAutoScroll(chatArea);
   updateSendButtonDim();
@@ -180,7 +184,8 @@ function openInlineEditor(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void 
 
   const save = (): void => {
     const edited = ta.value.trim();
-    if (!edited) return;
+    // Clearing the text is fine when the message still carries images.
+    if (!edited && imgs.length === 0) return;
     emit(EVENTS.EDIT, {
       wrapper,
       originalRawText: msgEl.dataset.rawText || '',
@@ -338,11 +343,11 @@ function setSendButtonMode(mode: 'send' | 'stop'): void {
   }
 }
 
-/** Dim the send button while the input has no content (visual affordance). */
+/** Dim the send button while there is nothing to send — no text and no pending images. */
 export function updateSendButtonDim(): void {
-  if (_sendBtn.classList.contains('is-stop')) return;
-  const empty = !_userInput || _userInput.value.trim() === '';
-  _sendBtn.classList.toggle('send-dim', empty);
+  if (!_sendBtn || _sendBtn.classList.contains('is-stop')) return;
+  const noText = !_userInput || _userInput.value.trim() === '';
+  _sendBtn.classList.toggle('send-dim', noText && !_hasAttachments());
 }
 
 export function setButtonsDisabled(disabled: boolean): void {
