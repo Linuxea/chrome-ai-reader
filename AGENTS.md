@@ -112,6 +112,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Key Gotchas
 
+- **No inline `<script>` in extension pages**: MV3's CSP (`script-src 'self'`) silently blocks them — put pre-paint code in `public/` (e.g. `public/theme-boot.js`) and reference it with `<script src>`
 - `dist/` is the loadable extension — do not reference `public/manifest.json` paths directly when reasoning about the running extension
 - Content script and service worker must be IIFE — they cannot use `import` at runtime
 - `Readability` is imported from `@mozilla/readability` npm package, not a local file
