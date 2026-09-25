@@ -196,6 +196,10 @@ const TRANSLATIONS = {
 
     'ai.thinking': '思考过程',
     'ai.stopped': '已停止生成',
+    'library.searchPlaceholder': '搜索我读过的内容…',
+    'library.searching': '搜索中…',
+    'library.noResults': '没有找到相关的已读页面',
+    'library.failed': '搜索失败：{error}',
     'sidebar.attachTabs': '附加其他标签页（一起提问 / 对比）',
     'tabs.pickerTitle': '选择要一起参考的标签页（最多 {max} 个）',
     'tabs.none': '当前窗口没有其他网页标签页',
@@ -478,6 +482,10 @@ const TRANSLATIONS = {
 
     'ai.thinking': 'Thinking',
     'ai.stopped': 'Generation stopped',
+    'library.searchPlaceholder': 'Search what I have read…',
+    'library.searching': 'Searching…',
+    'library.noResults': 'No matching pages in your reading history',
+    'library.failed': 'Search failed: {error}',
     'sidebar.attachTabs': 'Attach other tabs (ask across / compare)',
     'tabs.pickerTitle': 'Pick tabs to use as context (up to {max})',
     'tabs.none': 'No other web page tabs in this window',

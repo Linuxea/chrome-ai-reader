@@ -25,6 +25,7 @@ import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
 import { initCitations } from './features/citations';
 import { initTabContext } from './features/tab-context';
+import { initReadingSearch } from './features/reading-search';
 import { bindGlobalEvents } from './shell/global-events';
 import type { UIElements } from './shell/types';
 import { updateQuotePreview } from './ui/quote-preview';
@@ -122,6 +123,7 @@ async function init(): Promise<void> {
   initMiniPlayer();
   initRelatedPages({ chatArea: els.chatArea });
   initCitations({ chatArea: els.chatArea });
+  initReadingSearch(document.getElementById('relatedPagesPanel'));
   initTabContext({
     button: document.getElementById('tabContextBtn')!,
     picker: document.getElementById('tabPicker')!,
