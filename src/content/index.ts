@@ -41,6 +41,18 @@ chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chr
   }
 
   // Citation click in the panel: jump to and flash the cited paragraph.
+  // F3: citation on a YouTube transcript → seek the player.
+  if (request.action === 'seekVideo') {
+    const video = document.querySelector('video');
+    const seconds = Number((request as { seconds?: number }).seconds);
+    if (video && Number.isFinite(seconds)) {
+      video.currentTime = seconds;
+      video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    sendResponse({ ok: !!video && Number.isFinite(seconds) });
+    return false;
+  }
+
   if (request.action === 'highlightParagraph') {
     sendResponse({ ok: highlightParagraph(String((request as { text?: string }).text ?? '')) });
     return;
