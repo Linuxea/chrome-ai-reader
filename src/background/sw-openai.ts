@@ -1,4 +1,5 @@
 import { safePostMessage } from './sw-utils';
+import { readSettings, DEFAULT_API_BASE } from '../platform/settings';
 
 interface ChatMessage { role: string; content: string | unknown[]; [key: string]: unknown; }
 
@@ -18,10 +19,8 @@ interface DeltaHandlers {
   onThinking?: (content: string) => void;
 }
 
-const DEFAULT_API_BASE = 'https://api.deepseek.com';
-
 async function loadChatConfig(): Promise<{ apiKey?: string; apiBase?: string; modelName?: string }> {
-  return await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName']) as { apiKey?: string; apiBase?: string; modelName?: string };
+  return readSettings(['apiKey', 'apiBase', 'modelName']);
 }
 
 /**
@@ -115,9 +114,9 @@ export async function callEmbedding(text: string, port: chrome.runtime.Port): Pr
   // hardcoded volcano-engine base URL previously caused silent 401/404 when
   // users only configured a chat provider (e.g. DeepSeek). Now any missing
   // field surfaces as an explicit error the UI can show.
-  const { embeddingApiKey, embeddingApiBase, embeddingModel } = await chrome.storage.sync.get([
+  const { embeddingApiKey, embeddingApiBase, embeddingModel } = await readSettings([
     'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
-  ]) as { embeddingApiKey?: string; embeddingApiBase?: string; embeddingModel?: string };
+  ]);
 
   if (!embeddingApiKey || !embeddingApiBase || !embeddingModel) {
     safePostMessage(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });

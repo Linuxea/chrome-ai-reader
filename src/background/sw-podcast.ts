@@ -1,5 +1,6 @@
 import { safePostMessage } from './sw-utils';
 import { genId } from '../shared/ids';
+import { readSettings } from '../platform/settings';
 
 // Must match the proxy's loopback bind (proxy/server.js HOST) — `localhost`
 // may resolve to ::1 first.
@@ -9,7 +10,7 @@ interface NlpText { speaker: string; text: string; }
 interface AudioConfig { format: string; sample_rate: number; speech_rate: number; }
 
 export async function callPodcast(nlpTexts: NlpText[], audioConfig: AudioConfig, port: chrome.runtime.Port): Promise<void> {
-  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'podcastResourceId']) as { ttsAppId?: string; ttsAccessKey?: string; podcastResourceId?: string };
+  const config = await readSettings(['ttsAppId', 'ttsAccessKey', 'podcastResourceId']);
   if (!config.ttsAppId || !config.ttsAccessKey) { safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' }); return; }
 
   const connectId = genId();

@@ -9,7 +9,7 @@ import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
 import { initImages, clearImagePreviews, addImageDataUri, hasPendingImages } from './services/images.js';
 import { captureVisibleTab, captureFullPage } from './services/screenshot';
-import { getSync } from '../platform/storage';
+import { readSettings } from '../platform/settings';
 import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
 import { submit, retryMessage, editMessage } from './services/message-sender';
@@ -178,7 +178,7 @@ async function init(): Promise<void> {
  * once any conversation exists (the user is past setup).
  */
 async function renderOnboardingIfNeeded(): Promise<void> {
-  const { apiKey, modelName } = await getSync<{ apiKey?: string; modelName?: string }>(['apiKey', 'modelName']);
+  const { apiKey, modelName } = await readSettings(['apiKey', 'modelName']);
   if (apiKey && modelName) return;
   if (state.getConversationHistory().length > 0) return;
 

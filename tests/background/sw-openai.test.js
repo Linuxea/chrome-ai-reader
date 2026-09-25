@@ -5,6 +5,8 @@ const store = { sync: { apiKey: 'sk-test', apiBase: 'https://api.test.com', mode
 
 vi.stubGlobal('chrome', {
   storage: {
+    // Secrets are read from local first (platform/settings), then sync.
+    local: { get: () => Promise.resolve({}), set: () => Promise.resolve(), remove: () => Promise.resolve() },
     sync: {
       get(keys) {
         const result = {};

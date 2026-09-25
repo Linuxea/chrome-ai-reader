@@ -1,7 +1,8 @@
 import { safePostMessage } from './sw-utils';
+import { readSettings } from '../platform/settings';
 
 export async function callTTS(text: string, port: chrome.runtime.Port): Promise<void> {
-  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker']) as { ttsAppId?: string; ttsAccessKey?: string; ttsResourceId?: string; ttsSpeaker?: string };
+  const config = await readSettings(['ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker']);
   if (!config.ttsAppId || !config.ttsAccessKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noTtsConfig' }); return; }
 
   const resourceId = config.ttsResourceId || 'seed-tts-2.0';

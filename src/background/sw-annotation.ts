@@ -2,6 +2,7 @@ import { safePostMessage } from './sw-utils';
 import type { Annotation, AnnotationPerspective, AnnotationResult } from '../shared/types';
 import { getPrompt } from '../shared/prompts';
 import { genId } from '../shared/ids';
+import { readSettings, DEFAULT_API_BASE } from '../platform/settings';
 import type { Lang } from '../shared/prompts';
 
 interface BuildArgs {
@@ -109,14 +110,12 @@ export function __resetJsonModeFlag(): void { jsonModeUnsupported = false; }
  * chunks skip it. The prompt + hardened parser are the fallback layers.
  */
 export async function annotateChunk(args: AnnotateArgs, port: chrome.runtime.Port): Promise<void> {
-  const { apiKey, apiBase, modelName, language } = (await chrome.storage.sync.get(['apiKey', 'apiBase', 'modelName', 'language'])) as {
-    apiKey?: string; apiBase?: string; modelName?: string; language?: string;
-  };
+  const { apiKey, apiBase, modelName, language } = await readSettings(['apiKey', 'apiBase', 'modelName', 'language']);
   const lang: Lang = language === 'en' ? 'en' : 'zh';
   if (!apiKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noApiKey' }); return; }
   if (!modelName) { safePostMessage(port, { type: 'error', errorKey: 'error.noModelName' }); return; }
 
-  const baseUrl = apiBase || 'https://api.deepseek.com';
+  const baseUrl = apiBase || DEFAULT_API_BASE;
   const controller = new AbortController();
   const onDisconnect = () => controller.abort();
   port.onDisconnect.addListener(onDisconnect);

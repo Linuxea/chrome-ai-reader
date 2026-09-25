@@ -1,6 +1,7 @@
 import { t } from '../shared/i18n.js';
 import { showStatus } from './status';
 import { SYNC_FIELDS } from './fields';
+import { readStoredSettings, writeSettings, removeSettings, type SettingKey } from '../platform/settings';
 import { initThemeSettings } from './theme-settings';
 import { initLlmSettings, fetchModels, loadLlmValues, collectLlmSaveData } from './llm-settings';
 import { initTtsSettings, loadTtsValues, collectTtsSaveData } from './tts-settings';
@@ -17,7 +18,7 @@ initEmbeddingSettings();
 initQuickCommandsEditor();
 initImportExport();
 
-chrome.storage.sync.get(SYNC_FIELDS, (data) => {
+readStoredSettings(SYNC_FIELDS as SettingKey[]).then((data) => {
   loadLlmValues(data as Record<string, unknown>);
   loadTtsValues(data as Record<string, unknown>);
   loadSuggestValues(data as Record<string, unknown>);
@@ -38,11 +39,9 @@ saveBtn.addEventListener('click', () => {
   if (embedding.error) { showStatus(embedding.error, 'error'); return; }
 
   const toRemove = [...(llm.remove || []), ...(tts.remove || []), ...(embedding.remove || [])];
-  if (toRemove.length > 0) chrome.storage.sync.remove(toRemove);
-
   const data = { ...(llm.set || {}), ...tts.set, ...suggest.set, ...embedding.set };
 
-  chrome.storage.sync.set(data, () => {
+  Promise.all([removeSettings(toRemove), writeSettings(data)]).then(() => {
     showStatus(t('status.settingsSaved'), 'success');
     saveBtn.classList.add('saved');
     saveBtn.textContent = t('settings.saved');

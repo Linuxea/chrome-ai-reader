@@ -4,8 +4,12 @@ import { callPodcast } from './sw-podcast';
 import { annotateChunk } from './sw-annotation';
 import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
+import { migrateSecretsToLocal, DEFAULT_API_BASE } from '../platform/settings';
 import type { PodcastLLMRequest } from '../shared/protocol';
 import type { MessageContentPart } from '../shared/types';
+
+// Secrets saved by older versions lived in storage.sync; move them to local.
+migrateSecretsToLocal().catch((e: unknown) => console.error('secret migration failed:', e));
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
@@ -60,7 +64,7 @@ chrome.runtime.onMessage.addListener((msg: Record<string, unknown>, sender: chro
   }
 
   if (msg.action === 'fetchModels') {
-    const baseUrl = (msg.apiBase as string) || 'https://api.deepseek.com';
+    const baseUrl = (msg.apiBase as string) || DEFAULT_API_BASE;
     fetch(`${baseUrl}/models`, { method: 'GET', headers: { 'Authorization': `Bearer ${msg.apiKey}` } })
       .then(res => { if (!res.ok) throw new Error(`Failed to fetch models (${res.status})`); return res.json(); })
       .then((data: Record<string, unknown>) => { const models = ((data.data as { id: string }[]) || []).map(m => m.id); sendResponse({ success: true, models }); })

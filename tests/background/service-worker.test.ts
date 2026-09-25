@@ -54,6 +54,11 @@ const {
   };
 });
 
+vi.mock('../../src/platform/settings.js', () => ({
+  migrateSecretsToLocal: vi.fn(() => Promise.resolve()),
+  DEFAULT_API_BASE: 'https://api.deepseek.com',
+}));
+
 // --- Mock all handler modules so we can verify routing ---
 vi.mock('../../src/background/sw-openai.js', () => ({
   callOpenAI: vi.fn(),
