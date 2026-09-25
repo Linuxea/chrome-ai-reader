@@ -26,6 +26,7 @@ export type PromptKey =
   | 'translate.quote'
   | 'keyInfo.full'
   | 'keyInfo.quote'
+  | 'immersive.system'
   | 'explain.full'
   | 'explain.quote'
   | 'draft.supplement'
@@ -66,6 +67,13 @@ const ZH: PromptTable = {
     '',
     '【文章内容】',
     '{content}',
+  ].join('\n'),
+
+  // F7: {"paragraphs": [...]} in, {"translations": [...]} out, same order and count.
+  'immersive.system': [
+    '你是专业的网页翻译。用户会发送 JSON：{"paragraphs": ["段落1", "段落2", ...]}。',
+    '把每一段翻译成简体中文（若某段已经是中文，则翻译成英文），保持原意、语气和专有名词，不要解释、不要合并或拆分段落。',
+    '只返回 JSON：{"translations": ["译文1", "译文2", ...]}，数量和顺序必须与输入完全一致。',
   ].join('\n'),
 
   'explain.full': '请用通俗易懂的语言解释这篇文章的核心概念和论点，必要时补充背景知识。',
@@ -280,6 +288,12 @@ const EN: Partial<PromptTable> = {
     '',
     '[Article content]',
     '{content}',
+  ].join('\n'),
+
+  'immersive.system': [
+    'You are a professional web page translator. The user sends JSON: {"paragraphs": ["p1", "p2", ...]}.',
+    'Translate every paragraph into English (if a paragraph is already English, translate it into Simplified Chinese), keeping meaning, tone and proper nouns; do not explain, merge or split paragraphs.',
+    'Return JSON only: {"translations": ["t1", "t2", ...]} with exactly the same count and order as the input.',
   ].join('\n'),
 
   'explain.full': 'Explain the core concepts and arguments of this article in plain language, adding background where it helps.',

@@ -28,6 +28,7 @@ import { initTabContext } from './features/tab-context';
 import { initReadingSearch } from './features/reading-search';
 import { initNotes } from './features/notes';
 import { initPanelActions } from './features/panel-actions';
+import { initImmersive } from './features/immersive';
 import { bindGlobalEvents } from './shell/global-events';
 import type { UIElements } from './shell/types';
 import { updateQuotePreview } from './ui/quote-preview';
@@ -126,6 +127,7 @@ async function init(): Promise<void> {
   initRelatedPages({ chatArea: els.chatArea });
   initCitations({ chatArea: els.chatArea });
   initReadingSearch(document.getElementById('relatedPagesPanel'));
+  initImmersive({ button: document.getElementById('immersiveBtn') });
   initNotes({
     button: document.getElementById('notesBtn')!,
     panel: document.getElementById('notesPanel')!,

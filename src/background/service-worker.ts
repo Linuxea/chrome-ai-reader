@@ -16,6 +16,7 @@ import {
 import type { AnnotationCacheEntry } from '../shared/highlights';
 import { migrateSecretsToLocal, onSettingsChange, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
 import { setupContextMenus, onMenuClicked, onCommand } from './sw-menus';
+import { handleTranslate } from './sw-translate';
 import { listAnthropicModels } from './providers/anthropic';
 import type { PodcastLLMRequest } from '../shared/protocol';
 import type { MessageContentPart } from '../shared/types';
@@ -83,6 +84,11 @@ registerPort(PORT_NAMES.ANNOTATION, 'content', async (msg, port) => {
   if (req.type === 'annotate') {
     await annotateChunk({ fullArticle: req.fullArticle, chunkIndex: req.chunkIndex, chunkText: req.chunkText }, port);
   }
+});
+
+// F7: immersive translation batches from the content script.
+registerPort(PORT_NAMES.TRANSLATE, 'content', async (msg, port) => {
+  if (msg.type === 'translate') await handleTranslate(msg as { id?: number; texts?: string[] }, port);
 });
 
 // --- One-shot messages ---------------------------------------------------------

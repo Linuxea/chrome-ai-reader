@@ -3,6 +3,7 @@ import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS, init
 import { scrollBegin, scrollNext, scrollRestore } from './scroll-controller';
 import { highlightParagraph } from './paragraphs';
 import { highlightSelection, restoreHighlights } from './highlights';
+import { toggleImmersive, isImmersiveActive } from './immersive';
 
 // Localized annotation icon/bubble labels — read once at script load so the
 // language is ready long before the user can trigger an annotation run.
@@ -23,6 +24,14 @@ chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chr
   if (request.action === 'refreshHighlights') {
     void restoreHighlights().then((n) => sendResponse({ ok: true, painted: n }), () => sendResponse({ ok: false }));
     return true;
+  }
+
+  // F7: immersive translation on/off (panel button or context menu).
+  if (request.action === 'immersiveToggle') {
+    // Answer right away with the new state; translation continues progressively.
+    sendResponse({ active: !isImmersiveActive() });
+    void toggleImmersive();
+    return;
   }
 
   // F8: Alt+Q — the worker needs the page's current selection.

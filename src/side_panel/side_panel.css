@@ -906,3 +906,9 @@ body.drag-over::after {
   font-size: 13px;
   padding: 0 4px;
 }
+
+/* Toggle-style action (immersive translation on) */
+.action-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}

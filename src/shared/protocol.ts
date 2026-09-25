@@ -32,6 +32,8 @@ export const PORT_NAMES = {
   PODCAST_AUDIO: 'podcast-audio',
   EMBEDDING: 'embedding',
   ANNOTATION: 'annotation',
+  /** F7 immersive translation (content script ↔ worker). */
+  TRANSLATE: 'translate',
 } as const;
 
 export type PortName = (typeof PORT_NAMES)[keyof typeof PORT_NAMES];

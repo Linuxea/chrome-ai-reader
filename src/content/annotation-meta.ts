@@ -41,3 +41,8 @@ export function getPerspectiveLabel(perspective: AnnotationPerspective): string 
 export function getBubbleTexts(): { followUp: string; close: string } {
   return UI_BY_LANG[_lang];
 }
+
+/** The UI language (loaded by initAnnotationLang) — immersive translation's target. */
+export function getUiLang(): Lang {
+  return _lang;
+}

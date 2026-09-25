@@ -36,3 +36,4 @@ export const openPodcastLLMPort = (): chrome.runtime.Port => openPort(PORT_NAMES
 export const openPodcastAudioPort = (): chrome.runtime.Port => openPort(PORT_NAMES.PODCAST_AUDIO);
 export const openEmbeddingPort = (): chrome.runtime.Port => openPort(PORT_NAMES.EMBEDDING);
 export const openAnnotationPort = (): chrome.runtime.Port => openPort(PORT_NAMES.ANNOTATION);
+export const openTranslatePort = (): chrome.runtime.Port => openPort(PORT_NAMES.TRANSLATE);
