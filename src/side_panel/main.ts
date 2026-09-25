@@ -26,6 +26,7 @@ import { initAnnotation } from './features/annotation';
 import { initCitations } from './features/citations';
 import { initTabContext } from './features/tab-context';
 import { initReadingSearch } from './features/reading-search';
+import { initNotes } from './features/notes';
 import { bindGlobalEvents } from './shell/global-events';
 import type { UIElements } from './shell/types';
 import { updateQuotePreview } from './ui/quote-preview';
@@ -124,6 +125,15 @@ async function init(): Promise<void> {
   initRelatedPages({ chatArea: els.chatArea });
   initCitations({ chatArea: els.chatArea });
   initReadingSearch(document.getElementById('relatedPagesPanel'));
+  initNotes({
+    button: document.getElementById('notesBtn')!,
+    panel: document.getElementById('notesPanel')!,
+    list: document.getElementById('notesList')!,
+    backBtn: document.getElementById('notesBackBtn')!,
+    exportBtn: document.getElementById('notesExportBtn')!,
+    highlightBtn: document.getElementById('quoteHighlight'),
+    quoteEls: { quoteText: els.quoteText, quotePreview: els.quotePreview },
+  });
   initTabContext({
     button: document.getElementById('tabContextBtn')!,
     picker: document.getElementById('tabPicker')!,

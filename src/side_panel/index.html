@@ -28,6 +28,12 @@
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
         </button>
+        <button id="notesBtn" class="icon-btn" data-i18n-title="notes.title" title="高亮与笔记">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+          </svg>
+        </button>
         <button id="newChatBtn" class="icon-btn" data-i18n-title="sidebar.newChat" title="新建聊天">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -65,6 +71,20 @@
         </button>
       </div>
     </header>
+
+    <!-- F6: 高亮与笔记面板 -->
+    <div id="notesPanel" class="history-panel notes-panel hidden">
+      <div class="history-header">
+        <button id="notesBackBtn" class="icon-btn" data-i18n-title="sidebar.back" title="返回">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <span class="history-title" data-i18n="notes.title">高亮与笔记</span>
+        <button id="notesExportBtn" class="notes-export-btn" type="button" data-i18n="notes.exportAll">导出全部笔记</button>
+      </div>
+      <div id="notesList" class="history-list"></div>
+    </div>
 
     <!-- 历史对话面板 -->
     <div id="historyPanel" class="history-panel hidden">
@@ -128,6 +148,7 @@
     <div class="input-area">
       <div id="quotePreview" class="quote-preview hidden">
         <span class="quote-text" id="quoteText"></span>
+        <button class="quote-highlight" id="quoteHighlight" type="button" data-i18n-title="notes.highlightSelection" title="高亮并保存到笔记">🖍</button>
         <button class="quote-close" id="quoteClose" data-i18n-title="sidebar.clearQuote" title="清除引用" aria-label="清除引用">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>

@@ -2,6 +2,7 @@ import { handleExtract } from './page-extractor';
 import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS, initAnnotationLang } from './annotation';
 import { scrollBegin, scrollNext, scrollRestore } from './scroll-controller';
 import { highlightParagraph } from './paragraphs';
+import { highlightSelection, restoreHighlights } from './highlights';
 
 // Localized annotation icon/bubble labels — read once at script load so the
 // language is ready long before the user can trigger an annotation run.
@@ -9,6 +10,20 @@ initAnnotationLang();
 
 chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => {
   if (request.action === 'extract') return handleExtract(request, sendResponse);
+
+  // F6: save the current selection as a highlight (panel button / context menu).
+  if (request.action === 'highlightSelection') {
+    void highlightSelection(String((request as { note?: string }).note ?? '')).then(
+      (h) => sendResponse({ ok: h !== null, highlight: h }),
+      () => sendResponse({ ok: false }),
+    );
+    return true;
+  }
+  // F6: a highlight was deleted / edited in the panel — repaint.
+  if (request.action === 'refreshHighlights') {
+    void restoreHighlights().then((n) => sendResponse({ ok: true, painted: n }), () => sendResponse({ ok: false }));
+    return true;
+  }
 
   // Citation click in the panel: jump to and flash the cited paragraph.
   if (request.action === 'highlightParagraph') {
@@ -64,3 +79,8 @@ document.addEventListener('selectionchange', () => {
     try { chrome.runtime.sendMessage({ action: 'selectionChanged', text }).catch(() => {}); } catch { /* context invalidated */ }
   }, 300);
 });
+
+// F6: repaint this page's saved highlights once it has settled.
+if (isContextValid()) {
+  setTimeout(() => { void restoreHighlights().catch(() => { /* no worker / no DB */ }); }, 800);
+}

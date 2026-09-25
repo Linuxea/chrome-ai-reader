@@ -147,3 +147,42 @@
   background: var(--hover-overlay, rgba(127, 127, 127, 0.15));
   transform: scale(1.15);
 }
+
+/* F6: highlights & notes */
+.notes-export-btn {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.note-item { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.note-quote {
+  margin: 0 0 6px;
+  padding-left: 8px;
+  border-left: 3px solid rgba(255, 213, 79, 0.9);
+  font-size: 13px;
+}
+.note-text {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  resize: vertical;
+}
+.note-actions { display: flex; gap: 8px; margin-top: 4px; }
+.note-actions button {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+}

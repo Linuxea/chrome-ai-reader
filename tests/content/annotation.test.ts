@@ -265,6 +265,9 @@ vi.stubGlobal('chrome', {
   },
 });
 
+/** Let the run get past its (async) cache lookup to the chunk requests. */
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
 /** Deliver an `annotated` message to the k-th opened port's listeners only. */
 async function flushPorts(chunkIndex: number, annotations: Annotation[]): Promise<void> {
   const set = portListenerSets[chunkIndex] || [];
@@ -299,6 +302,7 @@ describe('content/annotation orchestration', () => {
     `;
 
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     // simulate background responses for both chunks
     await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'First paragraph', comment: 'c1' }]);
     await flushPorts(1, []);
@@ -315,6 +319,7 @@ describe('content/annotation orchestration', () => {
   it('highlights a matching quote and inserts an icon', async () => {
     document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     await flushPorts(0, [{ id: 'a1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
     await promise;
     // allow microtasks
@@ -328,6 +333,7 @@ describe('content/annotation orchestration', () => {
   it('degrades gracefully when quote not found (no mark, but still no crash)', async () => {
     document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'a quote that does not exist', comment: 'c' }]);
     await promise;
     await new Promise((r) => setTimeout(r, 0));
@@ -338,6 +344,7 @@ describe('content/annotation orchestration', () => {
   it('clears all annotations on handleClearAnnotation', async () => {
     document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     await flushPorts(0, [{ id: 'a1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
     await promise;
     await new Promise((r) => setTimeout(r, 0));
@@ -352,6 +359,7 @@ describe('content/annotation orchestration', () => {
   it('reports terminal annotationFailed with the real error when every chunk fails', async () => {
     document.body.innerHTML = `<article><p>First paragraph with enough text to qualify as a content chunk one.</p></article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     flushError(0);
     await promise;
     const failed = postedRuntime.find((m) => m.action === 'annotationFailed') as { error?: string };
@@ -367,6 +375,7 @@ describe('content/annotation orchestration', () => {
       <p>Second paragraph with enough text to qualify as a content chunk two.</p>
     </article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'First paragraph', comment: 'c1' }]);
     flushError(1);
     await promise;
@@ -384,6 +393,7 @@ describe('content/annotation orchestration', () => {
       <p>Second paragraph with enough text to qualify as a content chunk two.</p>
     </article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     // Resolve chunk 0, then clear BEFORE chunk 1 resolves.
     await flushPorts(0, [{ id: 'a1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
     handleClearAnnotation();
@@ -403,6 +413,7 @@ describe('content/annotation orchestration', () => {
       <p>Second paragraph with enough text to qualify as a content chunk two.</p>
     </article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     const ports = (chrome.runtime.connect as ReturnType<typeof vi.fn>).mock.results.map(r => r.value);
     expect(ports).toHaveLength(2);
 
@@ -424,9 +435,11 @@ describe('content/annotation orchestration', () => {
       <p>First paragraph with enough text to qualify as a content chunk one.</p>
     </article>`;
     const first = handleStartAnnotation();
+    await settle(); // first run has opened its chunk port (index 0)
     handleClearAnnotation();
-    const second = handleStartAnnotation(); // port index 1
+    const second = handleStartAnnotation();
     await first;
+    await settle(); // second run's port is index 1
 
     await flushPorts(1, [{ id: 'b1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
     await second;
@@ -437,6 +450,35 @@ describe('content/annotation orchestration', () => {
     expect(document.querySelectorAll('.anno-icon')).toHaveLength(1);
   });
 
+  it('replays a cached run for the same page text without calling the model', async () => {
+    document.body.innerHTML = `<article>
+      <p>First paragraph with enough text to qualify as a content chunk one.</p>
+    </article>`;
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementationOnce(async (msg: { action: string }) => {
+      postedRuntime.push(msg as { action: string });
+      return { success: true, entry: { key: 'k', createdAt: 1, results: [
+        { chunkIndex: 0, annotations: [{ id: 'c1', perspective: 'critique', quote: 'First paragraph', comment: 'cached' }] },
+      ] } };
+    });
+    await handleStartAnnotation();
+    expect(chrome.runtime.connect).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('.anno-icon')).toHaveLength(1);
+    expect(postedRuntime.find((m) => m.action === 'annotationDone')).toMatchObject({ count: 1, cached: true });
+  });
+
+  it('saves a complete run to the cache, keyed by URL + text hash', async () => {
+    document.body.innerHTML = `<article>
+      <p>First paragraph with enough text to qualify as a content chunk one.</p>
+    </article>`;
+    const promise = handleStartAnnotation();
+    await settle();
+    await flushPorts(0, []);
+    await promise;
+    const save = postedRuntime.find((m) => m.action === 'annotations:save') as { key: string; results: unknown[] } | undefined;
+    expect(save?.key).toMatch(/^http:\/\/localhost:3000\|[0-9a-f]{8}$/);
+    expect(save?.results).toEqual([{ chunkIndex: 0, annotations: [] }]);
+  });
+
   it('annotates multiple chunks concurrently (bounded pool) and aggregates counts', async () => {
     document.body.innerHTML = `<article>
       <p>Chunk zero paragraph with enough text to qualify as content one.</p>
@@ -445,6 +487,7 @@ describe('content/annotation orchestration', () => {
       <p>Chunk three paragraph with enough text to qualify as content four.</p>
     </article>`;
     const promise = handleStartAnnotation();
+    await settle(); // the annotation-cache lookup runs before any chunk port opens
     // All four chunks are requested concurrently; flush them in any order.
     await flushPorts(0, [{ id: 'a1', perspective: 'critique', quote: 'Chunk zero', comment: 'c' }]);
     await flushPorts(1, [{ id: 'a2', perspective: 'flaw', quote: 'Chunk one', comment: 'c' }]);

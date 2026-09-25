@@ -9,6 +9,11 @@ import type {
   SelectionChangedMessage, FetchModelsMessage,
 } from '../shared/protocol';
 import { registerPort, registerMessage, dispatchConnect, dispatchMessage } from './sw-router';
+import {
+  addHighlight, listHighlights, updateHighlightNote, deleteHighlight, allHighlights,
+  getCachedAnnotations, saveCachedAnnotations, respond,
+} from './sw-highlights';
+import type { AnnotationCacheEntry } from '../shared/highlights';
 import { migrateSecretsToLocal, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
 import { listAnthropicModels } from './providers/anthropic';
 import type { PodcastLLMRequest } from '../shared/protocol';
@@ -99,6 +104,21 @@ registerMessage('fetchModels', 'extension', (msg, _sender, sendResponse) => {
 registerMessage('pageRecords:store', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
 registerMessage('pageRecords:findRelated', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
 registerMessage('pageRecords:search', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
+
+// F6: highlights/notes and the annotation cache (IndexedDB lives here).
+registerMessage('highlights:add', 'content', (msg, sender, sendResponse) => respond(addHighlight({
+  exact: String(msg.exact ?? ''), prefix: String(msg.prefix ?? ''), suffix: String(msg.suffix ?? ''),
+  pageUrl: String(msg.pageUrl ?? sender.tab?.url ?? ''), title: String(msg.title ?? sender.tab?.title ?? ''), note: String(msg.note ?? ''),
+}), sendResponse, 'highlight'));
+registerMessage('highlights:list', 'content', (msg, sender, sendResponse) =>
+  respond(listHighlights(String(msg.pageUrl ?? sender.tab?.url ?? '')), sendResponse, 'highlights'));
+registerMessage('highlights:update', 'extension', (msg, _s, sendResponse) => respond(updateHighlightNote(String(msg.id), String(msg.note ?? '')), sendResponse));
+registerMessage('highlights:delete', 'extension', (msg, _s, sendResponse) => respond(deleteHighlight(String(msg.id)), sendResponse));
+registerMessage('highlights:all', 'extension', (_m, _s, sendResponse) => respond(allHighlights(), sendResponse, 'highlights'));
+registerMessage('annotations:get', 'content', (msg, _s, sendResponse) => respond(getCachedAnnotations(String(msg.key)), sendResponse, 'entry'));
+registerMessage('annotations:save', 'content', (msg, _s, sendResponse) => respond(saveCachedAnnotations({
+  key: String(msg.key), results: (msg.results as AnnotationCacheEntry['results']) ?? [], createdAt: Date.now(),
+}), sendResponse));
 
 chrome.runtime.onConnect.addListener(dispatchConnect);
 chrome.runtime.onMessage.addListener(dispatchMessage);

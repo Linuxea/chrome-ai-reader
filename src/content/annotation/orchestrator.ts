@@ -10,7 +10,9 @@
  */
 
 import type { Annotation } from '../../shared/types';
-import { collectChunks, buildChunkContext } from './chunk-collector';
+import { collectChunks, buildChunkContext, buildFullArticle, type CollectedChunk } from './chunk-collector';
+import { hashText, type AnnotationCacheEntry } from '../../shared/highlights';
+import { normalizeUrl } from '../../shared/url-normalize';
 import { findAndWrap } from './quote-wrapper';
 import { createIconFor, getBubbleHost } from './bubble-ui';
 import { openAnnotationPort } from '../../platform/ports';
@@ -58,6 +60,20 @@ export async function handleStartAnnotation(): Promise<void> {
   const active = (): boolean => _running && _runGen === gen;
 
   const chunks = collectChunks(document);
+
+  // F6: the same page text was annotated before — replay, no API calls.
+  const cacheKey = `${normalizeUrl(location.href)}|${hashText(buildFullArticle(chunks))}`;
+  const cached = await loadCache(cacheKey);
+  if (!active()) return;
+  if (cached) {
+    let count = 0;
+    for (const r of cached.results) if (chunks[r.chunkIndex]) count += renderAnnotations(chunks[r.chunkIndex], r.annotations);
+    reportToPanel({ action: 'annotationProgress', done: chunks.length, total: chunks.length });
+    reportToPanel({ action: 'annotationDone', count, failed: 0, cached: true });
+    _running = false;
+    return;
+  }
+  const results: AnnotationCacheEntry['results'] = [];
   const total = chunks.length;
   reportToPanel({ action: 'annotationProgress', done: 0, total });
 
@@ -77,18 +93,9 @@ export async function handleStartAnnotation(): Promise<void> {
       failed += 1;
       if (!firstError) firstError = result.error;
       console.warn(`[annotation] chunk ${i} failed:`, result.error);
-    } else if (result.annotations.length > 0) {
-      for (const ann of result.annotations) {
-        const mark = findAndWrap(chunks[i].node, ann.quote);
-        // Anchor the icon to the highlighted phrase when possible; otherwise
-        // fall back to the paragraph so the annotation is still reachable
-        // (degraded, per spec §6.1).
-        const anchor = mark ?? chunks[i].node;
-        createIconFor(anchor, ann, (a) =>
-          reportToPanel({ action: 'annotationFollowUp', quote: a.quote, comment: a.comment }),
-        );
-        produced += 1;
-      }
+    } else {
+      results.push({ chunkIndex: i, annotations: result.annotations });
+      produced += renderAnnotations(chunks[i], result.annotations);
     }
     completed += 1;
     reportToPanel({ action: 'annotationProgress', done: completed, total });
@@ -114,7 +121,35 @@ export async function handleStartAnnotation(): Promise<void> {
   } else {
     reportToPanel({ action: 'annotationDone', count: produced, failed });
   }
+  // Cache only a complete run; a partial one would replay with gaps forever.
+  if (failed === 0 && total > 0) void saveCache({ key: cacheKey, results, createdAt: Date.now() });
   _running = false;
+}
+
+/** Highlight each annotation's quote in `chunk` and add its icon. Returns how many were placed. */
+function renderAnnotations(chunk: CollectedChunk, annotations: Annotation[]): number {
+  for (const ann of annotations) {
+    const mark = findAndWrap(chunk.node, ann.quote);
+    // Anchor the icon to the highlighted phrase when possible; otherwise fall
+    // back to the paragraph so the annotation is still reachable (spec §6.1).
+    createIconFor(mark ?? chunk.node, ann, (a) =>
+      reportToPanel({ action: 'annotationFollowUp', quote: a.quote, comment: a.comment }),
+    );
+  }
+  return annotations.length;
+}
+
+async function loadCache(key: string): Promise<AnnotationCacheEntry | undefined> {
+  try {
+    const res = await chrome.runtime.sendMessage({ action: 'annotations:get', key }) as { success?: boolean; entry?: AnnotationCacheEntry } | undefined;
+    return res?.success ? res.entry : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function saveCache(entry: AnnotationCacheEntry): Promise<void> {
+  try { await chrome.runtime.sendMessage({ action: 'annotations:save', ...entry }); } catch { /* best effort */ }
 }
 
 /**

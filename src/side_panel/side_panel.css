@@ -898,3 +898,11 @@ body.drag-over::after {
   font-size: 11px;
   opacity: 0.8;
 }
+
+.quote-highlight {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+}
