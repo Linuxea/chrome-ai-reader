@@ -48,11 +48,20 @@ function createFreshTabState(): TabState {
 }
 
 function writeTabState(tabId: number, ts: TabState): void {
+  const key = `tabState_${tabId}`;
   const persistable: TabState = {
     ...ts,
     conversationHistory: ts.conversationHistory.map(stripImagesForPersistence),
   };
-  chrome.storage.session.set({ [`tabState_${tabId}`]: persistable });
+  const write = (value: TabState): Promise<void> => {
+    try { return Promise.resolve(chrome.storage.session.set({ [key]: value })); } catch (e) { return Promise.reject(e); }
+  };
+  write(persistable)
+    // storage.session has one quota (10MB) for every tab. When it is full,
+    // keep the conversation and drop the cached page text — the next send
+    // re-extracts it — instead of losing the whole write.
+    .catch(() => write({ ...persistable, pageContent: '', pageExcerpt: '', pageUrl: '' }))
+    .catch((e: unknown) => console.warn('[state] could not persist tab state:', e));
 }
 
 function cancelScheduledPersist(): void {

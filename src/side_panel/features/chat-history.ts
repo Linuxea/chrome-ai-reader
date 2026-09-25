@@ -10,9 +10,10 @@ import { addTTSButton } from '../services/tts/index.js';
 import { renderMarkdown, sanitizeHtml, parseInertHtml } from '../ui/markdown';
 import { emit, EVENTS } from '../events';
 import type { ChatMessage } from '../../shared/types';
+import { listChats, getChat, putChat, deleteChatRecord, type ChatHistoryEntry, type DisplayMessage } from '../../shared/chats-db';
 
-const STORAGE_KEY = 'chatHistories';
-const MAX_HISTORIES = 50;
+export type { DisplayMessage, ChatHistoryEntry };
+
 
 let _chatArea: HTMLElement;
 let _historyPanel: HTMLElement;
@@ -20,30 +21,6 @@ let _historyList: HTMLElement;
 let _onLoadChat: ((data: ChatLoadData) => void) | null = null;
 let _onRenderOutline: ((json: string) => HTMLElement | null) | null = null;
 let _onOutlineToMarkdown: ((data: unknown) => string) | null = null;
-
-interface DisplayMessage {
-  role: string;
-  content: string;
-  type?: string;
-  /** User messages: the quoted page text (kept apart so titles show the question). */
-  quote?: string;
-  /**
-   * 'md': assistant `content` is the Markdown source. Absent on legacy
-   * records, whose assistant content is a rendered HTML snapshot (untrusted —
-   * always sanitized before it is rendered).
-   */
-  format?: 'md';
-}
-
-interface ChatHistoryEntry {
-  id: string;
-  title: string;
-  pageTitle?: string;
-  messages: DisplayMessage[];
-  conversationHistory: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
-}
 
 interface ChatLoadData {
   id: string;
@@ -70,23 +47,6 @@ export function initChatHistory({ chatArea, historyPanel, historyList, onLoadCha
   _onLoadChat = onLoadChat;
   _onRenderOutline = onRenderOutline;
   _onOutlineToMarkdown = onOutlineToMarkdown;
-}
-
-function getChatHistories(): Promise<ChatHistoryEntry[]> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEY], (data) => {
-      resolve((data[STORAGE_KEY] as ChatHistoryEntry[]) || []);
-    });
-  });
-}
-
-function saveChatHistories(histories: ChatHistoryEntry[]): Promise<void> {
-  if (histories.length > MAX_HISTORIES) {
-    histories = histories.slice(histories.length - MAX_HISTORIES);
-  }
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: histories }, () => resolve());
-  });
 }
 
 /**
@@ -172,6 +132,7 @@ export function saveCurrentChat(): Promise<void> {
     now,
     messages,
     pageTitle: state.getPageTitle(),
+    pageUrl: state.getStateForTab(state.getActiveTabId() ?? -1)?.pageUrl,
     conversationHistory: state.getConversationHistory()
       .filter(m => m.role !== 'system')
       .map(stripImagesForPersistence),
@@ -184,29 +145,31 @@ export function saveCurrentChat(): Promise<void> {
 
 async function writeChat(snap: {
   id: string; isNew: boolean; now: number; messages: DisplayMessage[];
-  pageTitle: string; conversationHistory: ChatMessage[];
+  pageTitle: string; pageUrl?: string; conversationHistory: ChatMessage[];
 }): Promise<void> {
-  const histories = await getChatHistories();
-  const idx = histories.findIndex(h => h.id === snap.id);
-  if (idx !== -1) {
-    histories[idx].messages = snap.messages;
-    histories[idx].conversationHistory = snap.conversationHistory;
-    histories[idx].pageTitle = snap.pageTitle;
-    histories[idx].updatedAt = snap.now;
+  const existing = await getChat(snap.id);
+  if (existing) {
+    await putChat({
+      ...existing,
+      messages: snap.messages,
+      conversationHistory: snap.conversationHistory,
+      pageTitle: snap.pageTitle,
+      pageUrl: snap.pageUrl || existing.pageUrl,
+      updatedAt: snap.now,
+    });
   } else if (snap.isNew) {
-    histories.push({
+    await putChat({
       id: snap.id,
       title: generateTitle(snap.messages),
       pageTitle: snap.pageTitle,
+      pageUrl: snap.pageUrl,
       messages: snap.messages,
       conversationHistory: snap.conversationHistory,
       createdAt: snap.now,
       updatedAt: snap.now,
     });
-  } else {
-    return; // the chat was deleted meanwhile — don't resurrect it
   }
-  await saveChatHistories(histories);
+  // else: the chat was deleted meanwhile — don't resurrect it
 }
 
 export function generateTitle(messages: DisplayMessage[]): string {
@@ -219,9 +182,7 @@ export function generateTitle(messages: DisplayMessage[]): string {
 }
 
 export async function deleteChat(id: string): Promise<void> {
-  const histories = await getChatHistories();
-  const filtered = histories.filter(h => h.id !== id);
-  await saveChatHistories(filtered);
+  await deleteChatRecord(id);
   if (state.getCurrentChatId() === id) {
     state.setCurrentChatId(null);
   }
@@ -234,8 +195,7 @@ async function loadChat(id: string): Promise<void> {
     return;
   }
 
-  const histories = await getChatHistories();
-  const chat = histories.find(h => h.id === id);
+  const chat = await getChat(id);
   if (!chat) return;
 
   if (_onLoadChat) {
@@ -298,7 +258,7 @@ async function loadChat(id: string): Promise<void> {
 }
 
 export async function renderHistoryList(): Promise<void> {
-  const histories = await getChatHistories();
+  const histories = await listChats();
   _historyList.innerHTML = '';
 
   if (histories.length === 0) {
@@ -306,7 +266,7 @@ export async function renderHistoryList(): Promise<void> {
     return;
   }
 
-  const sorted = [...histories].reverse();
+  const sorted = histories; // newest first (listChats)
 
   sorted.forEach(chat => {
     const item = document.createElement('div');

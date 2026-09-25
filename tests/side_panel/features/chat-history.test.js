@@ -1,4 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto';
+import { dbClear } from '../../../src/shared/db';
+import { listChats, __resetChatsMigration } from '../../../src/shared/chats-db';
 
 vi.mock('../../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
@@ -23,7 +26,14 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   getPageTitle: vi.fn(() => 'Test Page'),
   setCurrentChatId: vi.fn(),
   getIsGenerating: vi.fn(() => false),
+  getActiveTabId: vi.fn(() => 1),
+  getStateForTab: vi.fn(() => ({ pageUrl: 'https://page.example/a' })),
 }));
+
+async function resetChatsDb() {
+  __resetChatsMigration();
+  await dbClear('chats');
+}
 
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   scrollToBottom: vi.fn(),
@@ -207,9 +217,13 @@ describe('stripMessageChrome / getDisplayMessages', () => {
 });
 
 describe('loading a saved chat', () => {
+  beforeEach(resetChatsDb);
+
+  // Seeds the chat through the legacy storage.local blob, so the one-time
+  // migration into IndexedDB is exercised on the way.
   async function openChat(chat) {
     globalThis.chrome = {
-      storage: { local: { get: vi.fn((_k, cb) => cb({ chatHistories: [chat] })), set: vi.fn() } },
+      storage: { local: { get: vi.fn(async () => ({ chatHistories: [chat] })), remove: vi.fn(async () => {}) } },
     };
     const chatArea = document.createElement('div');
     const historyPanel = document.createElement('div');
@@ -277,24 +291,15 @@ describe('loading a saved chat', () => {
 });
 
 describe('saveCurrentChat', () => {
-  let saved;
   let chatArea;
   let currentId;
 
-  beforeEach(() => {
-    saved = [];
+  beforeEach(async () => {
+    await resetChatsDb();
     currentId = null;
     stateMock.getCurrentChatId.mockImplementation(() => currentId);
     stateMock.setCurrentChatId.mockImplementation((id) => { currentId = id; });
-    globalThis.chrome = {
-      storage: {
-        local: {
-          // async like the real API, so overlapping saves really interleave
-          get: vi.fn((_k, cb) => setTimeout(() => cb({ chatHistories: JSON.parse(JSON.stringify(saved)) }), 0)),
-          set: vi.fn((items, cb) => setTimeout(() => { saved = items.chatHistories; cb(); }, 0)),
-        },
-      },
-    };
+    globalThis.chrome = { storage: { local: { get: vi.fn(async () => ({})), remove: vi.fn(async () => {}) } } };
     chatArea = document.createElement('div');
     initChatHistory({
       chatArea, historyPanel: document.createElement('div'), historyList: document.createElement('div'),
@@ -312,7 +317,9 @@ describe('saveCurrentChat', () => {
   it('overlapping saves of a new chat create ONE history entry', async () => {
     addUserMessage('hello');
     await Promise.all([saveCurrentChat(), saveCurrentChat()]);
+    const saved = await listChats();
     expect(saved).toHaveLength(1);
+    expect(saved[0].pageUrl).toBe('https://page.example/a');
   });
 
   it('"new chat" right after a save keeps the two conversations apart', async () => {
@@ -326,7 +333,7 @@ describe('saveCurrentChat', () => {
 
     addUserMessage('second chat');
     await saveCurrentChat();
-    expect(saved.map(h => h.title)).toEqual(['first chat', 'second chat']);
+    expect((await listChats()).map(h => h.title).sort()).toEqual(['first chat', 'second chat']);
   });
 
   it('keeps the quote apart from the question (titles show the question)', () => {

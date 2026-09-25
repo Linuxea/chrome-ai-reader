@@ -399,6 +399,28 @@ describe('getStateForTab / persistForTab', () => {
     state.persistForTab(42);
     expect(store.session['tabState_42'].pageContent).toBe('persist test');
   });
+  it('over the session quota, retries without the page text and keeps the conversation', async () => {
+    state.setPageContent('huge page');
+    state.pushConversation({ role: 'user', content: 'keep me' });
+    const realSet = chrome.storage.session.set;
+    let calls = 0;
+    chrome.storage.session.set = vi.fn((items) => {
+      calls++;
+      if (calls === 1) return Promise.reject(new Error('QUOTA_BYTES quota exceeded'));
+      return realSet(items);
+    });
+    try {
+      state.persistForTab(42);
+      await vi.waitFor(() => expect(calls).toBe(2));
+      await Promise.resolve();
+      expect(store.session['tabState_42'].pageContent).toBe('');
+      expect(store.session['tabState_42'].conversationHistory.at(-1).content).toBe('keep me');
+      // The in-memory cache is untouched — only the persisted copy is slimmed.
+      expect(state.getPageContent()).toBe('huge page');
+    } finally {
+      chrome.storage.session.set = realSet;
+    }
+  });
 });
 
 describe('Tab cleanup on chrome.tabs.onRemoved', () => {

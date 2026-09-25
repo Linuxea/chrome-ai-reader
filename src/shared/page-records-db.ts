@@ -16,10 +16,7 @@
  */
 
 import type { PageRecord } from './types';
-
-const DB_NAME = 'ai-reader';
-const DB_VERSION = 1;
-const STORE_NAME = 'pageRecords';
+import { dbPut, dbGet, dbGetAll, dbDelete, dbClear } from './db';
 
 /**
  * Legacy chrome.storage.local key, kept only for the one-shot migration
@@ -27,58 +24,11 @@ const STORE_NAME = 'pageRecords';
  */
 export const LEGACY_PAGE_RECORDS_KEY = 'pageRecords';
 
-let _dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDB(): Promise<IDBDatabase> {
-  if (!_dbPromise) {
-    _dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'normalizedUrl' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    // If the connection dies (e.g. blocked upgrade), allow the next call to retry.
-    _dbPromise.catch(() => { _dbPromise = null; });
-  }
-  return _dbPromise;
-}
-
-function requestToPromise<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function withStore<T>(mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  const db = await openDB();
-  return requestToPromise(op(db.transaction(STORE_NAME, mode).objectStore(STORE_NAME)));
-}
-
-export function putPageRecord(record: PageRecord): Promise<void> {
-  return withStore('readwrite', (s) => s.put(record)).then(() => undefined);
-}
-
-export async function getPageRecord(normalizedUrl: string): Promise<PageRecord | undefined> {
-  return await withStore('readonly', (s) => s.get(normalizedUrl)) as PageRecord | undefined;
-}
-
-export async function getAllPageRecords(): Promise<PageRecord[]> {
-  return await withStore('readonly', (s) => s.getAll()) as PageRecord[];
-}
-
-export function deletePageRecord(normalizedUrl: string): Promise<void> {
-  return withStore('readwrite', (s) => s.delete(normalizedUrl)).then(() => undefined);
-}
-
-function clearPageRecordStore(): Promise<void> {
-  return withStore('readwrite', (s) => s.clear()).then(() => undefined);
-}
+export const putPageRecord = (record: PageRecord): Promise<void> => dbPut('pageRecords', record);
+export const getPageRecord = (normalizedUrl: string): Promise<PageRecord | undefined> => dbGet<PageRecord>('pageRecords', normalizedUrl);
+export const getAllPageRecords = (): Promise<PageRecord[]> => dbGetAll<PageRecord>('pageRecords');
+export const deletePageRecord = (normalizedUrl: string): Promise<void> => dbDelete('pageRecords', normalizedUrl);
+const clearPageRecordStore = (): Promise<void> => dbClear('pageRecords');
 
 /**
  * Clear all page records — both the IndexedDB store and any unmigrated

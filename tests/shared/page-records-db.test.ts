@@ -1,61 +1,18 @@
 /**
  * Tests for shared/page-records-db.ts — the IndexedDB storage contract.
  *
- * jsdom has no IndexedDB, so a minimal async fake is stubbed onto
- * globalThis.indexedDB: just enough of open/transaction/objectStore to
- * exercise the module's CRUD, migration, and clear paths.
+ * jsdom has no IndexedDB; fake-indexeddb provides a spec-complete one.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto';
 
-const { idbData, storageLocal } = vi.hoisted(() => {
-  const idbData = { stores: new Map() }; // storeName -> Map(key -> value)
-  const storageLocal = { data: {} };
-
-  function makeRequest(executor) {
-    const req = { result: undefined, error: null, onsuccess: null, onerror: null };
-    queueMicrotask(() => {
-      try {
-        req.result = executor();
-        req.onsuccess?.();
-      } catch (e) {
-        req.error = e;
-        req.onerror?.();
-      }
-    });
-    return req;
-  }
-
-  const fakeIndexedDB = {
-    open(_name, _version) {
-      const req = { result: null, error: null, onupgradeneeded: null, onsuccess: null, onerror: null };
-      const db = {
-        objectStoreNames: { contains: (n) => idbData.stores.has(n) },
-        createObjectStore: (n) => { idbData.stores.set(n, new Map()); },
-        transaction: (storeName) => ({
-          objectStore: (n) => {
-            const data = idbData.stores.get(n);
-            return {
-              put: (v) => makeRequest(() => { data.set(v.normalizedUrl, v); return v.normalizedUrl; }),
-              get: (k) => makeRequest(() => data.get(k)),
-              getAll: () => makeRequest(() => [...data.values()]),
-              delete: (k) => makeRequest(() => { data.delete(k); return undefined; }),
-              clear: () => makeRequest(() => { data.clear(); return undefined; }),
-            };
-          },
-        }),
-      };
-      req.result = db;
-      queueMicrotask(() => { req.onupgradeneeded?.(); req.onsuccess?.(); });
-      return req;
-    },
-  };
-
-  globalThis.indexedDB = fakeIndexedDB;
+const { storageLocal } = vi.hoisted(() => {
+  const storageLocal = { data: {} as Record<string, unknown> };
   globalThis.chrome = {
     storage: {
       local: {
         get: vi.fn((keys) => Promise.resolve(
-          (Array.isArray(keys) ? keys : [keys]).reduce((acc, k) => {
+          (Array.isArray(keys) ? keys : [keys]).reduce((acc: Record<string, unknown>, k: string) => {
             if (storageLocal.data[k] !== undefined) acc[k] = storageLocal.data[k];
             return acc;
           }, {})
@@ -66,26 +23,24 @@ const { idbData, storageLocal } = vi.hoisted(() => {
         }),
       },
     },
-  };
-
-  return { idbData, storageLocal };
+  } as unknown as typeof chrome;
+  return { storageLocal };
 });
 
 import {
   putPageRecord, getPageRecord, getAllPageRecords, deletePageRecord,
   clearPageRecords, migrateLegacyPageRecords, LEGACY_PAGE_RECORDS_KEY,
 } from '../../src/shared/page-records-db';
+import { dbClear } from '../../src/shared/db';
 
-const rec = (url, over = {}) => ({
+const rec = (url: string, over = {}) => ({
   id: `id-${url}`, url, normalizedUrl: url, title: `T:${url}`, excerpt: 'x',
   embedding: [1, 0], timestamp: 1, ...over,
 });
 
-const store = () => idbData.stores.get('pageRecords');
-
 describe('shared/page-records-db', () => {
-  beforeEach(() => {
-    store()?.clear();
+  beforeEach(async () => {
+    await dbClear('pageRecords');
     for (const k of Object.keys(storageLocal.data)) delete storageLocal.data[k];
     vi.clearAllMocks();
   });
