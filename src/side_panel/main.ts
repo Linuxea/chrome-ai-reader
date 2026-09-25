@@ -30,6 +30,7 @@ import { initReadingSearch } from './features/reading-search';
 import { initNotes } from './features/notes';
 import { initPanelActions } from './features/panel-actions';
 import { initImmersive } from './features/immersive';
+import { initQuiz } from './features/quiz';
 import { bindGlobalEvents } from './shell/global-events';
 import type { UIElements } from './shell/types';
 import { updateQuotePreview } from './ui/quote-preview';
@@ -129,6 +130,7 @@ async function init(): Promise<void> {
   initCitations({ chatArea: els.chatArea });
   initReadingSearch(document.getElementById('relatedPagesPanel'));
   initImmersive({ button: document.getElementById('immersiveBtn') });
+  initQuiz({ button: document.getElementById('quizBtn'), chatArea: els.chatArea });
   initNotes({
     button: document.getElementById('notesBtn')!,
     panel: document.getElementById('notesPanel')!,

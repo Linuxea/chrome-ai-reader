@@ -27,6 +27,8 @@ export type PromptKey =
   | 'keyInfo.full'
   | 'keyInfo.quote'
   | 'immersive.system'
+  | 'quiz.system'
+  | 'quiz.user'
   | 'explain.full'
   | 'explain.quote'
   | 'draft.supplement'
@@ -75,6 +77,15 @@ const ZH: PromptTable = {
     '把每一段翻译成简体中文（若某段已经是中文，则翻译成英文），保持原意、语气和专有名词，不要解释、不要合并或拆分段落。',
     '只返回 JSON：{"translations": ["译文1", "译文2", ...]}，数量和顺序必须与输入完全一致。',
   ].join('\n'),
+
+  // F12: study mode. The article comes labelled [#N] (context-builder).
+  'quiz.system': [
+    '你是出题老师。根据用户提供的文章出一套自测题，帮助读者检验是否读懂。',
+    '要求：5 道单项选择题（每题 4 个选项，考查理解而不是死记，干扰项要合理），以及 6 张记忆卡片（正面是概念或问题，背面是简洁答案）。',
+    '每道题注明依据的段落编号（文章中的 [#N]），并给出一句解释。',
+    '只返回 JSON：{"questions":[{"question":"…","options":["…","…","…","…"],"answer":0,"explanation":"…","paragraph":3}],"flashcards":[{"front":"…","back":"…"}]}。answer 是正确选项的下标（从 0 开始）。',
+  ].join('\n'),
+  'quiz.user': '【文章标题】{title}\n\n{content}',
 
   'explain.full': '请用通俗易懂的语言解释这篇文章的核心概念和论点，必要时补充背景知识。',
   'explain.quote': '请用通俗易懂的语言解释用户引用的这段内容：它在说什么、涉及哪些概念，必要时结合文章上下文和背景知识。',
@@ -295,6 +306,14 @@ const EN: Partial<PromptTable> = {
     'Translate every paragraph into English (if a paragraph is already English, translate it into Simplified Chinese), keeping meaning, tone and proper nouns; do not explain, merge or split paragraphs.',
     'Return JSON only: {"translations": ["t1", "t2", ...]} with exactly the same count and order as the input.',
   ].join('\n'),
+
+  'quiz.system': [
+    'You are a teacher writing a self-test on the article the user provides, to check real understanding.',
+    'Write 5 single-choice questions (4 options each, testing understanding rather than rote recall, with plausible distractors) and 6 flashcards (front: a concept or question, back: a concise answer).',
+    'For each question give the paragraph it rests on (the article\'s [#N] label) and a one-sentence explanation.',
+    'Return JSON only: {"questions":[{"question":"…","options":["…","…","…","…"],"answer":0,"explanation":"…","paragraph":3}],"flashcards":[{"front":"…","back":"…"}]}. answer is the 0-based index of the correct option.',
+  ].join('\n'),
+  'quiz.user': 'Title: {title}\n\n{content}',
 
   'explain.full': 'Explain the core concepts and arguments of this article in plain language, adding background where it helps.',
   'explain.quote': 'Explain the passage the user quoted in plain language: what it says and which concepts it involves, using the article\'s context and background knowledge where it helps.',
