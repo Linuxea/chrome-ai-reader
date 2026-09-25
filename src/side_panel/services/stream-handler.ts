@@ -7,7 +7,7 @@ import {
   appendMessage, appendMessageFromHistory, appendErrorMessage, addTypingIndicator,
   removeTypingIndicator, smartScrollToBottom, scrollToBottom,
   setButtonsDisabled,
-  addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore,
+  addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore, createNoteElement as noteEl,
   type ErrorMessageAction,
 } from '../ui/dom-helpers';
 import {
@@ -17,7 +17,7 @@ import {
 import { renderMarkdown } from '../ui/markdown';
 import { genId } from '../../shared/ids';
 import type { ChatMessage } from '../../shared/types';
-import type { StreamMessage } from '../../shared/protocol';
+import type { StreamMessage, FinishReason, TokenUsage } from '../../shared/protocol';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
 import { openAIChatPort } from '../../platform/ports';
 
@@ -98,7 +98,7 @@ export function takePendingAbort(tabId: number): boolean {
 }
 
 type Outcome =
-  | { kind: 'done' }
+  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string }
   | { kind: 'error'; errorText: string; errorKey?: string }
   | { kind: 'aborted' }
   /** The service worker's end went away (worker restart / crash). */
@@ -271,7 +271,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         ttsAppendChunk(msg.content || '');
       }
     } else if (msg.type === 'done') {
-      finalize({ kind: 'done' });
+      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model });
     } else if (msg.type === 'error') {
       finalize({
         kind: 'error',
@@ -300,12 +300,17 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     // A disconnect / stop that already produced text keeps the partial answer
     // (so nothing streamed is lost); one that produced nothing is a failure
     // (disconnect) or a silent no-op (stop).
+    // A refusal with nothing written is an error the user should see, not an empty answer.
+    if (outcome.kind === 'done' && outcome.finishReason === 'refusal' && fullText === '') {
+      outcome = { kind: 'error', errorText: t('error.refused'), errorKey: 'error.refused' };
+    }
     const keepsAnswer = outcome.kind === 'done' || (fullText !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
       appendHistory(tabState!, { id: genId(), role: 'assistant', content: fullText }, tabId!);
       state.setGeneratingForTab(tabId!, false);
       finishAnswer(outcome.kind === 'done');
+      if (outcome.kind === 'done' && isCurrentTab()) annotateAnswer(outcome);
       return;
     }
 
@@ -340,6 +345,23 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
         setButtonsDisabled(false);
         emit(EVENTS.REQUEST_RERENDER);
       }
+    }
+  }
+
+  /** Truncation / refusal notes and the token-usage footer under a finished answer. */
+  function annotateAnswer(outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string }): void {
+    if (!msgEl.isConnected) return;
+    if (outcome.finishReason === 'length') msgEl.after(noteEl(t('ai.truncatedByLimit')));
+    else if (outcome.finishReason === 'refusal') msgEl.after(noteEl(t('ai.refusedPartway')));
+    if (outcome.usage) {
+      const meta = document.createElement('div');
+      meta.className = 'answer-usage';
+      meta.textContent = t('ai.usage', {
+        model: outcome.model ?? '',
+        in: String(outcome.usage.inputTokens),
+        out: String(outcome.usage.outputTokens),
+      });
+      msgEl.appendChild(meta);
     }
   }
 

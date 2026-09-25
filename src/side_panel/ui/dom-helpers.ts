@@ -291,11 +291,17 @@ function buildErrorActionsRow(actions: ErrorMessageAction[]): HTMLDivElement {
   return row;
 }
 
-/** A quiet centered status line (e.g. "generation stopped"). */
-export function appendNoteMessage(text: string): HTMLDivElement {
+/** A quiet centered status line element (not yet attached). */
+export function createNoteElement(text: string): HTMLDivElement {
   const div = document.createElement('div');
   div.className = 'message message-note';
   div.textContent = text;
+  return div;
+}
+
+/** A quiet centered status line (e.g. "generation stopped"). */
+export function appendNoteMessage(text: string): HTMLDivElement {
+  const div = createNoteElement(text);
   _chatArea.appendChild(div);
   smartScrollToBottom();
   return div;

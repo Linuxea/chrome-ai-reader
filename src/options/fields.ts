@@ -1,7 +1,9 @@
-export const textFields: Record<string, HTMLInputElement | HTMLTextAreaElement> = {
+export const textFields: Record<string, HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> = {
+  provider: document.getElementById('provider') as HTMLSelectElement,
   apiKey: document.getElementById('apiKey') as HTMLInputElement,
   apiBase: document.getElementById('apiBase') as HTMLInputElement,
   modelName: document.getElementById('modelName') as HTMLInputElement,
+  fastModelName: document.getElementById('fastModelName') as HTMLInputElement,
   systemPrompt: document.getElementById('systemPrompt') as HTMLTextAreaElement,
   ttsAppId: document.getElementById('ttsAppId') as HTMLInputElement,
   ttsAccessKey: document.getElementById('ttsAccessKey') as HTMLInputElement,
@@ -17,6 +19,8 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
   suggestQuestions: document.getElementById('suggestQuestions') as HTMLInputElement,
   ttsAutoPlay: document.getElementById('ttsAutoPlay') as HTMLInputElement,
   embeddingEnabled: document.getElementById('embeddingEnabled') as HTMLInputElement,
+  citations: document.getElementById('citations') as HTMLInputElement,
+  agentMode: document.getElementById('agentMode') as HTMLInputElement,
 };
 
 /**

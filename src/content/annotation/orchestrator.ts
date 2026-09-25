@@ -10,7 +10,7 @@
  */
 
 import type { Annotation } from '../../shared/types';
-import { collectChunks, buildFullArticle } from './chunk-collector';
+import { collectChunks, buildChunkContext } from './chunk-collector';
 import { findAndWrap } from './quote-wrapper';
 import { createIconFor, getBubbleHost } from './bubble-ui';
 import { openAnnotationPort } from '../../platform/ports';
@@ -58,7 +58,6 @@ export async function handleStartAnnotation(): Promise<void> {
   const active = (): boolean => _running && _runGen === gen;
 
   const chunks = collectChunks(document);
-  const fullArticle = buildFullArticle(chunks);
   const total = chunks.length;
   reportToPanel({ action: 'annotationProgress', done: 0, total });
 
@@ -70,7 +69,7 @@ export async function handleStartAnnotation(): Promise<void> {
   // One task per chunk; the pool runs up to CONCURRENCY concurrently.
   const runOne = async (i: number): Promise<void> => {
     if (!active()) return;
-    const result = await requestChunk(fullArticle, i, chunks[i].text);
+    const result = await requestChunk(buildChunkContext(chunks, i), i, chunks[i].text);
     // A clear may have landed while this chunk was in flight — drop the result
     // so no icon is inserted after clear.
     if (!active()) return;

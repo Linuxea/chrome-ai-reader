@@ -5,7 +5,7 @@ import { ROOT, IIFE_ENTRIES, iifePlugins, iifeOutput } from './iife-config.js';
 for (const { input, name } of IIFE_ENTRIES) {
   const watcher = watch({
     input: resolve(ROOT, input),
-    plugins: iifePlugins(),
+    plugins: iifePlugins({ dev: true }),
     output: iifeOutput(name, { dev: true }),
     watch: {
       // Shared modules are bundled into both scripts — watch them too.

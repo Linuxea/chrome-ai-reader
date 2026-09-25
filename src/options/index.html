@@ -69,6 +69,13 @@
         <summary class="config-summary" data-i18n="settings.llm">大模型配置</summary>
         <div class="config-fields">
           <div class="form-group">
+            <label for="provider" data-i18n="settings.llm.provider">接口类型</label>
+            <select id="provider">
+              <option value="openai" data-i18n="settings.llm.provider.openai">OpenAI 兼容（DeepSeek / OpenAI / Ollama / 火山方舟 …）</option>
+              <option value="anthropic" data-i18n="settings.llm.provider.anthropic">Anthropic（Claude 原生接口）</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label for="apiKey" data-i18n="settings.llm.apiKey">API Key</label>
             <input type="password" id="apiKey" data-i18n-placeholder="settings.llm.apiKey.ph" placeholder="sk-..." autocomplete="off">
             <p class="hint" data-i18n="settings.llm.apiKey.hint">你的 API Key 仅保存在本地浏览器中，不会发送到任何第三方服务器。</p>
@@ -87,6 +94,19 @@
             <datalist id="model-list"></datalist>
             <p class="hint" data-i18n="settings.llm.model.hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。上传和截图的图片会直接发给模型，请使用支持图片输入的多模态模型。</p>
           </div>
+          <div class="form-group">
+            <label for="fastModelName" data-i18n="settings.llm.fastModel">快速模型（可选）</label>
+            <input type="text" id="fastModelName" list="model-list" data-i18n-placeholder="settings.llm.fastModel.ph" placeholder="留空则全部使用上面的模型">
+            <p class="hint" data-i18n="settings.llm.fastModel.hint">推荐问题、标题、深度批阅、沉浸式翻译、测验等轻量任务使用这个更便宜更快的模型。</p>
+          </div>
+          <label class="toggle-row">
+            <span data-i18n="settings.llm.citations">回答附带原文引用（点击 [#N] 跳转到网页对应段落）</span>
+            <input type="checkbox" id="citations" checked>
+          </label>
+          <label class="toggle-row">
+            <span data-i18n="settings.llm.agentMode">智能体模式（模型可自行搜索页面、查看选区、查找相关阅读，实验）</span>
+            <input type="checkbox" id="agentMode">
+          </label>
           <div class="form-group">
             <label for="systemPrompt" data-i18n="settings.llm.systemPrompt">自定义 System Prompt（可选）</label>
             <textarea id="systemPrompt" rows="4" data-i18n-placeholder="settings.llm.systemPrompt.ph" placeholder="例如：请用简洁的中文回答，回答时附带原文引用"></textarea>

@@ -9,7 +9,8 @@ import type {
   SelectionChangedMessage, FetchModelsMessage,
 } from '../shared/protocol';
 import { registerPort, registerMessage, dispatchConnect, dispatchMessage } from './sw-router';
-import { migrateSecretsToLocal, DEFAULT_API_BASE } from '../platform/settings';
+import { migrateSecretsToLocal, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
+import { listAnthropicModels } from './providers/anthropic';
 import type { PodcastLLMRequest } from '../shared/protocol';
 import type { MessageContentPart } from '../shared/types';
 
@@ -23,8 +24,15 @@ chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
 // --- Ports (streaming) -------------------------------------------------------
 
 registerPort(PORT_NAMES.AI_CHAT, 'extension', async (msg, port) => {
-  const req = msg as unknown as AIChatRequest & { temperature?: number };
-  if (req.type === 'chat') await callOpenAI(req.messages, port, { response_format: req.response_format as Record<string, unknown> | undefined, temperature: req.temperature });
+  const req = msg as unknown as AIChatRequest;
+  if (req.type === 'chat') {
+    await callOpenAI(req.messages, port, {
+      response_format: req.response_format as Record<string, unknown> | undefined,
+      temperature: req.temperature,
+      purpose: req.purpose,
+      tools: req.purpose === 'agent' ? req.tools : undefined,
+    });
+  }
 });
 
 const ttsHandler = async (msg: Record<string, unknown>, port: chrome.runtime.Port) => {
@@ -74,6 +82,12 @@ registerMessage('selectionChanged', 'content', (msg, sender) => {
 
 registerMessage('fetchModels', 'extension', (msg, _sender, sendResponse) => {
   const m = msg as unknown as FetchModelsMessage;
+  if (m.provider === 'anthropic') {
+    listAnthropicModels(m.apiKey ?? '', m.apiBase || DEFAULT_ANTHROPIC_API_BASE)
+      .then((models) => sendResponse({ success: true, models }))
+      .catch((e: Error) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
   const baseUrl = m.apiBase || DEFAULT_API_BASE;
   fetch(`${baseUrl}/models`, { method: 'GET', headers: { 'Authorization': `Bearer ${m.apiKey}` } })
     .then(res => { if (!res.ok) throw new Error(`Failed to fetch models (${res.status})`); return res.json(); })

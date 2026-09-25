@@ -191,3 +191,16 @@
   border-left: 2px dashed var(--text-secondary, #ccc);
   opacity: 0.8;
 }
+
+/* Token usage footer under a finished answer */
+.answer-usage {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+/* A remote image in an answer, shown as a link instead of loading it */
+.md-blocked-image {
+  font-size: 12px;
+}

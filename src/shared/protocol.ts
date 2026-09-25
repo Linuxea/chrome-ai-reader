@@ -17,7 +17,7 @@
  * see Phase 6 of the refactor plan. They are intentionally NOT wired yet.
  */
 
-import type { ChatMessage, PageRecord, PageRelation } from './types';
+import type { ChatMessage, PageRecord, PageRelation, ToolCall } from './types';
 
 // ---------------------------------------------------------------------------
 // Port names — the single registry of long-lived `chrome.runtime.connect` ports
@@ -50,6 +50,22 @@ export interface AIChatRequest {
   type: 'chat';
   messages: ChatMessage[];
   response_format?: ResponseFormat;
+  temperature?: number;
+  /**
+   * What the request is for. Routes 'light' work (titles, quizzes, …) to the
+   * optional fast model; 'agent' enables tool calling with the panel's tools.
+   */
+  purpose?: 'chat' | 'light' | 'agent';
+  /** Agent mode: tool definitions the panel can execute. */
+  tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
+}
+
+/** Why generation ended, normalized across providers. */
+export type FinishReason = 'stop' | 'length' | 'tool_calls' | 'refusal' | 'other';
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
 }
 
 /** Streaming messages posted FROM the background on the ai-chat (and any
@@ -57,11 +73,23 @@ export interface AIChatRequest {
 export type StreamMessage =
   | { type: 'thinking'; content: string }
   | { type: 'chunk'; content: string }
-  | { type: 'done' }
-  | { type: 'error'; error?: string; errorKey?: string };
-// Reserved for agent evolution (Phase 6 — not wired yet):
-//   | { type: 'tool_call'; tool_call_id: string; name: string; arguments: string }
-//   | { type: 'tool_result'; tool_call_id: string; content: string }
+  /** `finishReason: 'length'` = the answer was cut off by the output limit. */
+  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string }
+  | { type: 'error'; error?: string; errorKey?: string }
+  /**
+   * Agent mode: the model asked for tools. The panel runs them and answers
+   * on the same port with a ToolResultsMessage; the worker then continues.
+   * `assistant` is the model's turn to append to history before the results.
+   */
+  | { type: 'tool_calls'; calls: ToolCall[]; assistant: ChatMessage }
+  /** Agent mode: a tool is running / finished (for the panel's step list). */
+  | { type: 'tool_status'; id: string; name: string; state: 'running' | 'done' | 'error' };
+
+/** Panel → worker on the ai-chat port, answering a `tool_calls` message. */
+export interface ToolResultsMessage {
+  type: 'tool_results';
+  results: { tool_call_id: string; name: string; content: string }[];
+}
 
 // ---------------------------------------------------------------------------
 // suggest-questions port
@@ -170,6 +198,7 @@ export interface FetchModelsMessage {
   action: 'fetchModels';
   apiBase?: string;
   apiKey?: string;
+  provider?: 'openai' | 'anthropic';
 }
 
 export interface FetchModelsResponse {

@@ -160,11 +160,11 @@ const ZH: PromptTable = {
   // targets Chinese voices, so an English prompt variant would be misleading.
   // Paragraphs in {fullArticle} are labelled "[#N]" (content/annotation/chunk-collector.ts).
   'annotation.user': [
-    '以下是完整文章作为上下文（每段以 [#N] 标注序号）：',
+    '以下是文章上下文（文章开头与目标段落前后的段落，每段以 [#N] 标注序号，… 表示省略）：',
     '',
-    '<full_article>',
+    '<article_context>',
     '{fullArticle}',
-    '</full_article>',
+    '</article_context>',
     '',
     '请只对第 [#{chunkIndex}] 段进行批注。该段内容：',
     '',
@@ -350,11 +350,11 @@ const EN: Partial<PromptTable> = {
     '{"annotations":[{"perspective":"critique","quote":"improves over all baselines by 50%","comment":"No baseline model or benchmark set is named; the 50% figure has no verifiable source."}]}',
   ].join('\n'),
   'annotation.user': [
-    'Here is the full article for context (each paragraph is labelled [#N]):',
+    'Here is context from the article (its opening and the paragraphs around the target, each labelled [#N]; … marks omitted parts):',
     '',
-    '<full_article>',
+    '<article_context>',
     '{fullArticle}',
-    '</full_article>',
+    '</article_context>',
     '',
     'Annotate ONLY paragraph [#{chunkIndex}]. Its text:',
     '',

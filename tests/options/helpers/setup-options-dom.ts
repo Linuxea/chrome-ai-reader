@@ -16,14 +16,14 @@
 
 /** IDs of all input/textarea elements used across options modules */
 const TEXT_INPUT_IDS = [
-  'apiKey', 'apiBase', 'modelName', 'systemPrompt',
+  'apiKey', 'apiBase', 'modelName', 'fastModelName', 'systemPrompt',
   'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'podcastResourceId', 'ttsSpeaker',
   'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
 ] as const;
 
 /** IDs of all checkbox elements */
 const CHECKBOX_IDS = [
-  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled',
+  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'citations', 'agentMode',
 ] as const;
 
 /** IDs of all button elements */
@@ -66,6 +66,7 @@ export function setupOptionsDom(): void {
     parts.push(`<button id="${id}">Btn</button>`);
   }
   // Other elements with specific types
+  parts.push('<select id="provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select>');
   parts.push('<datalist id="model-list"></datalist>');
   parts.push('<span id="embeddingThresholdValue">75%</span>');
   parts.push('<input id="embeddingThreshold" type="range" value="75"/>');

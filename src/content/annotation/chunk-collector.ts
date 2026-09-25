@@ -53,3 +53,40 @@ export function collectChunks(root: Document | HTMLElement = document): Collecte
 export function buildFullArticle(chunks: CollectedChunk[]): string {
   return chunks.map((c, i) => `[#${i}] ${c.text}`).join('\n\n');
 }
+
+/** Characters of the article's opening every chunk request carries. */
+export const CONTEXT_HEAD_CHARS = 1500;
+/** Paragraphs on each side of the target included as local context. */
+export const CONTEXT_NEIGHBORS = 3;
+/** Hard cap on one chunk's context. */
+export const CONTEXT_MAX_CHARS = 8000;
+
+/**
+ * Context for annotating chunk `index`: the article's opening (what it is
+ * about) plus the paragraphs around the target — instead of the full
+ * article per request, which made a run cost paragraphs × article length.
+ * Omitted stretches are marked with "…". Labels match buildFullArticle.
+ */
+export function buildChunkContext(chunks: CollectedChunk[], index: number): string {
+  const include = new Set<number>();
+  let headChars = 0;
+  for (let i = 0; i < chunks.length && headChars < CONTEXT_HEAD_CHARS; i++) {
+    include.add(i);
+    headChars += chunks[i].text.length;
+  }
+  for (let i = Math.max(0, index - CONTEXT_NEIGHBORS); i <= Math.min(chunks.length - 1, index + CONTEXT_NEIGHBORS); i++) include.add(i);
+
+  const parts: string[] = [];
+  let prev = -1;
+  let total = 0;
+  for (const i of [...include].sort((a, b) => a - b)) {
+    if (prev !== -1 && i !== prev + 1) parts.push('…');
+    const piece = `[#${i}] ${chunks[i].text}`;
+    // Past the cap only the target itself is still added.
+    if (total + piece.length > CONTEXT_MAX_CHARS && i !== index) { prev = i; continue; }
+    parts.push(piece);
+    total += piece.length;
+    prev = i;
+  }
+  return parts.join('\n\n');
+}

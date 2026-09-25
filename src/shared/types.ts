@@ -61,6 +61,12 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** Optional function/tool name (used with role 'tool' or 'assistant' tool_calls). */
   name?: string;
+  /**
+   * Agent loop only: the provider's native assistant content for this turn
+   * (e.g. Anthropic thinking + tool_use blocks), replayed verbatim to the same
+   * provider on the next request. Never persisted, never shown.
+   */
+  providerContent?: unknown;
 }
 
 export interface UserMessageMeta {
