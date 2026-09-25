@@ -28,6 +28,12 @@
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
         </button>
+        <button id="notesBtn" class="icon-btn" data-i18n-title="notes.title" title="高亮与笔记">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+          </svg>
+        </button>
         <button id="newChatBtn" class="icon-btn" data-i18n-title="sidebar.newChat" title="新建聊天">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -66,6 +72,20 @@
       </div>
     </header>
 
+    <!-- F6: 高亮与笔记面板 -->
+    <div id="notesPanel" class="history-panel notes-panel hidden">
+      <div class="history-header">
+        <button id="notesBackBtn" class="icon-btn" data-i18n-title="sidebar.back" title="返回">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <span class="history-title" data-i18n="notes.title">高亮与笔记</span>
+        <button id="notesExportBtn" class="notes-export-btn" type="button" data-i18n="notes.exportAll">导出全部笔记</button>
+      </div>
+      <div id="notesList" class="history-list"></div>
+    </div>
+
     <!-- 历史对话面板 -->
     <div id="historyPanel" class="history-panel hidden">
       <div class="history-header">
@@ -94,6 +114,18 @@
       <button class="action-btn" data-action="keyInfo">
         <span class="action-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 11-7.78 7.78 5.5 5.5 0 017.78-7.78zm0 0L15 8m0 0l3 3 2-2-3-3m-2 2l2 2"/></svg></span>
         <span data-i18n="action.keyInfo">关键信息</span>
+      </button>
+      <button class="action-btn" data-action="explain">
+        <span class="action-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+        <span data-i18n="action.explain">解释</span>
+      </button>
+      <button class="action-btn" data-action="immersive" id="immersiveBtn">
+        <span class="action-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg></span>
+        <span data-i18n="action.immersive">对照翻译</span>
+      </button>
+      <button class="action-btn" data-action="quiz" id="quizBtn">
+        <span class="action-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+        <span data-i18n="action.quiz">测验</span>
       </button>
       <button class="action-btn" data-action="podcast">
         <span class="action-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
@@ -128,6 +160,7 @@
     <div class="input-area">
       <div id="quotePreview" class="quote-preview hidden">
         <span class="quote-text" id="quoteText"></span>
+        <button class="quote-highlight" id="quoteHighlight" type="button" data-i18n-title="notes.highlightSelection" title="高亮并保存到笔记">🖍</button>
         <button class="quote-close" id="quoteClose" data-i18n-title="sidebar.clearQuote" title="清除引用" aria-label="清除引用">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -136,7 +169,9 @@
         </button>
       </div>
       <div id="imagePreviewBar" class="image-preview-bar hidden"></div>
+      <div id="tabChipBar" class="tab-chip-bar hidden"></div>
       <div class="input-wrapper">
+        <div id="tabPicker" class="tab-picker hidden"></div>
         <div id="commandPopup" class="command-popup hidden"></div>
         <button id="visionCaptureBtn" class="icon-btn upload-btn" data-i18n-title="sidebar.visionCapture" title="截取当前画面">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -155,6 +190,12 @@
         <button id="imageUploadBtn" class="icon-btn upload-btn" data-i18n-title="sidebar.uploadImage" title="上传图片">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"></path>
+          </svg>
+        </button>
+        <button id="tabContextBtn" class="icon-btn upload-btn" data-i18n-title="sidebar.attachTabs" title="附加其他标签页">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="7" width="14" height="14" rx="2"></rect>
+            <path d="M7 3h12a2 2 0 0 1 2 2v12"></path>
           </svg>
         </button>
         <input type="file" id="imageFileInput" accept="image/*" multiple hidden>

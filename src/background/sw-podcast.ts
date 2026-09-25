@@ -1,20 +1,56 @@
 import { safePostMessage } from './sw-utils';
+import { genId } from '../shared/ids';
+import { readSettings } from '../platform/settings';
+import { runDirectPodcast } from './podcast-direct';
 
-const PODCAST_PROXY_URL = 'http://localhost:3456';
+// Must match the proxy's loopback bind (proxy/server.js HOST) — `localhost`
+// may resolve to ::1 first.
+const PODCAST_PROXY_URL = 'http://127.0.0.1:3456';
 
 interface NlpText { speaker: string; text: string; }
 interface AudioConfig { format: string; sample_rate: number; speech_rate: number; }
 
+/**
+ * Generate a podcast. Direct mode (F13, opt-in `podcastDirect`) talks to the
+ * API from the worker; if it fails before any audio arrived, the local proxy
+ * is tried as the fallback. The panel closing (port disconnect) aborts both.
+ */
 export async function callPodcast(nlpTexts: NlpText[], audioConfig: AudioConfig, port: chrome.runtime.Port): Promise<void> {
-  const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'podcastResourceId']) as { ttsAppId?: string; ttsAccessKey?: string; podcastResourceId?: string };
+  const config = await readSettings(['ttsAppId', 'ttsAccessKey', 'podcastResourceId', 'podcastDirect']);
   if (!config.ttsAppId || !config.ttsAccessKey) { safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' }); return; }
 
-  const connectId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
+  const abort = new AbortController();
+  port.onDisconnect.addListener(() => abort.abort());
+  const resourceId = config.podcastResourceId || 'volc.service_type.10050';
+
+  if (config.podcastDirect && chrome.declarativeNetRequest) {
+    try {
+      await runDirectPodcast({
+        nlpTexts, audioConfig, signal: abort.signal,
+        creds: { appId: config.ttsAppId, accessKey: config.ttsAccessKey, resourceId, connectId: genId() },
+        post: (msg) => safePostMessage(port, msg),
+      });
+      return;
+    } catch (e: unknown) {
+      const audio = (e as { audioChunks?: number }).audioChunks ?? 0;
+      console.warn('[Podcast] direct mode failed:', (e as Error).message);
+      if (audio > 0) { safePostMessage(port, { type: 'error', error: (e as Error).message }); return; }
+      // Nothing played yet → try the proxy.
+    }
+  }
+  await callPodcastViaProxy(nlpTexts, audioConfig, port, { appId: config.ttsAppId, accessKey: config.ttsAccessKey, resourceId }, abort.signal);
+}
+
+async function callPodcastViaProxy(
+  nlpTexts: NlpText[], audioConfig: AudioConfig, port: chrome.runtime.Port,
+  creds: { appId: string; accessKey: string; resourceId: string }, signal: AbortSignal,
+): Promise<void> {
+  const connectId = genId();
 
   try {
     const response = await fetch(`${PODCAST_PROXY_URL}/podcast`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appId: config.ttsAppId, accessKey: config.ttsAccessKey, resourceId: config.podcastResourceId || 'volc.service_type.10050', connectId, nlpTexts, audioConfig }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+      body: JSON.stringify({ ...creds, connectId, nlpTexts, audioConfig }),
     });
 
     if (!response.ok) { const errText = await response.text().catch(() => ''); throw new Error(`Proxy ${response.status}: ${errText.slice(0, 200)}`); }
@@ -39,8 +75,11 @@ export async function callPodcast(nlpTexts: NlpText[], audioConfig: AudioConfig,
       }
     }
   } catch (e: unknown) {
+    if (signal.aborted) return; // panel closed
     console.error('[Podcast] callPodcast error:', (e as Error).message);
-    const msg = (e as Error).message?.includes('Failed to fetch') ? 'Podcast proxy not reachable. Start it: cd proxy && npm start' : (e as Error).message;
+    const msg = (e as Error).message?.includes('Failed to fetch')
+      ? 'Podcast proxy not reachable. Start it (cd proxy && npm start), or turn on podcast direct mode in the options.'
+      : (e as Error).message;
     safePostMessage(port, { type: 'error', error: msg });
   }
 }

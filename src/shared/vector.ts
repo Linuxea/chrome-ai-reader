@@ -33,6 +33,20 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  * similarity descending. The target record itself is excluded; a target
  * with no record or no embedding yields an empty list.
  */
+/**
+ * Rank records against an arbitrary query vector (reading-history search).
+ * Records with a different dimension (another embedding model) score 0 and
+ * are dropped.
+ */
+export function searchRecords(records: PageRecord[], query: number[], limit: number, minSimilarity = 0.2): PageRelation[] {
+  return records
+    .filter((r) => r.embedding?.length === query.length)
+    .map((record) => ({ record, similarity: cosineSimilarity(query, record.embedding) }))
+    .filter((r) => r.similarity >= minSimilarity)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit);
+}
+
 export function findRelatedRecords(
   records: PageRecord[],
   targetNormalizedUrl: string,

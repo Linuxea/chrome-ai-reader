@@ -91,7 +91,7 @@ export async function captureFullPage(onProgress?: FullPageProgress): Promise<Fu
 
   const dataUris: string[] = [];
   let error: string | undefined;
-  let total = 1;
+  let total: number;
 
   try {
     let state = asState(await send('scrollBegin'), 'scrollBegin');

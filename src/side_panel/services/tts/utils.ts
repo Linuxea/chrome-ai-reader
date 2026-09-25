@@ -1,5 +1,6 @@
 export function stripMarkdown(text: string): string {
   return text
+    .replace(/\[#\d+\]/g, '') // citation labels — not meant to be read aloud
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')

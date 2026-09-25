@@ -55,6 +55,47 @@ export function clearDraftText(): void {
 export interface Attachments {
   /** Image data URIs, sent to the model as image_url parts. */
   imageUris: string[];
+  /** Other open tabs attached as extra context (F4). */
+  tabs: AttachedTab[];
+}
+
+// --- Attached tabs (F4 multi-tab questions) --------------------------------------
+
+export interface AttachedTab {
+  id: number;
+  title: string;
+  url: string;
+}
+
+/** At most this many other tabs ride along with one message. */
+export const MAX_ATTACHED_TABS = 4;
+
+let _tabs: AttachedTab[] = [];
+const _tabListeners = new Set<(tabs: AttachedTab[]) => void>();
+const notifyTabs = (): void => { _tabListeners.forEach((cb) => cb([..._tabs])); };
+
+export function getAttachedTabs(): AttachedTab[] { return [..._tabs]; }
+
+/** Attach (or detach, if attached) a tab. Returns false when the limit is reached. */
+export function toggleAttachedTab(tab: AttachedTab): boolean {
+  if (_tabs.some((t) => t.id === tab.id)) {
+    _tabs = _tabs.filter((t) => t.id !== tab.id);
+  } else {
+    if (_tabs.length >= MAX_ATTACHED_TABS) return false;
+    _tabs = [..._tabs, tab];
+  }
+  notifyTabs();
+  return true;
+}
+
+export function detachTab(id: number): void {
+  _tabs = _tabs.filter((t) => t.id !== id);
+  notifyTabs();
+}
+
+export function onAttachedTabsChange(cb: (tabs: AttachedTab[]) => void): () => void {
+  _tabListeners.add(cb);
+  return () => _tabListeners.delete(cb);
 }
 
 /** Upper bound for the images of one message (data-URI characters). */
@@ -72,7 +113,9 @@ export function hasAttachments(): boolean {
 
 /** Take the pending attachments out of the composer (clearing the preview bar). */
 export function consumeAttachments(): Attachments {
-  const attachments: Attachments = { imageUris: collectImageDataUris() };
+  const attachments: Attachments = { imageUris: collectImageDataUris(), tabs: _tabs };
   clearImagePreviews();
+  _tabs = [];
+  notifyTabs();
   return attachments;
 }

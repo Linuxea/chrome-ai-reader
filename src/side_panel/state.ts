@@ -1,5 +1,6 @@
 import type { TabState, ChatMessage } from '../shared/types';
-import { stripImagesForPersistence } from './services/chat/strip-images';
+import { stripImagesForPersistence } from '../shared/strip-images';
+import { ensureMessageIds } from '../shared/ids';
 
 /**
  * Debounce window for field-setter persistence. High-frequency setters
@@ -13,15 +14,29 @@ const PERSIST_DEBOUNCE_MS = 250;
 
 // --- Keyed listeners --------------------------------------------------------
 
-const listeners = new Map<string, Set<(value: unknown) => void>>();
-
-export function subscribe(key: string, callback: (value: unknown) => void): () => void {
-  if (!listeners.has(key)) listeners.set(key, new Set());
-  listeners.get(key)!.add(callback);
-  return () => listeners.get(key)?.delete(callback);
+/**
+ * State change notifications (payload per key). Typed so a misspelled key is
+ * a compile error rather than a subscription that silently never fires.
+ */
+export interface StateEvents {
+  /** The panel now shows another tab's state. */
+  tabSwitched: undefined;
+  /** The active tab's generating flag changed. */
+  isGenerating: boolean;
+  /** A tab navigated away from the page its cache was extracted from (payload: tab id). */
+  pageInvalidated: number;
 }
 
-function notify(key: string, value: unknown): void {
+const listeners = new Map<keyof StateEvents, Set<(value: unknown) => void>>();
+
+export function subscribe<K extends keyof StateEvents>(key: K, callback: (value: StateEvents[K]) => void): () => void {
+  if (!listeners.has(key)) listeners.set(key, new Set());
+  const cb = callback as (value: unknown) => void;
+  listeners.get(key)!.add(cb);
+  return () => listeners.get(key)?.delete(cb);
+}
+
+function notify<K extends keyof StateEvents>(key: K, value: StateEvents[K]): void {
   listeners.get(key)?.forEach(cb => cb(value));
 }
 
@@ -47,11 +62,26 @@ function createFreshTabState(): TabState {
 }
 
 function writeTabState(tabId: number, ts: TabState): void {
+  const key = `tabState_${tabId}`;
   const persistable: TabState = {
     ...ts,
     conversationHistory: ts.conversationHistory.map(stripImagesForPersistence),
   };
-  chrome.storage.session.set({ [`tabState_${tabId}`]: persistable });
+  if (ts.branches) {
+    persistable.branches = Object.fromEntries(Object.entries(ts.branches).map(([k, set]) => [k, {
+      active: set.active,
+      tails: set.tails.map((tail) => tail?.map(stripImagesForPersistence) ?? null),
+    }]));
+  }
+  const write = (value: TabState): Promise<void> => {
+    try { return Promise.resolve(chrome.storage.session.set({ [key]: value })); } catch (e) { return Promise.reject(e); }
+  };
+  write(persistable)
+    // storage.session has one quota (10MB) for every tab. When it is full,
+    // keep the conversation and drop the cached page text — the next send
+    // re-extracts it — instead of losing the whole write.
+    .catch(() => write({ ...persistable, pageContent: '', pageExcerpt: '', pageUrl: '', pageParagraphs: [] }))
+    .catch((e: unknown) => console.warn('[state] could not persist tab state:', e));
 }
 
 function cancelScheduledPersist(): void {
@@ -85,6 +115,7 @@ function persistActiveNow(): void {
  */
 function restoreTabState(stored: TabState | undefined): TabState {
   if (!stored) return createFreshTabState();
+  ensureMessageIds(stored.conversationHistory ?? []);
   return { ...stored, isGenerating: false, isPodcastGenerating: false };
 }
 
@@ -172,6 +203,7 @@ export function invalidatePageIfNavigated(tabId: number, url: string): void {
   ts.pageTitle = '';
   ts.pageExcerpt = '';
   ts.pageUrl = '';
+  ts.pageParagraphs = [];
   if (tabId === _activeTabId) ts.selectedText = '';
   persistForTab(tabId);
   notify('pageInvalidated', tabId);
@@ -268,7 +300,7 @@ export function setIsPodcastGenerating(v: boolean): void { if (!_activeState) re
 // than going through the debounced setter path.
 
 export function getConversationHistory(): ChatMessage[] { return _activeState?.conversationHistory ?? []; }
-export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = v; persistActiveNow(); }
+export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = ensureMessageIds(v); _activeState.branches = {}; persistActiveNow(); }
 
 export function pushConversation(msg: ChatMessage): void {
   if (!_activeState) return;
@@ -285,5 +317,6 @@ export function spliceConversation(...args: Parameters<Array<ChatMessage>['splic
 export function clearConversation(): void {
   if (!_activeState) return;
   _activeState.conversationHistory = [];
+  _activeState.branches = {};
   persistActiveNow();
 }

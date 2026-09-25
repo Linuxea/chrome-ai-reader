@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { buildAnnotationMessages, parseAnnotationResponse, annotateChunk, __resetJsonModeFlag } from '../../src/background/sw-annotation.js';
+import { buildAnnotationMessages, parseAnnotationResponse, annotateChunk } from '../../src/background/sw-annotation.js';
+import { __resetCapabilities } from '../../src/background/providers/capabilities';
 import { getPrompt } from '../../src/shared/prompts';
 import { safePostMessage } from '../../src/background/sw-utils.js';
 import type { Annotation } from '../../src/shared/types';
@@ -16,6 +17,8 @@ const annotationStore: Record<string, unknown> = {
 };
 vi.stubGlobal('chrome', {
   storage: {
+    // Secrets are read from local first (platform/settings), then sync.
+    local: { get: () => Promise.resolve({}), set: () => Promise.resolve(), remove: () => Promise.resolve() },
     sync: {
       get(keys: string[] | string) {
         const result: Record<string, unknown> = {};
@@ -45,8 +48,15 @@ function mockPort() {
   } as unknown as chrome.runtime.Port;
 }
 
-function jsonResponse(body: unknown): Response {
-  return { ok: true, status: 200, json: async () => body } as unknown as Response;
+/**
+ * A successful chat-completions response. Annotation streams through the
+ * shared provider layer now, so the message content is delivered as SSE.
+ */
+function jsonResponse(body: { choices: { message: { content: string } }[] }): Response {
+  const content = body.choices[0].message.content;
+  const sse = `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+    + `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`;
+  return new Response(sse, { status: 200 });
 }
 
 describe('sw-annotation prompt assembly', () => {
@@ -80,9 +90,22 @@ describe('sw-annotation prompt assembly', () => {
       const user = messages[1].content as string;
       expect(user).toContain('FULL ARTICLE TEXT');
       expect(user).toContain('TARGET CHUNK TEXT');
-      expect(user).toContain('<full_article>');
+      expect(user).toContain('<article_context>');
       expect(user).toContain('<target_chunk>');
-      expect(user).toContain('第 3 段');
+      expect(user).toContain('[#3]');
+    });
+
+    it('builds the user prompt in English when lang is en (was always Chinese)', () => {
+      const messages = buildAnnotationMessages({ fullArticle: 'A', chunkIndex: 1, chunkText: 'B' }, 'en');
+      const user = messages[1].content as string;
+      expect(user).toContain('Annotate ONLY paragraph [#1]');
+      expect(user).not.toMatch(/[\u4e00-\u9fff]/);
+    });
+
+    it('inserts article text verbatim even when it contains $& / $\' / {placeholders}', () => {
+      const tricky = "price: $& and $' and {chunkText} and $1";
+      const user = buildAnnotationMessages({ fullArticle: tricky, chunkIndex: 0, chunkText: 'T' })[1].content as string;
+      expect(user).toContain(tricky);
     });
   });
 
@@ -175,7 +198,7 @@ describe('sw-annotation annotateChunk', () => {
     vi.clearAllMocks();
     annotationStore.apiKey = 'sk-test';
     annotationStore.modelName = 'deepseek-chat';
-    __resetJsonModeFlag();
+    __resetCapabilities();
   });
 
   it('posts error when apiKey missing', async () => {

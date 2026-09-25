@@ -33,6 +33,7 @@ const {
       open: vi.fn(),
     },
     runtime: {
+      id: 'test-ext',
       onConnect: {
         addListener: vi.fn((fn: typeof _onConnect) => { _onConnect = fn; }),
       },
@@ -53,6 +54,16 @@ const {
     chromeSendMessage: _sendMessage,
   };
 });
+
+vi.mock('../../src/platform/settings.js', () => ({
+  migrateSecretsToLocal: vi.fn(() => Promise.resolve()),
+  onSettingsChange: vi.fn(() => () => {}),
+  DEFAULT_API_BASE: 'https://api.deepseek.com',
+  DEFAULT_ANTHROPIC_API_BASE: 'https://api.anthropic.com',
+}));
+vi.mock('../../src/background/sw-menus.js', () => ({
+  setupContextMenus: vi.fn(), onMenuClicked: vi.fn(), onCommand: vi.fn(),
+}));
 
 // --- Mock all handler modules so we can verify routing ---
 vi.mock('../../src/background/sw-openai.js', () => ({
@@ -76,11 +87,17 @@ import { callTTS } from '../../src/background/sw-tts.js';
 import { callPodcast } from '../../src/background/sw-podcast.js';
 import { handlePageRecordsMessage } from '../../src/background/sw-related-pages.js';
 
+// Senders as chrome reports them: our side panel, and our content script in a page.
+const EXT_SENDER = { id: 'test-ext', url: 'chrome-extension://test-ext/src/side_panel/index.html' };
+const CONTENT_SENDER = { id: 'test-ext', url: 'https://page.example/article', tab: { id: 99 } };
+
 // --- Helper: create a mock port for onConnect tests ---
-function createMockPortForRoute(name: string) {
+function createMockPortForRoute(name: string, sender: Record<string, unknown> = EXT_SENDER) {
   const messageListeners: ((msg: Record<string, unknown>) => void)[] = [];
   return {
     name,
+    sender,
+    disconnect: vi.fn(),
     postMessage: vi.fn(),
     onMessage: {
       addListener: vi.fn((fn: (msg: Record<string, unknown>) => void) => messageListeners.push(fn)),
@@ -235,6 +252,20 @@ describe('background/service-worker', () => {
       );
     });
 
+    it('disconnects an extension-only port opened by a content script', () => {
+      const port = createMockPortForRoute('ai-chat', CONTENT_SENDER);
+      onConnectListener()!(port);
+      expect(port.disconnect).toHaveBeenCalled();
+      expect(port.onMessage.addListener).not.toHaveBeenCalled();
+    });
+
+    it('accepts the annotation port from a content script', async () => {
+      const port = createMockPortForRoute('annotation', CONTENT_SENDER);
+      onConnectListener()!(port);
+      expect(port.disconnect).not.toHaveBeenCalled();
+      expect(port.onMessage.addListener).toHaveBeenCalled();
+    });
+
     it('ignores non-matching message types on ai-chat port', async () => {
       const port = createMockPortForRoute('ai-chat');
       onConnectListener()!(port);
@@ -253,7 +284,7 @@ describe('background/service-worker', () => {
       const sendResponse = vi.fn();
       onMessageListener()!(
         { action: 'selectionChanged', text: 'selected text' },
-        { tab: { id: 99 } },
+        CONTENT_SENDER,
         sendResponse,
       );
 
@@ -268,7 +299,7 @@ describe('background/service-worker', () => {
     it('does NOT re-forward already-forwarded selectionChanged messages', () => {
       onMessageListener()!(
         { action: 'selectionChanged', text: 'text', forwarded: true },
-        { tab: { id: 99 } },
+        CONTENT_SENDER,
         vi.fn(),
       );
       expect(chromeSendMessage).not.toHaveBeenCalled();
@@ -284,7 +315,7 @@ describe('background/service-worker', () => {
       const sendResponse = vi.fn();
       const result = onMessageListener()!(
         { action: 'fetchModels', apiBase: 'https://api.test.com', apiKey: 'sk-test' },
-        {},
+        EXT_SENDER,
         sendResponse,
       );
 
@@ -313,7 +344,7 @@ describe('background/service-worker', () => {
       const sendResponse = vi.fn();
       onMessageListener()!(
         { action: 'fetchModels', apiKey: 'sk-test' },
-        {},
+        EXT_SENDER,
         sendResponse,
       );
 
@@ -333,7 +364,7 @@ describe('background/service-worker', () => {
       const sendResponse = vi.fn();
       onMessageListener()!(
         { action: 'fetchModels', apiKey: 'bad' },
-        {},
+        EXT_SENDER,
         sendResponse,
       );
 
@@ -346,11 +377,31 @@ describe('background/service-worker', () => {
       );
     });
 
+    it('drops extension-only actions sent from a content script', () => {
+      const sendResponse = vi.fn();
+      const result = onMessageListener()!(
+        { action: 'fetchModels', apiBase: 'https://attacker.example', apiKey: 'x' },
+        CONTENT_SENDER,
+        sendResponse,
+      );
+      expect(result).toBeUndefined();
+      expect(sendResponse).not.toHaveBeenCalled();
+    });
+
+    it('drops messages from other extensions', () => {
+      onMessageListener()!(
+        { action: 'selectionChanged', text: 't' },
+        { id: 'other-ext', url: 'chrome-extension://other-ext/x.html' },
+        vi.fn(),
+      );
+      expect(chromeSendMessage).not.toHaveBeenCalled();
+    });
+
     it('routes pageRecords:store to handlePageRecordsMessage', () => {
       const sendResponse = vi.fn();
       const result = onMessageListener()!(
         { action: 'pageRecords:store', record: {}, maxPages: 200 },
-        {},
+        EXT_SENDER,
         sendResponse,
       );
       expect(result).toBe(true);
@@ -361,7 +412,7 @@ describe('background/service-worker', () => {
       const sendResponse = vi.fn();
       const result = onMessageListener()!(
         { action: 'pageRecords:findRelated', normalizedUrl: 'https://a.com', threshold: 0.7, limit: 5 },
-        {},
+        EXT_SENDER,
         sendResponse,
       );
       expect(result).toBe(true);

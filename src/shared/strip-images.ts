@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../../shared/types';
+import type { ChatMessage } from './types';
 
 /**
  * Strip `image_url` blocks from a message's `content` array, keeping only the

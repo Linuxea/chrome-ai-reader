@@ -1,11 +1,12 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
-import { appendMessageFromHistory, scrollToBottom } from './dom-helpers';
+import { appendMessageFromHistory, scrollToBottom } from '../ui/dom-helpers';
 import { clearImagePreviews } from '../services/images.js';
-import { updateQuotePreview } from './global-events';
+import { anchorAt, branchInfo } from '../services/chat/history-ops';
+import { updateQuotePreview } from '../ui/quote-preview';
 import type { ChatMessage } from '../../shared/types';
-import type { UIElements, GlobalEventDeps } from './global-events';
+import type { UIElements, GlobalEventDeps } from './types';
 
 export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): void {
   if (deps.isTTSPlaying()) deps.stopTTS();
@@ -48,9 +49,13 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
     /* Batch render into a detached fragment: no per-message scroll/forced
        reflow, one repaint when the fragment attaches. */
     const frag = document.createDocumentFragment();
-    for (const msg of history) {
-      appendMessageFromHistory(msg, { target: frag, deferScroll: true });
-    }
+    const tabId = state.getActiveTabId();
+    const tabState = tabId != null ? state.getStateForTab(tabId) : null;
+    history.forEach((msg, i) => {
+      const anchor = anchorAt(history, i);
+      const info = msg.role === 'user' && tabState ? branchInfo(tabState, anchor) : null;
+      appendMessageFromHistory(msg, { target: frag, deferScroll: true, branch: info ? { anchor, ...info } : undefined });
+    });
     els.chatArea.appendChild(frag);
     scrollToBottom();
   } else {

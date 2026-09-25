@@ -5,14 +5,16 @@ import { downloadFile } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
 import { showToast } from '../ui/toast';
-import { stripImagesForPersistence } from '../services/chat/strip-images';
+import { stripImagesForPersistence } from '../../shared/strip-images';
+import { genId } from '../../shared/ids';
 import { addTTSButton } from '../services/tts/index.js';
-import { marked } from 'marked';
+import { renderMarkdown, sanitizeHtml, parseInertHtml } from '../ui/markdown';
 import { emit, EVENTS } from '../events';
 import type { ChatMessage } from '../../shared/types';
+import { listChats, getChat, putChat, deleteChatRecord, type ChatHistoryEntry, type DisplayMessage } from '../../shared/chats-db';
 
-const STORAGE_KEY = 'chatHistories';
-const MAX_HISTORIES = 50;
+export type { DisplayMessage, ChatHistoryEntry };
+
 
 let _chatArea: HTMLElement;
 let _historyPanel: HTMLElement;
@@ -20,24 +22,6 @@ let _historyList: HTMLElement;
 let _onLoadChat: ((data: ChatLoadData) => void) | null = null;
 let _onRenderOutline: ((json: string) => HTMLElement | null) | null = null;
 let _onOutlineToMarkdown: ((data: unknown) => string) | null = null;
-
-interface DisplayMessage {
-  role: string;
-  content: string;
-  type?: string;
-  /** User messages: the quoted page text (kept apart so titles show the question). */
-  quote?: string;
-}
-
-interface ChatHistoryEntry {
-  id: string;
-  title: string;
-  pageTitle?: string;
-  messages: DisplayMessage[];
-  conversationHistory: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
-}
 
 interface ChatLoadData {
   id: string;
@@ -66,36 +50,20 @@ export function initChatHistory({ chatArea, historyPanel, historyList, onLoadCha
   _onOutlineToMarkdown = onOutlineToMarkdown;
 }
 
-function getChatHistories(): Promise<ChatHistoryEntry[]> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEY], (data) => {
-      resolve((data[STORAGE_KEY] as ChatHistoryEntry[]) || []);
-    });
-  });
-}
-
-function saveChatHistories(histories: ChatHistoryEntry[]): Promise<void> {
-  if (histories.length > MAX_HISTORIES) {
-    histories = histories.slice(histories.length - MAX_HISTORIES);
-  }
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: histories }, () => resolve());
-  });
-}
-
 /**
  * UI chrome injected into live message elements after render — buttons
  * (copy/TTS/download) and thinking/typing blocks. Stripped before persisting,
  * and again when loading legacy records that stored it, so saved chats hold
  * content only and reloads don't resurrect dead buttons.
  */
-const MESSAGE_CHROME_SELECTOR = '.tts-btn, .tts-download-btn, .ai-action-btn, .thinking-block, .typing-indicator';
+const MESSAGE_CHROME_SELECTOR = '.tts-btn, .tts-download-btn, .ai-action-btn, .thinking-block, .typing-indicator, .answer-usage, .agent-steps';
 
 export function stripMessageChrome(html: string): string {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  tmp.querySelectorAll(MESSAGE_CHROME_SELECTOR).forEach(el => el.remove());
-  return tmp.innerHTML;
+  // Inert parse: a stored snapshot may carry remote <img> tags that must not
+  // be fetched while it is being inspected.
+  const tpl = parseInertHtml(html);
+  tpl.content.querySelectorAll(MESSAGE_CHROME_SELECTOR).forEach(el => el.remove());
+  return sanitizeHtml(tpl.innerHTML);
 }
 
 export function getDisplayMessages(): DisplayMessage[] {
@@ -108,9 +76,11 @@ export function getDisplayMessages(): DisplayMessage[] {
       // so titles show what the user asked, not the quoted page text.
       const quoteEl = userEl.querySelector('.quote-in-bubble');
       const quote = quoteEl ? (userEl.dataset.rawQuote || quoteEl.textContent || '') : '';
-      const text = (quoteEl
-        ? (userEl.dataset.rawDisplay ?? userEl.querySelector(':scope > span')?.textContent ?? '')
-        : (userEl.textContent || '')).trim();
+      // rawDisplay is what the user typed; textContent would also pick up the
+      // quote and the attached-tabs line.
+      const text = (userEl.dataset.rawDisplay ?? (quoteEl
+        ? (userEl.querySelector(':scope > span')?.textContent ?? '')
+        : (userEl.textContent || ''))).trim();
       // An image-only message has no text — keep a placeholder so titles and
       // exports don't show an empty turn.
       const imageOnly = !text && userEl.querySelector('.bubble-images') !== null;
@@ -125,7 +95,12 @@ export function getDisplayMessages(): DisplayMessage[] {
           type: 'outline',
         });
       } else {
-        messages.push({ role: 'assistant', content: stripMessageChrome(el.innerHTML) });
+        // Store the Markdown source, never the rendered HTML: a snapshot would
+        // persist whatever markup the model produced.
+        const md = (el as HTMLElement).dataset.markdown;
+        messages.push(md !== undefined
+          ? { role: 'assistant', content: md, format: 'md' }
+          : { role: 'assistant', content: stripMessageChrome(el.innerHTML) });
       }
     }
   });
@@ -151,7 +126,9 @@ export function saveCurrentChat(): Promise<void> {
   let chatId = state.getCurrentChatId();
   const isNew = !chatId;
   if (!chatId) {
-    chatId = 'chat_' + now;
+    // Unique even for two chats saved in the same millisecond (a bare
+    // timestamp id let the second overwrite the first).
+    chatId = `chat_${now}_${genId().slice(0, 8)}`;
     state.setCurrentChatId(chatId);
   }
   const snapshot = {
@@ -160,6 +137,7 @@ export function saveCurrentChat(): Promise<void> {
     now,
     messages,
     pageTitle: state.getPageTitle(),
+    pageUrl: state.getStateForTab(state.getActiveTabId() ?? -1)?.pageUrl,
     conversationHistory: state.getConversationHistory()
       .filter(m => m.role !== 'system')
       .map(stripImagesForPersistence),
@@ -172,29 +150,31 @@ export function saveCurrentChat(): Promise<void> {
 
 async function writeChat(snap: {
   id: string; isNew: boolean; now: number; messages: DisplayMessage[];
-  pageTitle: string; conversationHistory: ChatMessage[];
+  pageTitle: string; pageUrl?: string; conversationHistory: ChatMessage[];
 }): Promise<void> {
-  const histories = await getChatHistories();
-  const idx = histories.findIndex(h => h.id === snap.id);
-  if (idx !== -1) {
-    histories[idx].messages = snap.messages;
-    histories[idx].conversationHistory = snap.conversationHistory;
-    histories[idx].pageTitle = snap.pageTitle;
-    histories[idx].updatedAt = snap.now;
+  const existing = await getChat(snap.id);
+  if (existing) {
+    await putChat({
+      ...existing,
+      messages: snap.messages,
+      conversationHistory: snap.conversationHistory,
+      pageTitle: snap.pageTitle,
+      pageUrl: snap.pageUrl || existing.pageUrl,
+      updatedAt: snap.now,
+    });
   } else if (snap.isNew) {
-    histories.push({
+    await putChat({
       id: snap.id,
       title: generateTitle(snap.messages),
       pageTitle: snap.pageTitle,
+      pageUrl: snap.pageUrl,
       messages: snap.messages,
       conversationHistory: snap.conversationHistory,
       createdAt: snap.now,
       updatedAt: snap.now,
     });
-  } else {
-    return; // the chat was deleted meanwhile — don't resurrect it
   }
-  await saveChatHistories(histories);
+  // else: the chat was deleted meanwhile — don't resurrect it
 }
 
 export function generateTitle(messages: DisplayMessage[]): string {
@@ -207,9 +187,7 @@ export function generateTitle(messages: DisplayMessage[]): string {
 }
 
 export async function deleteChat(id: string): Promise<void> {
-  const histories = await getChatHistories();
-  const filtered = histories.filter(h => h.id !== id);
-  await saveChatHistories(filtered);
+  await deleteChatRecord(id);
   if (state.getCurrentChatId() === id) {
     state.setCurrentChatId(null);
   }
@@ -222,8 +200,7 @@ async function loadChat(id: string): Promise<void> {
     return;
   }
 
-  const histories = await getChatHistories();
-  const chat = histories.find(h => h.id === id);
+  const chat = await getChat(id);
   if (!chat) return;
 
   if (_onLoadChat) {
@@ -266,10 +243,13 @@ async function loadChat(id: string): Promise<void> {
           div.dataset.type = 'outline';
           div.dataset.json = msg.content;
         } else {
-          div.innerHTML = marked.parse(msg.content) as string;
+          div.innerHTML = renderMarkdown(msg.content);
         }
+      } else if (msg.format === 'md') {
+        div.innerHTML = renderMarkdown(msg.content);
+        div.dataset.markdown = msg.content;
       } else {
-        // Legacy records may contain persisted UI chrome — strip it on the way in.
+        // Legacy HTML snapshot: strip persisted UI chrome and sanitize.
         div.innerHTML = stripMessageChrome(msg.content);
       }
       // Restored answers get their copy/TTS/download buttons back.
@@ -283,7 +263,7 @@ async function loadChat(id: string): Promise<void> {
 }
 
 export async function renderHistoryList(): Promise<void> {
-  const histories = await getChatHistories();
+  const histories = await listChats();
   _historyList.innerHTML = '';
 
   if (histories.length === 0) {
@@ -291,7 +271,7 @@ export async function renderHistoryList(): Promise<void> {
     return;
   }
 
-  const sorted = [...histories].reverse();
+  const sorted = histories; // newest first (listChats)
 
   sorted.forEach(chat => {
     const item = document.createElement('div');
@@ -351,9 +331,7 @@ export function sanitizeFilename(title: string): string {
 }
 
 export function stripHtml(html: string): string {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.textContent || '';
+  return parseInertHtml(html).content.textContent || '';
 }
 
 export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[]; conversationHistory?: ChatMessage[]; pageTitle?: string; title?: string }): Promise<void> {
@@ -391,7 +369,7 @@ export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[
       }
       const raw = assistantIdx < assistantEntries.length
         ? assistantEntries[assistantIdx].content
-        : stripHtml(msg.content);
+        : (msg.format === 'md' ? msg.content : stripHtml(msg.content));
       assistantIdx++;
       md += '## ' + t('chat.ai') + '\n\n' + raw + '\n\n---\n\n';
     }

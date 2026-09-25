@@ -112,6 +112,9 @@ vi.mock('../../src/side_panel/services/images.js', () => ({
 
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
   ensurePageContent: vi.fn(() => Promise.resolve({ ok: true, value: null })),
+  extractTabContent: vi.fn((id: number) => Promise.resolve(id === 9
+    ? { ok: false, error: new Error('nope') }
+    : { ok: true, value: { title: `Tab ${id}`, url: `https://t${id}.example`, textContent: `content of ${id}`, excerpt: '' } })),
 }));
 
 vi.mock('../../src/side_panel/services/stream-handler.js', () => ({
@@ -132,6 +135,21 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
     return false;
   }),
   toApiMessage: vi.fn((m: { role: string; content: unknown }) => ({ role: m.role, content: m.content })),
+  truncateHistoryFromId: vi.fn((ts: { conversationHistory: { id?: string }[] }, id: string) => {
+    const hist = ts.conversationHistory;
+    const idx = hist.findIndex(m => m.id === id);
+    if (idx !== -1) hist.splice(idx, hist.length - idx);
+    return idx;
+  }),
+  // Branching behaves like truncation for these tests (branches are covered in history-ops tests).
+  branchFromId: vi.fn((ts: { conversationHistory: { id?: string }[] }, id: string) => {
+    const hist = ts.conversationHistory;
+    const idx = hist.findIndex(m => m.id === id);
+    if (idx !== -1) hist.splice(idx, hist.length - idx);
+    return idx;
+  }),
+  anchorAt: vi.fn(() => '__root__'),
+  branchInfo: vi.fn(() => null),
   truncateHistoryFromUserContent: vi.fn((ts: { conversationHistory: unknown[] }, content: unknown) => {
     const hist = ts.conversationHistory;
     const idx = hist.findLastIndex((m: { role: string; content: unknown }) =>
@@ -141,6 +159,11 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
   }),
 }));
 
+
+const { settingsMock } = vi.hoisted(() => ({ settingsMock: { citations: false } as Record<string, unknown> }));
+vi.mock('../../src/platform/settings.js', () => ({
+  readSettings: vi.fn(async (keys: string[]) => Object.fromEntries(keys.map((k) => [k, settingsMock[k]]))),
+}));
 
 // --- Import after mocks ---
 import {
@@ -256,6 +279,50 @@ describe('services/message-sender', () => {
       expect(systemMsgs[1].content).not.toContain('Be concise');
     });
 
+    it('with citations on, adds the citation rule and labels the article paragraphs [#N]', async () => {
+      settingsMock.citations = true;
+      try {
+        tabState.pageContent = 'First paragraph text.\n\nSecond paragraph text.';
+        tabState.pageParagraphs = ['First paragraph text.', 'Second paragraph text.'];
+        await sendToAI('q', 'q');
+        const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(messages[0].content).toContain('citations.rule'); // getPrompt is mocked to echo keys
+        expect(messages[1].content).toContain('[#0] First paragraph text.');
+        expect(messages[1].content).toContain('[#1] Second paragraph text.');
+      } finally {
+        settingsMock.citations = false;
+      }
+    });
+
+    it('a page over the budget sends the relevant part and says it is partial', async () => {
+      const paras = Array.from({ length: 3000 }, (_, i) => `Filler paragraph number ${i} with nothing special in it.`);
+      paras[2500] = 'The secret launch code is described here.';
+      tabState.pageContent = paras.join('\n\n');
+      tabState.pageParagraphs = paras;
+      await sendToAI('what is the secret launch code', 'd');
+      const article = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0][1].content as string;
+      expect(article).toContain('[#2500] The secret launch code');
+      expect(article).toContain('…');
+      expect(article.length).toBeLessThan(70_000);
+    });
+
+    it('F4: reads attached tabs fresh into a system message and records them in meta', async () => {
+      await sendToAI('compare', 'compare', undefined, undefined, [
+        { id: 5, title: 'Five', url: 'https://t5.example' },
+        { id: 9, title: 'Nine', url: 'https://t9.example' },
+      ]);
+      const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0] as { role: string; content: string }[];
+      const multi = messages.find((m) => typeof m.content === 'string' && m.content.includes('multitab.context'));
+      expect(multi?.role).toBe('system');
+      expect(multi?.content).toContain('content of 5');
+      expect(multi?.content).toContain('multitab.unreadable');
+      const userMsg = tabState.conversationHistory.at(-1) as { meta: { tabs: unknown[] } };
+      expect(userMsg.meta.tabs).toEqual([
+        { id: 5, title: 'Five', url: 'https://t5.example' },
+        { id: 9, title: 'Nine', url: 'https://t9.example' },
+      ]);
+    });
+
     it('includes conversation history in messages', async () => {
       tabState.conversationHistory = [
         { role: 'user', content: 'previous question' },
@@ -274,6 +341,7 @@ describe('services/message-sender', () => {
       await sendToAI('my question', 'display');
 
       expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
         role: 'user',
         content: 'my question',
         meta: { rawText: 'my question', displayText: 'display' },
@@ -621,6 +689,29 @@ describe('services/message-sender', () => {
       expect(tabState.conversationHistory).not.toContainEqual(
         expect.objectContaining({ content: 'old answer' }),
       );
+    });
+
+    it('truncates at the clicked message by id, even when an identical message follows', async () => {
+      // The same quick action sent twice: content matching used to truncate at
+      // the LAST 'summarize', leaving the first turn (whose bubble was removed)
+      // in history.
+      tabState.conversationHistory = [
+        { id: 'u1', role: 'user', content: 'summarize' },
+        { id: 'a1', role: 'assistant', content: 'first answer' },
+        { id: 'u2', role: 'user', content: 'summarize' },
+        { id: 'a2', role: 'assistant', content: 'second answer' },
+      ];
+      const wrapper = document.createElement('div');
+      chatArea.appendChild(wrapper);
+
+      await retryMessage(wrapper, 'summarize', 'summarize', undefined, 'u1');
+
+      expect(truncateHistoryFromUserContent).not.toHaveBeenCalled(); // the id path branches instead
+      const contents = (tabState.conversationHistory as { content: unknown }[]).map(m => m.content);
+      expect(contents).not.toContain('first answer');
+      expect(contents).not.toContain('second answer');
+      expect(tabState.conversationHistory).toHaveLength(1); // only the re-sent message
+      expect((tabState.conversationHistory[0] as { id: string }).id).not.toBe('u1');
     });
 
     it('re-sends the EDITED text to the AI', async () => {

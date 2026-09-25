@@ -4,6 +4,7 @@ const ttsResourceIdInput = document.getElementById('ttsResourceId') as HTMLInput
 const podcastResourceIdInput = document.getElementById('podcastResourceId') as HTMLInputElement;
 const ttsSpeakerInput = document.getElementById('ttsSpeaker') as HTMLInputElement;
 const ttsAutoPlayCheckbox = document.getElementById('ttsAutoPlay') as HTMLInputElement;
+const podcastDirectCheckbox = document.getElementById('podcastDirect') as HTMLInputElement | null;
 
 export function initTtsSettings(): void { ttsAutoPlayCheckbox.addEventListener('change', () => { chrome.storage.sync.set({ ttsAutoPlay: ttsAutoPlayCheckbox.checked }); }); }
 
@@ -14,6 +15,7 @@ export function loadTtsValues(data: Record<string, unknown>): void {
   if (data.podcastResourceId) podcastResourceIdInput.value = data.podcastResourceId as string;
   if (data.ttsSpeaker) ttsSpeakerInput.value = data.ttsSpeaker as string;
   if (data.ttsAutoPlay !== undefined) ttsAutoPlayCheckbox.checked = data.ttsAutoPlay as boolean;
+  if (podcastDirectCheckbox && data.podcastDirect !== undefined) podcastDirectCheckbox.checked = data.podcastDirect as boolean;
 }
 
 export function collectTtsSaveData(): { set: Record<string, unknown>; remove: string[] } {
@@ -21,5 +23,6 @@ export function collectTtsSaveData(): { set: Record<string, unknown>; remove: st
   const fields = [{ input: ttsAppIdInput, key: 'ttsAppId' }, { input: ttsAccessKeyInput, key: 'ttsAccessKey' }, { input: ttsResourceIdInput, key: 'ttsResourceId' }, { input: podcastResourceIdInput, key: 'podcastResourceId' }, { input: ttsSpeakerInput, key: 'ttsSpeaker' }];
   for (const { input, key } of fields) { const val = input.value.trim(); if (val) set[key] = val; else remove.push(key); }
   set.ttsAutoPlay = ttsAutoPlayCheckbox.checked;
+  if (podcastDirectCheckbox) set.podcastDirect = podcastDirectCheckbox.checked;
   return { set, remove };
 }

@@ -9,10 +9,11 @@ import { initModelStatus } from './ui/model-status';
 import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
 import { initImages, clearImagePreviews, addImageDataUri, hasPendingImages } from './services/images.js';
 import { captureVisibleTab, captureFullPage } from './services/screenshot';
-import { getSync } from '../platform/storage';
+import { readSettings } from '../platform/settings';
 import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
 import { submit, retryMessage, editMessage } from './services/message-sender';
+import { switchBranch } from './services/chat/history-ops';
 import { initComposer } from './services/composer';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
 import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands';
@@ -23,13 +24,18 @@ import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initMiniPlayer } from './features/podcast/mini-player.js';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
-import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
-import type { UIElements } from './ui/global-events';
-import { handleLoadChat, resetUIForTabSwitch } from './ui/tab-switch-handler';
-import { marked } from 'marked';
+import { initCitations } from './features/citations';
+import { initTabContext } from './features/tab-context';
+import { initReadingSearch } from './features/reading-search';
+import { initNotes } from './features/notes';
+import { initPanelActions } from './features/panel-actions';
+import { initImmersive } from './features/immersive';
+import { initQuiz } from './features/quiz';
+import { bindGlobalEvents } from './shell/global-events';
+import type { UIElements } from './shell/types';
+import { updateQuotePreview } from './ui/quote-preview';
+import { handleLoadChat, resetUIForTabSwitch } from './shell/tab-switch-handler';
 import type { ChatMessage } from '../shared/types';
-
-marked.setOptions({ breaks: true, gfm: true });
 
 const els = {
   chatArea: document.getElementById('chatArea')!,
@@ -121,6 +127,24 @@ async function init(): Promise<void> {
   initPodcast({ chatArea: els.chatArea });
   initMiniPlayer();
   initRelatedPages({ chatArea: els.chatArea });
+  initCitations({ chatArea: els.chatArea });
+  initReadingSearch(document.getElementById('relatedPagesPanel'));
+  initImmersive({ button: document.getElementById('immersiveBtn') });
+  initQuiz({ button: document.getElementById('quizBtn'), chatArea: els.chatArea });
+  initNotes({
+    button: document.getElementById('notesBtn')!,
+    panel: document.getElementById('notesPanel')!,
+    list: document.getElementById('notesList')!,
+    backBtn: document.getElementById('notesBackBtn')!,
+    exportBtn: document.getElementById('notesExportBtn')!,
+    highlightBtn: document.getElementById('quoteHighlight'),
+    quoteEls: { quoteText: els.quoteText, quotePreview: els.quotePreview },
+  });
+  initTabContext({
+    button: document.getElementById('tabContextBtn')!,
+    picker: document.getElementById('tabPicker')!,
+    chipBar: document.getElementById('tabChipBar')!,
+  });
   const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');
   if (annotationBtn) {
     initAnnotation({
@@ -131,8 +155,8 @@ async function init(): Promise<void> {
     });
   }
 
-  on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });
-  on(EVENTS.EDIT, (args) => { const { wrapper, originalRawText, editedText, rawQuote } = args as { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote: string }; editMessage(wrapper, originalRawText, editedText, rawQuote); });
+  on(EVENTS.RETRY, ({ wrapper, rawText, rawDisplay, rawQuote, msgId }) => { retryMessage(wrapper, rawText, rawDisplay, rawQuote, msgId); });
+  on(EVENTS.EDIT, ({ wrapper, originalRawText, editedText, rawQuote, msgId }) => { editMessage(wrapper, originalRawText, editedText, rawQuote, msgId); });
   on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());
   on(EVENTS.REQUEST_RERENDER, () => resetUIForTabSwitch(els, deps));
   on(EVENTS.GENERATE_SUGGESTIONS, (args) => { const { msgEl, history } = args as { msgEl: HTMLElement; history: ChatMessage[] }; generateSuggestions(msgEl, history); saveCurrentChat(); });
@@ -140,6 +164,15 @@ async function init(): Promise<void> {
   on(EVENTS.PODCAST_CLICK, () => handlePodcastClick());
   on(EVENTS.ADD_TTS_BUTTON, (args) => { addTTSButton((args as { msgEl: HTMLElement }).msgEl); });
   on(EVENTS.SAVE_CURRENT_CHAT, () => saveCurrentChat());
+  on(EVENTS.BRANCH_SWITCH, ({ anchor, to }) => {
+    const tabId = state.getActiveTabId();
+    const tabState = tabId != null ? state.getStateForTab(tabId) : null;
+    if (!tabState || tabState.isGenerating) return;
+    if (switchBranch(tabState, anchor, to, tabId!)) {
+      resetUIForTabSwitch(els, deps);
+      saveCurrentChat();
+    }
+  });
   on(EVENTS.SHOW_RELATED_PAGES, () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.url) renderRelatedPages(tabs[0].url);
@@ -161,6 +194,8 @@ async function init(): Promise<void> {
   });
 
   bindGlobalEvents(els, deps);
+  // After state + quick actions are ready: run a context-menu / shortcut action.
+  initPanelActions({ quoteEls: { quoteText: els.quoteText, quotePreview: els.quotePreview }, userInput: els.userInput });
 
   if (state.getConversationHistory().length > 0) {
     resetUIForTabSwitch(els, deps);
@@ -180,7 +215,7 @@ async function init(): Promise<void> {
  * once any conversation exists (the user is past setup).
  */
 async function renderOnboardingIfNeeded(): Promise<void> {
-  const { apiKey, modelName } = await getSync<{ apiKey?: string; modelName?: string }>(['apiKey', 'modelName']);
+  const { apiKey, modelName } = await readSettings(['apiKey', 'modelName']);
   if (apiKey && modelName) return;
   if (state.getConversationHistory().length > 0) return;
 

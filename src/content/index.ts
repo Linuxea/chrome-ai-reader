@@ -1,6 +1,9 @@
 import { handleExtract } from './page-extractor';
 import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS, initAnnotationLang } from './annotation';
 import { scrollBegin, scrollNext, scrollRestore } from './scroll-controller';
+import { highlightParagraph } from './paragraphs';
+import { highlightSelection, restoreHighlights } from './highlights';
+import { toggleImmersive, isImmersiveActive } from './immersive';
 
 // Localized annotation icon/bubble labels — read once at script load so the
 // language is ready long before the user can trigger an annotation run.
@@ -8,6 +11,52 @@ initAnnotationLang();
 
 chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => {
   if (request.action === 'extract') return handleExtract(request, sendResponse);
+
+  // F6: save the current selection as a highlight (panel button / context menu).
+  if (request.action === 'highlightSelection') {
+    void highlightSelection(String((request as { note?: string }).note ?? '')).then(
+      (h) => sendResponse({ ok: h !== null, highlight: h }),
+      () => sendResponse({ ok: false }),
+    );
+    return true;
+  }
+  // F6: a highlight was deleted / edited in the panel — repaint.
+  if (request.action === 'refreshHighlights') {
+    void restoreHighlights().then((n) => sendResponse({ ok: true, painted: n }), () => sendResponse({ ok: false }));
+    return true;
+  }
+
+  // F7: immersive translation on/off (panel button or context menu).
+  if (request.action === 'immersiveToggle') {
+    // Answer right away with the new state; translation continues progressively.
+    sendResponse({ active: !isImmersiveActive() });
+    void toggleImmersive();
+    return;
+  }
+
+  // F8: Alt+Q — the worker needs the page's current selection.
+  if (request.action === 'getSelection') {
+    sendResponse({ text: window.getSelection()?.toString().trim() ?? '' });
+    return;
+  }
+
+  // Citation click in the panel: jump to and flash the cited paragraph.
+  // F3: citation on a YouTube transcript → seek the player.
+  if (request.action === 'seekVideo') {
+    const video = document.querySelector('video');
+    const seconds = Number((request as { seconds?: number }).seconds);
+    if (video && Number.isFinite(seconds)) {
+      video.currentTime = seconds;
+      video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    sendResponse({ ok: !!video && Number.isFinite(seconds) });
+    return false;
+  }
+
+  if (request.action === 'highlightParagraph') {
+    sendResponse({ ok: highlightParagraph(String((request as { text?: string }).text ?? '')) });
+    return;
+  }
 
   // Annotation actions are fire-and-forget (no response payload needed).
   if (request.action === 'startAnnotation') {
@@ -57,3 +106,8 @@ document.addEventListener('selectionchange', () => {
     try { chrome.runtime.sendMessage({ action: 'selectionChanged', text }).catch(() => {}); } catch { /* context invalidated */ }
   }, 300);
 });
+
+// F6: repaint this page's saved highlights once it has settled.
+if (isContextValid()) {
+  setTimeout(() => { void restoreHighlights().catch(() => { /* no worker / no DB */ }); }, 800);
+}

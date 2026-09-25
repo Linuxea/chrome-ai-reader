@@ -1,7 +1,8 @@
 import { escapeHtml } from '../../shared/constants';
 import { t } from '../../shared/i18n.js';
 import { CSS } from '../../shared/css-selectors';
-import { marked } from 'marked';
+import { renderMarkdown } from './markdown';
+import { linkifyCitations } from './citations';
 import { emit, EVENTS } from '../events';
 import * as autoScroll from './auto-scroll';
 import type { ChatMessage, MessageContentPart } from '../../shared/types';
@@ -39,6 +40,16 @@ export interface AppendOptions {
   target?: HTMLElement | DocumentFragment;
   /** Skip the per-message scroll-to-bottom; batch callers scroll once at the end. */
   deferScroll?: boolean;
+  /** F10: this user message starts a branched continuation. */
+  branch?: BranchPosition;
+}
+
+/** Where a user message sits among the continuations of its fork. */
+export interface BranchPosition {
+  anchor: string;
+  /** 1-based. */
+  index: number;
+  total: number;
 }
 
 export function appendMessage(role: string, content: string, imageUris?: string[], options?: AppendOptions): HTMLDivElement {
@@ -50,7 +61,8 @@ export function appendMessage(role: string, content: string, imageUris?: string[
   div.className = `message message-${role}`;
 
   if (role === 'ai' && content) {
-    div.innerHTML = marked.parse(content) as string;
+    div.innerHTML = renderMarkdown(content);
+    linkifyCitations(div);
   } else if (content) {
     div.textContent = content;
   }
@@ -103,6 +115,32 @@ export interface UserBubble {
   /** Full quoted page text (shown truncated). */
   quote?: string;
   imageUris?: string[];
+  /** History message id — retry / edit truncate history at exactly this entry. */
+  id?: string;
+  /** Other tabs attached as context (shown as a line under the text). */
+  tabs?: { title: string }[];
+}
+
+/** ‹ n/m › switcher on a user bubble whose message was retried / edited. */
+function addBranchSwitcher(wrapper: HTMLElement, branch: BranchPosition): void {
+  const box = document.createElement('span');
+  box.className = 'branch-switch';
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.textContent = '‹';
+  prev.title = t('branch.previous');
+  prev.disabled = branch.index <= 1;
+  prev.addEventListener('click', () => emit(EVENTS.BRANCH_SWITCH, { anchor: branch.anchor, to: branch.index - 2 }));
+  const label = document.createElement('span');
+  label.textContent = `${branch.index}/${branch.total}`;
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.textContent = '›';
+  next.title = t('branch.next');
+  next.disabled = branch.index >= branch.total;
+  next.addEventListener('click', () => emit(EVENTS.BRANCH_SWITCH, { anchor: branch.anchor, to: branch.index }));
+  box.append(prev, label, next);
+  (wrapper.querySelector('.msg-actions') ?? wrapper).prepend(box);
 }
 
 const QUOTE_PREVIEW_CHARS = 50;
@@ -113,7 +151,7 @@ const QUOTE_PREVIEW_CHARS = 50;
  * exactly like the original.
  */
 export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): HTMLDivElement {
-  const { rawText, displayText, quote, imageUris } = bubble;
+  const { rawText, displayText, quote, imageUris, id, tabs } = bubble;
   let el: HTMLDivElement;
   if (quote) {
     const preview = quote.length > QUOTE_PREVIEW_CHARS ? quote.slice(0, QUOTE_PREVIEW_CHARS) + '...' : quote;
@@ -124,6 +162,17 @@ export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): 
   }
   el.dataset.rawText = rawText;
   el.dataset.rawDisplay = displayText;
+  if (id) el.dataset.msgId = id;
+  if (options?.branch) {
+    const wrapper = el.closest('.user-msg-group') as HTMLElement | null;
+    if (wrapper) addBranchSwitcher(wrapper, options.branch);
+  }
+  if (tabs?.length) {
+    const line = document.createElement('div');
+    line.className = 'bubble-tabs';
+    line.textContent = tabs.map((t) => `📄 ${t.title}`).join('  ');
+    el.appendChild(line);
+  }
   return el;
 }
 
@@ -168,7 +217,7 @@ function addUserActions(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void {
     const rawText = msgEl.dataset.rawText || '';
     const rawQuote = msgEl.dataset.rawQuote || '';
     const rawDisplay = msgEl.dataset.rawDisplay || rawText;
-    emit(EVENTS.RETRY, { wrapper, rawText, rawDisplay, rawQuote });
+    emit(EVENTS.RETRY, { wrapper, rawText, rawDisplay, rawQuote, msgId: msgEl.dataset.msgId });
   });
 
   actions.appendChild(editBtn);
@@ -225,6 +274,7 @@ function openInlineEditor(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void 
       originalRawText: msgEl.dataset.rawText || '',
       editedText: edited,
       rawQuote: msgEl.dataset.rawQuote || undefined,
+      msgId: msgEl.dataset.msgId,
     });
   };
 
@@ -287,11 +337,17 @@ function buildErrorActionsRow(actions: ErrorMessageAction[]): HTMLDivElement {
   return row;
 }
 
-/** A quiet centered status line (e.g. "generation stopped"). */
-export function appendNoteMessage(text: string): HTMLDivElement {
+/** A quiet centered status line element (not yet attached). */
+export function createNoteElement(text: string): HTMLDivElement {
   const div = document.createElement('div');
   div.className = 'message message-note';
   div.textContent = text;
+  return div;
+}
+
+/** A quiet centered status line (e.g. "generation stopped"). */
+export function appendNoteMessage(text: string): HTMLDivElement {
+  const div = createNoteElement(text);
   _chatArea.appendChild(div);
   smartScrollToBottom();
   return div;
@@ -325,6 +381,7 @@ export function emitRetryFromWrapper(wrapper: HTMLElement): void {
     rawText: userEl?.dataset.rawText || '',
     rawDisplay: userEl?.dataset.rawDisplay || userEl?.textContent || '',
     rawQuote: userEl?.dataset.rawQuote || '',
+    msgId: userEl?.dataset.msgId,
   });
 }
 
@@ -344,7 +401,7 @@ export function updateLastMessage(role: string, content: string): void {
     const last = messages[messages.length - 1];
     last.className = `message message-${role}`;
     if (role === 'ai') {
-      last.innerHTML = marked.parse(content) as string;
+      last.innerHTML = renderMarkdown(content);
     } else {
       last.textContent = content;
     }
@@ -425,8 +482,8 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
     // to the assembled content (retry then re-sends that content verbatim).
     div = appendUserMessage(
       msg.meta
-        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris }
-        : { rawText: text, displayText: text, imageUris },
+        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris, id: msg.id, tabs: msg.meta.tabs }
+        : { rawText: text, displayText: text, imageUris, id: msg.id },
       options,
     );
   } else {

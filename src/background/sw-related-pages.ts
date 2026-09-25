@@ -14,7 +14,8 @@ import {
   getPageRecord, putPageRecord, getAllPageRecords, deletePageRecord,
   migrateLegacyPageRecords,
 } from '../shared/page-records-db';
-import { findRelatedRecords } from '../shared/vector';
+import { findRelatedRecords, searchRecords } from '../shared/vector';
+import { embedText, EmbeddingError } from './sw-openai';
 
 export interface StorePageRecordRequest {
   record: Omit<PageRecord, 'id' | 'timestamp'>;
@@ -59,6 +60,18 @@ export async function findRelated(req: FindRelatedRequest): Promise<PageRelation
   return findRelatedRecords(all, req.normalizedUrl, req.threshold, req.limit);
 }
 
+export interface SearchRecordsRequest {
+  query: string;
+  limit?: number;
+}
+
+/** Semantic search over everything read (F5 reading library, agent tool). */
+export async function searchReadingHistory(req: SearchRecordsRequest): Promise<PageRelation[]> {
+  await migrationPromise;
+  const embedding = await embedText(req.query);
+  return searchRecords(await getAllPageRecords(), embedding, req.limit ?? 8);
+}
+
 /** chrome.runtime.onMessage handler for the pageRecords:* actions. */
 export function handlePageRecordsMessage(
   msg: Record<string, unknown>,
@@ -68,6 +81,12 @@ export function handlePageRecordsMessage(
     storePageRecord(msg as unknown as StorePageRecordRequest)
       .then(() => sendResponse({ success: true }))
       .catch((e: Error) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+  if (msg.action === 'pageRecords:search') {
+    searchReadingHistory(msg as unknown as SearchRecordsRequest)
+      .then((relations) => sendResponse({ success: true, relations }))
+      .catch((e: Error) => sendResponse({ success: false, error: e.message, errorKey: (e as EmbeddingError).errorKey }));
     return true;
   }
   if (msg.action === 'pageRecords:findRelated') {

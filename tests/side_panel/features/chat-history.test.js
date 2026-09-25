@@ -1,4 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto';
+import { dbClear } from '../../../src/shared/db';
+import { listChats, __resetChatsMigration } from '../../../src/shared/chats-db';
 
 vi.mock('../../../src/shared/i18n.js', () => ({
   t: (key) => `[${key}]`,
@@ -23,7 +26,14 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   getPageTitle: vi.fn(() => 'Test Page'),
   setCurrentChatId: vi.fn(),
   getIsGenerating: vi.fn(() => false),
+  getActiveTabId: vi.fn(() => 1),
+  getStateForTab: vi.fn(() => ({ pageUrl: 'https://page.example/a' })),
 }));
+
+async function resetChatsDb() {
+  __resetChatsMigration();
+  await dbClear('chats');
+}
 
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   scrollToBottom: vi.fn(),
@@ -34,8 +44,9 @@ vi.mock('../../../src/side_panel/events.js', () => ({
   EVENTS: { REQUEST_RERENDER: 'requestRerender' },
 }));
 
-vi.mock('marked', () => ({
-  marked: { parse: (text) => `<p>${text}</p>` },
+vi.mock('../../../src/side_panel/ui/markdown.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  renderMarkdown: (text) => `<p>${text}</p>`,
 }));
 
 import {
@@ -184,12 +195,35 @@ describe('stripMessageChrome / getDisplayMessages', () => {
       { role: 'user', content: 'question' },
     ]);
   });
+
+  it('getDisplayMessages stores the Markdown source of an answer, not its rendered HTML', () => {
+    const chatArea = setupChatArea();
+    const ai = document.createElement('div');
+    ai.className = 'message message-ai';
+    ai.dataset.markdown = '**answer** ![x](https://evil.example/p.gif)';
+    ai.innerHTML = '<p><strong>answer</strong></p>';
+    chatArea.appendChild(ai);
+
+    expect(getDisplayMessages()).toEqual([
+      { role: 'assistant', content: '**answer** ![x](https://evil.example/p.gif)', format: 'md' },
+    ]);
+  });
+
+  it('stripMessageChrome also sanitizes the snapshot (scripts, handlers, remote images)', () => {
+    const out = stripMessageChrome('<p onclick="x()">a</p><script>alert(1)</script><img src="https://evil.example/p.gif">');
+    expect(out).not.toMatch(/script|onclick|<img/);
+    expect(out).toContain('<p>a</p>');
+  });
 });
 
 describe('loading a saved chat', () => {
+  beforeEach(resetChatsDb);
+
+  // Seeds the chat through the legacy storage.local blob, so the one-time
+  // migration into IndexedDB is exercised on the way.
   async function openChat(chat) {
     globalThis.chrome = {
-      storage: { local: { get: vi.fn((_k, cb) => cb({ chatHistories: [chat] })), set: vi.fn() } },
+      storage: { local: { get: vi.fn(async () => ({ chatHistories: [chat] })), remove: vi.fn(async () => {}) } },
     };
     const chatArea = document.createElement('div');
     const historyPanel = document.createElement('div');
@@ -198,7 +232,8 @@ describe('loading a saved chat', () => {
     initChatHistory({ chatArea, historyPanel, historyList, onLoadChat, onRenderOutline: vi.fn(), onOutlineToMarkdown: vi.fn() });
     await renderHistoryList();
     historyList.querySelector('.history-item-info').click();
-    await new Promise(r => setTimeout(r, 0));
+    // Both load paths end by hiding the history panel (IndexedDB is async).
+    await vi.waitFor(() => expect(historyPanel.classList.contains('hidden')).toBe(true));
     return { chatArea, historyPanel, onLoadChat };
   }
 
@@ -216,6 +251,33 @@ describe('loading a saved chat', () => {
     expect(historyPanel.classList.contains('hidden')).toBe(true);
   });
 
+  it('sanitizes a legacy HTML answer snapshot before rendering it', async () => {
+    const { chatArea } = await openChat({
+      id: 'c3', title: 't', updatedAt: 1,
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: '<p>a</p><img src="https://evil.example/leak.gif"><script>alert(1)</script>' },
+      ],
+      conversationHistory: [],
+    });
+
+    const ai = chatArea.querySelector('.message-ai');
+    expect(ai.querySelector('img, script')).toBeNull();
+    expect(ai.textContent).toContain('a');
+  });
+
+  it('renders a Markdown-format display snapshot through the Markdown path', async () => {
+    const { chatArea } = await openChat({
+      id: 'c4', title: 't', updatedAt: 1,
+      messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'md answer', format: 'md' }],
+      conversationHistory: [],
+    });
+
+    const ai = chatArea.querySelector('.message-ai');
+    expect(ai.innerHTML).toContain('<p>md answer</p>');
+    expect(ai.dataset.markdown).toBe('md answer');
+  });
+
   it('falls back to the display snapshot for legacy records without history', async () => {
     emit.mockClear();
     const { chatArea } = await openChat({
@@ -230,24 +292,15 @@ describe('loading a saved chat', () => {
 });
 
 describe('saveCurrentChat', () => {
-  let saved;
   let chatArea;
   let currentId;
 
-  beforeEach(() => {
-    saved = [];
+  beforeEach(async () => {
+    await resetChatsDb();
     currentId = null;
     stateMock.getCurrentChatId.mockImplementation(() => currentId);
     stateMock.setCurrentChatId.mockImplementation((id) => { currentId = id; });
-    globalThis.chrome = {
-      storage: {
-        local: {
-          // async like the real API, so overlapping saves really interleave
-          get: vi.fn((_k, cb) => setTimeout(() => cb({ chatHistories: JSON.parse(JSON.stringify(saved)) }), 0)),
-          set: vi.fn((items, cb) => setTimeout(() => { saved = items.chatHistories; cb(); }, 0)),
-        },
-      },
-    };
+    globalThis.chrome = { storage: { local: { get: vi.fn(async () => ({})), remove: vi.fn(async () => {}) } } };
     chatArea = document.createElement('div');
     initChatHistory({
       chatArea, historyPanel: document.createElement('div'), historyList: document.createElement('div'),
@@ -265,7 +318,9 @@ describe('saveCurrentChat', () => {
   it('overlapping saves of a new chat create ONE history entry', async () => {
     addUserMessage('hello');
     await Promise.all([saveCurrentChat(), saveCurrentChat()]);
+    const saved = await listChats();
     expect(saved).toHaveLength(1);
+    expect(saved[0].pageUrl).toBe('https://page.example/a');
   });
 
   it('"new chat" right after a save keeps the two conversations apart', async () => {
@@ -279,7 +334,21 @@ describe('saveCurrentChat', () => {
 
     addUserMessage('second chat');
     await saveCurrentChat();
-    expect(saved.map(h => h.title)).toEqual(['first chat', 'second chat']);
+    expect((await listChats()).map(h => h.title).sort()).toEqual(['first chat', 'second chat']);
+  });
+
+  it('two new chats saved in the same millisecond get distinct ids', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    addUserMessage('chat A');
+    const first = saveCurrentChat();
+    const idA = currentId;
+    stateMock.setCurrentChatId(null);
+    chatArea.innerHTML = '';
+    addUserMessage('chat B');
+    const second = saveCurrentChat();
+    await Promise.all([first, second]);
+    expect(currentId).not.toBe(idA);
+    nowSpy.mockRestore();
   });
 
   it('keeps the quote apart from the question (titles show the question)', () => {
@@ -295,3 +364,4 @@ describe('saveCurrentChat', () => {
     ]);
   });
 });
+

@@ -2,21 +2,24 @@ import { t } from '../../shared/i18n.js';
 import { openOptionsPage } from '../../platform/messaging';
 import * as state from '../state';
 import { on, emit, EVENTS } from '../events';
-import { createInnerFollower } from '../ui/auto-scroll';
 import {
   appendMessage, appendMessageFromHistory, appendErrorMessage, addTypingIndicator,
   removeTypingIndicator, smartScrollToBottom, scrollToBottom,
   setButtonsDisabled,
-  addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore,
+  addErrorMessageActions, emitRetryFromWrapper, findUserWrapperBefore, createNoteElement as noteEl,
   type ErrorMessageAction,
 } from '../ui/dom-helpers';
 import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay,
 } from './tts/index.js';
-import { marked } from 'marked';
-import type { ChatMessage } from '../../shared/types';
+import { createAnswerView } from '../ui/answer-view';
+import { AGENT_TOOL_SPECS, runAgentTool } from './agent-tools';
+import { genId } from '../../shared/ids';
+import type { ChatMessage, ToolCall } from '../../shared/types';
+import type { StreamMessage, FinishReason, TokenUsage } from '../../shared/protocol';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
+import { openAIChatPort } from '../../platform/ports';
 
 let _chatArea: HTMLElement;
 let _unsubscribeRerender: (() => void) | null = null;
@@ -95,13 +98,18 @@ export function takePendingAbort(tabId: number): boolean {
 }
 
 type Outcome =
-  | { kind: 'done' }
+  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string }
   | { kind: 'error'; errorText: string; errorKey?: string }
   | { kind: 'aborted' }
   /** The service worker's end went away (worker restart / crash). */
   | { kind: 'disconnected' };
 
-export async function callAI(messages: ChatMessage[], tabId: number | null): Promise<void> {
+export interface CallAIOptions {
+  /** Agent mode: offer the panel's tools; the worker loops until an answer. */
+  agent?: boolean;
+}
+
+export async function callAI(messages: ChatMessage[], tabId: number | null, options: CallAIOptions = {}): Promise<void> {
   if (isTTSPlaying()) stopTTS();
 
   const tabState = state.getStateForTab(tabId!);
@@ -119,21 +127,14 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   // bubble is re-attached.
   const msgEl = appendMessage('ai', '');
   const typingEl = addTypingIndicator(msgEl);
-  let fullText = '';
-  let thinkingText = '';
-  let thinkingEl: HTMLDetailsElement | null = null;
-  let thinkingSummaryEl: HTMLElement | null = null;
-  let thinkingContentEl: HTMLDivElement | null = null;
-  let thinkingStartedAt: number | null = null;
-  let contentEl: HTMLDivElement | null = null;
+  const view = createAnswerView(msgEl, () => isCurrentTab());
   let finished = false;
 
-  const port = chrome.runtime.connect({ name: 'ai-chat' });
+  const port = openAIChatPort();
 
-  port.postMessage({
-    type: 'chat',
-    messages: messages,
-  });
+  port.postMessage(options.agent
+    ? { type: 'chat', messages, purpose: 'agent', tools: AGENT_TOOL_SPECS }
+    : { type: 'chat', messages });
 
   _activeStreams.set(tabId!, {
     abort: () => finalize({ kind: 'aborted' }),
@@ -142,140 +143,30 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   function isCurrentTab(): boolean { return state.getActiveTabId() === tabId; }
 
-  // --- Streamed render throttling -------------------------------------------
-  // marked.parse over the full accumulated text is O(n); running it once per
-  // SSE chunk (10–50/s) makes a long answer O(n²) CPU, plus an innerHTML
-  // rebuild and a forced reflow (smartScrollToBottom reads scrollHeight) each
-  // time. Chunks buffer into fullText/thinkingText and the DOM is refreshed at
-  // most once per interval; the end of the stream always performs a final flush.
-  const STREAM_FLUSH_INTERVAL_MS = 80;
-  let flushTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastFlushAt = 0;
-  let followThinking: (() => void) | null = null;
-
-  /** Close an unterminated ``` fence so partially streamed code blocks render stably. */
-  function balanceFences(text: string): string {
-    const fenceCount = text.match(/^\s{0,3}```/gm)?.length ?? 0;
-    return fenceCount % 2 === 1 ? text + '\n```' : text;
-  }
-
-  function flushContent(): void {
-    if (!contentEl || !contentEl.isConnected) return;
-    contentEl.innerHTML = marked.parse(balanceFences(fullText)) as string;
-    /* Always the smart variant: with the stick-to-bottom state machine
-       (ui/auto-scroll.ts) stuck users follow the answer from its first
-       character; unstuck users keep their reading position. */
-    smartScrollToBottom();
-  }
-
-  function flushThinking(): void {
-    if (!thinkingContentEl || !thinkingContentEl.isConnected) return;
-    thinkingContentEl.innerHTML = marked.parse(balanceFences(thinkingText)) as string;
-    followThinking?.();
-    smartScrollToBottom();
-  }
-
-  function flushNow(): void {
-    lastFlushAt = performance.now();
-    if (thinkingEl && thinkingEl.open) flushThinking();
-    if (contentEl) flushContent();
-  }
-
-  function cancelScheduledFlush(): void {
-    if (flushTimer !== null) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-  }
-
-  function scheduleFlush(): void {
-    // Hidden tab / detached bubble: reattach() flushes everything at once.
-    if (!msgEl.isConnected || !isCurrentTab()) return;
-    if (flushTimer !== null) return; // pending timer picks up the buffered text
-    const elapsed = performance.now() - lastFlushAt;
-    if (elapsed >= STREAM_FLUSH_INTERVAL_MS) {
-      flushNow();
-    } else {
-      flushTimer = setTimeout(() => {
-        flushTimer = null;
-        flushNow();
-      }, STREAM_FLUSH_INTERVAL_MS - elapsed);
-    }
-  }
-
-  function ensureThinkingEl(): void {
-    if (thinkingEl) return;
-    thinkingEl = document.createElement('details');
-    thinkingEl.className = 'thinking-block';
-    thinkingEl.open = true;
-    const summary = document.createElement('summary');
-    summary.className = 'thinking-summary';
-    summary.textContent = t('ai.thinking');
-    thinkingSummaryEl = summary;
-    thinkingEl.appendChild(summary);
-    thinkingContentEl = document.createElement('div');
-    thinkingContentEl.className = 'thinking-content';
-    thinkingEl.appendChild(thinkingContentEl);
-    followThinking = createInnerFollower(thinkingContentEl);
-    // Collapsed thinking isn't flushed while streaming; render the latest
-    // reasoning whenever the user expands it.
-    thinkingEl.addEventListener('toggle', () => { if (thinkingEl?.open) flushThinking(); });
-    msgEl.appendChild(thinkingEl);
-  }
-
-  function ensureContentEl(): void {
-    if (contentEl) return;
-    contentEl = document.createElement('div');
-    contentEl.className = 'thinking-response-content';
-    msgEl.appendChild(contentEl);
-  }
-
   /** The tab became active again and its chat area was rebuilt: put the live bubble back. */
   function reattach(): void {
     if (finished || msgEl.isConnected || !isCurrentTab()) return;
     _chatArea.appendChild(msgEl);
-    flushNow();
+    view.flushNow();
     scrollToBottom();
-  }
-
-  interface StreamMessage {
-    type: string;
-    content?: string;
-    error?: string;
-    errorKey?: string;
   }
 
   port.onMessage.addListener((msg: StreamMessage) => {
     if (finished) return;
     if (msg.type === 'thinking') {
-      thinkingStartedAt ??= performance.now();
-      thinkingText += msg.content || '';
       removeTypingIndicator(typingEl);
-      ensureThinkingEl();
-      scheduleFlush();
+      view.appendThinking(msg.content || '');
     } else if (msg.type === 'chunk') {
-      const firstChunk = fullText === '';
-      fullText += msg.content || '';
       removeTypingIndicator(typingEl);
-
-      if (firstChunk) {
-        // The answer started: stamp the thinking duration and collapse the
-        // reasoning ONCE — the user may re-open it while the answer streams.
-        if (thinkingStartedAt !== null && thinkingSummaryEl) {
-          const elapsedSeconds = (performance.now() - thinkingStartedAt) / 1000;
-          thinkingSummaryEl.textContent = `${t('ai.thinking')} · ${elapsedSeconds.toFixed(1)}s`;
-          thinkingStartedAt = null;
-        }
-        if (thinkingEl) thinkingEl.open = false;
-      }
-
-      ensureContentEl();
-      scheduleFlush();
+      view.appendText(msg.content || '');
       if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
+    } else if (msg.type === 'tool_calls') {
+      removeTypingIndicator(typingEl);
+      void runToolCalls(msg.calls);
     } else if (msg.type === 'done') {
-      finalize({ kind: 'done' });
+      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model });
     } else if (msg.type === 'error') {
       finalize({
         kind: 'error',
@@ -284,6 +175,28 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       });
     }
   });
+
+  /** Agent mode: show each step, run the tools here, send the results back. */
+  async function runToolCalls(calls: ToolCall[]): Promise<void> {
+    let steps = msgEl.querySelector<HTMLElement>('.agent-steps');
+    if (!steps) {
+      steps = document.createElement('div');
+      steps.className = 'agent-steps';
+      msgEl.insertBefore(steps, msgEl.firstChild);
+    }
+    const results: { tool_call_id: string; name: string; content: string }[] = [];
+    for (const call of calls) {
+      const line = document.createElement('div');
+      line.className = 'agent-step';
+      line.textContent = t('agent.step', { tool: t(`agent.tool.${call.name}`), args: describeArgs(call.arguments) });
+      steps.appendChild(line);
+      const content = await runAgentTool(call.name, call.arguments, tabId!);
+      if (finished) return;
+      line.classList.add('done');
+      results.push({ tool_call_id: call.id, name: call.name, content });
+    }
+    try { port.postMessage({ type: 'tool_results', results }); } catch { /* stream ended */ }
+  }
 
   // Fires only when the service worker's end goes away — never for our own
   // disconnect() (see abortGeneration).
@@ -296,7 +209,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   function finalize(outcome: Outcome): void {
     if (finished) return;
     finished = true;
-    cancelScheduledFlush();
+    view.cancelFlush();
     _activeStreams.delete(tabId!);
     try { port.disconnect(); } catch { /* already disconnected */ }
     removeTypingIndicator(typingEl);
@@ -304,12 +217,17 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     // A disconnect / stop that already produced text keeps the partial answer
     // (so nothing streamed is lost); one that produced nothing is a failure
     // (disconnect) or a silent no-op (stop).
-    const keepsAnswer = outcome.kind === 'done' || (fullText !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
+    // A refusal with nothing written is an error the user should see, not an empty answer.
+    if (outcome.kind === 'done' && outcome.finishReason === 'refusal' && view.text === '') {
+      outcome = { kind: 'error', errorText: t('error.refused'), errorKey: 'error.refused' };
+    }
+    const keepsAnswer = outcome.kind === 'done' || (view.text !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
-      appendHistory(tabState!, { role: 'assistant', content: fullText }, tabId!);
+      appendHistory(tabState!, { id: genId(), role: 'assistant', content: view.text }, tabId!);
       state.setGeneratingForTab(tabId!, false);
       finishAnswer(outcome.kind === 'done');
+      if (outcome.kind === 'done' && isCurrentTab()) annotateAnswer(outcome);
       return;
     }
 
@@ -332,7 +250,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     state.setGeneratingForTab(tabId!, false);
 
     if (isCurrentTab() && msgEl.isConnected) {
-      if (thinkingEl) thinkingEl.open = false;
+      view.collapseThinking();
       msgEl.className = 'message message-error';
       msgEl.textContent = errorText;
       addErrorMessageActions(msgEl, errorActions(findUserWrapperBefore(msgEl), errorKey));
@@ -347,6 +265,23 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     }
   }
 
+  /** Truncation / refusal notes and the token-usage footer under a finished answer. */
+  function annotateAnswer(outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string }): void {
+    if (!msgEl.isConnected) return;
+    if (outcome.finishReason === 'length') msgEl.after(noteEl(t('ai.truncatedByLimit')));
+    else if (outcome.finishReason === 'refusal') msgEl.after(noteEl(t('ai.refusedPartway')));
+    if (outcome.usage) {
+      const meta = document.createElement('div');
+      meta.className = 'answer-usage';
+      meta.textContent = t('ai.usage', {
+        model: outcome.model ?? '',
+        in: String(outcome.usage.inputTokens),
+        out: String(outcome.usage.outputTokens),
+      });
+      msgEl.appendChild(meta);
+    }
+  }
+
   /** Answer kept (complete, or partial after stop / disconnect): attach its controls, save it. */
   function finishAnswer(complete: boolean): void {
     if (!isCurrentTab()) {
@@ -354,15 +289,15 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       _pendingSaves.add(tabId!);
       return;
     }
-    msgEl.dataset.markdown = fullText; // copy button copies the markdown source
+    msgEl.dataset.markdown = view.text; // copy button copies the markdown source
     let answerEl: HTMLElement | null = msgEl;
     if (!msgEl.isConnected) {
       emit(EVENTS.REQUEST_RERENDER);
       const answers = _chatArea.querySelectorAll<HTMLElement>('.message-ai');
       answerEl = answers[answers.length - 1] ?? null;
     } else {
-      flushNow(); // render the complete text before buttons/summary attach
-      if (thinkingEl) thinkingEl.open = false;
+      view.flushNow(); // render the complete text before buttons/summary attach
+      view.collapseThinking();
       addTTSButton(msgEl);
     }
     setButtonsDisabled(false);
@@ -377,5 +312,17 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     // TTS button + suggestion loading attach below the answer; keep a stuck
     // view pinned over the newly added chrome.
     smartScrollToBottom();
+  }
+}
+
+/** Short human-readable argument summary for the step list. */
+function describeArgs(json: string): string {
+  try {
+    const args = JSON.parse(json || '{}') as Record<string, unknown>;
+    const parts = Object.values(args).map((v) => String(v)).filter(Boolean);
+    const text = parts.join(', ');
+    return text.length > 60 ? text.slice(0, 60) + '…' : text;
+  } catch {
+    return '';
   }
 }

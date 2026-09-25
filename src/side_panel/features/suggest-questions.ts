@@ -6,6 +6,7 @@ import * as state from '../state';
 import { smartScrollToBottom } from '../ui/dom-helpers';
 import { appendDraftText } from '../services/composer';
 import type { ChatMessage } from '../../shared/types';
+import { openSuggestPort } from '../../platform/ports';
 
 let _chatArea: HTMLElement;
 let suggestPort: chrome.runtime.Port | null = null;
@@ -84,7 +85,7 @@ export function generateSuggestions(msgEl: HTMLElement, history: ChatMessage[]):
     { role: 'user' as const, content: userContent },
   ];
 
-  const port = chrome.runtime.connect({ name: 'suggest-questions' });
+  const port = openSuggestPort();
   suggestPort = port;
 
   port.onDisconnect.addListener(() => {

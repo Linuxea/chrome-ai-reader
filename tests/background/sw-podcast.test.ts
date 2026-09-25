@@ -19,6 +19,8 @@ const store: Record<string, unknown> = {
 
 vi.stubGlobal('chrome', {
   storage: {
+    // Secrets are read from local first (platform/settings), then sync.
+    local: { get: () => Promise.resolve({}), set: () => Promise.resolve(), remove: () => Promise.resolve() },
     sync: {
       get(keys: string[] | string) {
         const result: Record<string, unknown> = {};
@@ -110,7 +112,7 @@ describe('background/sw-podcast', () => {
   });
 
   describe('fetch and SSE relay', () => {
-    it('sends fetch to localhost:3456/podcast with correct body', async () => {
+    it('sends fetch to 127.0.0.1:3456/podcast with correct body', async () => {
       const body = createSSEBody([{ event: 'done', data: {} }]);
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
@@ -120,7 +122,7 @@ describe('background/sw-podcast', () => {
       await callPodcast(sampleNlpTexts, sampleAudioConfig, port);
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3456/podcast',
+        'http://127.0.0.1:3456/podcast',
         expect.objectContaining({ method: 'POST' }),
       );
 
@@ -293,5 +295,53 @@ describe('background/sw-podcast', () => {
         error: 'Connection reset',
       });
     });
+  });
+});
+
+describe('background/sw-podcast — direct mode (F13)', () => {
+  it('uses the direct socket when podcastDirect is on, without touching the proxy', async () => {
+    vi.resetModules();
+    const runDirectPodcast = vi.fn(async () => ({ audioChunks: 3 }));
+    vi.doMock('../../src/background/podcast-direct.js', () => ({ runDirectPodcast }));
+    (globalThis.chrome as unknown as Record<string, unknown>).declarativeNetRequest = { updateSessionRules: vi.fn() };
+    store.sync = { ttsAppId: 'a', ttsAccessKey: 'k', podcastDirect: true };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockClear();
+    const { callPodcast: call } = await import('../../src/background/sw-podcast.js');
+
+    await call(sampleNlpTexts, sampleAudioConfig, createMockPort() as unknown as chrome.runtime.Port);
+
+    expect(runDirectPodcast).toHaveBeenCalledWith(expect.objectContaining({
+      creds: expect.objectContaining({ appId: 'a', accessKey: 'k', resourceId: 'volc.service_type.10050' }),
+    }));
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the proxy when direct mode fails before any audio', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/background/podcast-direct.js', () => ({
+      runDirectPodcast: vi.fn(async () => { throw Object.assign(new Error('401'), { audioChunks: 0 }); }),
+    }));
+    store.sync = { ttsAppId: 'a', ttsAccessKey: 'k', podcastDirect: true };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, body: createSSEBody([{ event: 'done', data: {} }]) } as Response);
+    const { callPodcast: call } = await import('../../src/background/sw-podcast.js');
+
+    await call(sampleNlpTexts, sampleAudioConfig, createMockPort() as unknown as chrome.runtime.Port);
+    expect(fetchSpy).toHaveBeenCalledWith('http://127.0.0.1:3456/podcast', expect.anything());
+  });
+
+  it('reports the error instead of falling back once audio was sent', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/background/podcast-direct.js', () => ({
+      runDirectPodcast: vi.fn(async () => { throw Object.assign(new Error('dropped'), { audioChunks: 2 }); }),
+    }));
+    store.sync = { ttsAppId: 'a', ttsAccessKey: 'k', podcastDirect: true };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockClear();
+    const { callPodcast: call } = await import('../../src/background/sw-podcast.js');
+    const { safePostMessage: post } = await import('../../src/background/sw-utils.js');
+    const port = createMockPort();
+
+    await call(sampleNlpTexts, sampleAudioConfig, port as unknown as chrome.runtime.Port);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith(port, { type: 'error', error: 'dropped' });
   });
 });

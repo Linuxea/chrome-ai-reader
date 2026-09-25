@@ -1,12 +1,19 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
+// `npm run dev` runs this build in watch mode next to scripts/watch-iife.js,
+// which writes dist/content.js + dist/background.js. Vite empties outDir on
+// EVERY watch rebuild, which would delete those bundles — so only empty it
+// for one-shot builds.
+const isWatch = process.argv.includes('--watch') || process.argv.includes('-w');
+
 export default defineConfig({
   base: '',  // Use relative paths — required for Chrome extension
   build: {
     outDir: 'dist',
-    emptyOutDir: true,
-    sourcemap: 'inline',
+    emptyOutDir: !isWatch,
+    // Inline maps roughly double the shipped bundle; dev (watch) keeps them.
+    sourcemap: isWatch ? 'inline' : false,
     modulePreload: false,  // Not needed for Chrome extensions
     rollupOptions: {
       input: {

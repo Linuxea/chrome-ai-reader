@@ -5,6 +5,8 @@ const store = { sync: { apiKey: 'sk-test', apiBase: 'https://api.test.com', mode
 
 vi.stubGlobal('chrome', {
   storage: {
+    // Secrets are read from local first (platform/settings), then sync.
+    local: { get: () => Promise.resolve({}), set: () => Promise.resolve(), remove: () => Promise.resolve() },
     sync: {
       get(keys) {
         const result = {};
@@ -98,7 +100,7 @@ describe('background/sw-openai', () => {
       // Should have received chunks + done
       expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'chunk', content: 'Hello' });
       expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'chunk', content: ' world' });
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'done' });
+      expect(safePostMessage).toHaveBeenCalledWith(port, expect.objectContaining({ type: 'done' }));
     });
 
     it('streams reasoning_content as thinking type', async () => {
@@ -225,7 +227,7 @@ describe('background/sw-openai', () => {
 
       await callOpenAI([{ role: 'user', content: 'hi' }], port);
       // Should still send 'done' at end of while loop
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'done' });
+      expect(safePostMessage).toHaveBeenCalledWith(port, expect.objectContaining({ type: 'done' }));
     });
   });
 
@@ -252,7 +254,7 @@ describe('background/sw-openai', () => {
 
       expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'chunk', content: 'Q1?' });
       expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'chunk', content: ' Q2?' });
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'done' });
+      expect(safePostMessage).toHaveBeenCalledWith(port, expect.objectContaining({ type: 'done' }));
     });
 
     it('does not forward reasoning_content in suggest mode', async () => {

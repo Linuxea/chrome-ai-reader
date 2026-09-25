@@ -19,43 +19,31 @@ import { showStatus } from '../../src/options/status';
 // --- Chrome mock with sync + local backing store ---
 const store: Record<string, Record<string, unknown>> = { sync: {}, local: {} };
 
-vi.stubGlobal('chrome', {
-  storage: {
-    sync: {
-      get(keys: string[] | string | null, cb: (data: Record<string, unknown>) => void) {
-        const result: Record<string, unknown> = {};
-        if (keys == null) Object.assign(result, store.sync);
-        else {
-          const keyList = Array.isArray(keys) ? keys : [keys];
-          keyList.forEach(k => { if (store.sync[k] !== undefined) result[k] = store.sync[k]; });
-        }
-        cb(result);
-      },
-      set(items: Record<string, unknown>, cb?: () => void) {
-        Object.assign(store.sync, items); cb?.();
-      },
-      remove(keys: string[] | string, cb?: () => void) {
-        const keyList = Array.isArray(keys) ? keys : [keys];
-        keyList.forEach(k => delete store.sync[k]); cb?.();
-      },
+/** chrome.storage area mock supporting both callback and promise styles. */
+function area(name: 'sync' | 'local') {
+  const done = <T>(value: T, cb?: (v: T) => void): Promise<T> | void => { if (cb) { cb(value); return; } return Promise.resolve(value); };
+  return {
+    get(keys: string[] | string | null, cb?: (data: Record<string, unknown>) => void) {
+      const result: Record<string, unknown> = {};
+      if (keys == null) Object.assign(result, store[name]);
+      else (Array.isArray(keys) ? keys : [keys]).forEach(k => { if (store[name][k] !== undefined) result[k] = store[name][k]; });
+      return done(result, cb);
     },
-    local: {
-      get(keys: string[] | string, cb: (data: Record<string, unknown>) => void) {
-        const result: Record<string, unknown> = {};
-        const keyList = Array.isArray(keys) ? keys : [keys];
-        keyList.forEach(k => { if (store.local[k] !== undefined) result[k] = store.local[k]; });
-        cb(result);
-      },
-      set(items: Record<string, unknown>, cb?: () => void) {
-        Object.assign(store.local, items); cb?.();
-      },
-      remove(keys: string[] | string, cb?: () => void) {
-        const keyList = Array.isArray(keys) ? keys : [keys];
-        keyList.forEach(k => delete store.local[k]); cb?.();
-      },
+    set(items: Record<string, unknown>, cb?: () => void) {
+      Object.assign(store[name], items);
+      return done(undefined, cb as ((v: undefined) => void) | undefined);
     },
-  },
-});
+    remove(keys: string[] | string, cb?: () => void) {
+      (Array.isArray(keys) ? keys : [keys]).forEach(k => delete store[name][k]);
+      return done(undefined, cb as ((v: undefined) => void) | undefined);
+    },
+  };
+}
+
+vi.stubGlobal('chrome', { storage: { sync: area('sync'), local: area('local') } });
+
+/** Let the async export/import handlers settle. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('options/import-export', () => {
   let mod: typeof ImportExport;
@@ -79,51 +67,85 @@ describe('options/import-export', () => {
   });
 
   describe('export', () => {
-    it('triggers download with versioned JSON when export clicked', () => {
+    it('triggers download with versioned JSON when export clicked', async () => {
       store.sync = { apiKey: 'sk-test', modelName: 'gpt-4' };
 
       exportBtn.click();
+
+      await flush();
 
       expect(downloadFile).toHaveBeenCalledTimes(1);
       const [jsonStr, filename, mimeType] = vi.mocked(downloadFile).mock.calls[0];
       const parsed = JSON.parse(jsonStr as string);
       expect(parsed.version).toBe(1);
-      expect(parsed.apiKey).toBe('sk-test');
       expect(parsed.modelName).toBe('gpt-4');
       expect(filename).toContain('ai-reader-settings-');
       expect(mimeType).toBe('application/json');
     });
 
-    it('includes quickCommands from local storage when present', () => {
+    it('includes quickCommands from local storage when present', async () => {
       store.sync = { apiKey: 'sk-test' };
       store.local = { quickCommands: [{ name: 'cmd', prompt: 'p' }] };
 
       exportBtn.click();
+
+      await flush();
 
       const [, , , ] = vi.mocked(downloadFile).mock.calls[0];
       const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
       expect(parsed.quickCommands).toEqual([{ name: 'cmd', prompt: 'p' }]);
     });
 
-    it('shows success status after export', () => {
+    it('shows success status after export', async () => {
       store.sync = {};
       exportBtn.click();
+      await flush();
       expect(showStatus).toHaveBeenCalledWith('[status.exported]', 'success');
     });
 
-    it('excludes undefined/empty fields from export', () => {
-      store.sync = { apiKey: 'sk-test', apiBase: undefined as unknown as string };
+    it('excludes undefined/empty fields from export', async () => {
+      store.sync = { modelName: 'm', apiBase: undefined as unknown as string };
 
       exportBtn.click();
 
+      await flush();
+
+      const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
+      expect(parsed.modelName).toBe('m');
+      expect(parsed).not.toHaveProperty('apiBase');
+    });
+
+    it('leaves secrets out of the export by default', async () => {
+      store.sync = { apiKey: 'sk-test', ttsAccessKey: 'tts-secret', embeddingApiKey: 'emb-secret', ttsAppId: 'app', modelName: 'm' };
+
+      exportBtn.click();
+
+      await flush();
+
+      const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
+      expect(parsed).not.toHaveProperty('apiKey');
+      expect(parsed).not.toHaveProperty('ttsAccessKey');
+      expect(parsed).not.toHaveProperty('embeddingApiKey');
+      expect(parsed.ttsAppId).toBe('app');
+      expect(parsed.modelName).toBe('m');
+    });
+
+    it('includes secrets when the user opts in', async () => {
+      store.sync = { apiKey: 'sk-test', ttsAccessKey: 'tts-secret' };
+      (document.getElementById('exportIncludeSecrets') as HTMLInputElement).checked = true;
+
+      exportBtn.click();
+
+      await flush();
+
       const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
       expect(parsed.apiKey).toBe('sk-test');
-      expect(parsed).not.toHaveProperty('apiBase');
+      expect(parsed.ttsAccessKey).toBe('tts-secret');
     });
   });
 
   describe('import — file selection', () => {
-    it('opens file dialog when import button clicked', () => {
+    it('opens file dialog when import button clicked', async () => {
       const clickSpy = vi.spyOn(importFile, 'click');
       importBtn.click();
       expect(clickSpy).toHaveBeenCalled();
@@ -155,7 +177,7 @@ describe('options/import-export', () => {
       importFile.dispatchEvent(new Event('change'));
     }
 
-    it('imports valid JSON and writes to storage', () => {
+    it('imports valid JSON and writes to storage', async () => {
       const importData = JSON.stringify({
         version: 1,
         apiKey: 'sk-imported',
@@ -164,13 +186,32 @@ describe('options/import-export', () => {
 
       simulateFileSelect(importData);
 
+      await flush();
+
       expect(showStatus).toHaveBeenCalledWith('[status.imported]', 'success');
       // Storage should have been updated
-      expect(store.sync.apiKey).toBe('sk-imported');
+      // Secrets are written to storage.local (platform/settings).
+      expect(store.local.apiKey).toBe('sk-imported');
+      expect(store.sync.apiKey).toBeUndefined();
     });
 
-    it('shows error for invalid JSON', () => {
+    it('keeps configured secrets when the backup was exported without them', async () => {
+      store.sync = { apiKey: 'sk-existing', ttsAccessKey: 'tts-existing', apiBase: 'https://old.example' };
+
+      simulateFileSelect(JSON.stringify({ version: 1, modelName: 'm' }));
+
+      await flush();
+
+      expect(store.sync.apiKey).toBe('sk-existing'); // not yet migrated — untouched
+      expect(store.sync.ttsAccessKey).toBe('tts-existing');
+      // Non-secret fields absent from the backup are still reset.
+      expect(store.sync).not.toHaveProperty('apiBase');
+      expect(store.sync.modelName).toBe('m');
+    });
+
+    it('shows error for invalid JSON', async () => {
       simulateFileSelect('not valid json {{{');
+      await flush();
 
       expect(showStatus).toHaveBeenCalledWith(
         expect.stringContaining('[status.parseError]'),
@@ -178,18 +219,20 @@ describe('options/import-export', () => {
       );
     });
 
-    it('shows error when version is missing', () => {
+    it('shows error when version is missing', async () => {
       simulateFileSelect(JSON.stringify({ apiKey: 'sk-test' }));
+      await flush();
 
       expect(showStatus).toHaveBeenCalledWith('[status.invalidFile]', 'error');
     });
 
-    it('imports quickCommands when present in import data', () => {
+    it('imports quickCommands when present in import data', async () => {
       simulateFileSelect(JSON.stringify({
         version: 1,
         apiKey: 'sk-test',
         quickCommands: [{ name: 'imported', prompt: 'p' }],
       }));
+      await flush();
 
       expect(store.local.quickCommands).toEqual([{ name: 'imported', prompt: 'p' }]);
     });

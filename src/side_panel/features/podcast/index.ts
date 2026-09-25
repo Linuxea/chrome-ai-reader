@@ -34,7 +34,7 @@ function cleanupPodcast(): void { cleanupPodcastAudio(); cleanupScriptPort(); re
 function showStatus(card: HTMLElement, status: string, text?: string): void { updateCardStatus(card, status, text); updateNowPlaying({ status: status as PodcastStatus, statusText: text }); }
 
 const cardHandlers = {
-  onClose: (card: HTMLElement) => { closePodcast(); },
+  onClose: (_card: HTMLElement) => { closePodcast(); },
   onPlayPause: handlePlayPause, onSeekMouse: seekToMouse, onSeekTouch: seekToTouch,
 };
 

@@ -185,3 +185,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* F5: reading library search */
+.reading-search { padding: 4px 10px 0; }
+.reading-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 12px;
+}
+.reading-search-results { max-height: 240px; overflow-y: auto; padding: 4px 10px; }
+.reading-search-note { font-size: 12px; color: var(--text-secondary); padding: 4px 0; }
+.reading-search-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.reading-search-item:hover { background: var(--bg-secondary, rgba(128, 128, 128, 0.08)); }

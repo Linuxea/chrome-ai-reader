@@ -1,28 +1,15 @@
 import { watch } from 'rollup';
-import commonjs from '@rollup/plugin-commonjs';
-import nodeResolve from '@rollup/plugin-node-resolve';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
+import { ROOT, IIFE_ENTRIES, iifePlugins, iifeOutput } from './iife-config.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-
-const entries = [
-  { input: 'src/content/index.js', name: 'content' },
-  { input: 'src/background/service-worker.js', name: 'background' },
-];
-
-for (const { input, name } of entries) {
+for (const { input, name } of IIFE_ENTRIES) {
   const watcher = watch({
-    input: resolve(root, input),
-    plugins: [nodeResolve({ browser: true }), commonjs()],
-    output: {
-      file: resolve(root, `dist/${name}.js`),
-      format: 'iife',
-      sourcemap: 'inline',
-    },
+    input: resolve(ROOT, input),
+    plugins: iifePlugins({ dev: true }),
+    output: iifeOutput(name, { dev: true }),
     watch: {
-      include: [resolve(root, 'src/content/**'), resolve(root, 'src/background/**')],
+      // Shared modules are bundled into both scripts — watch them too.
+      include: [resolve(ROOT, 'src/content/**'), resolve(ROOT, 'src/background/**'), resolve(ROOT, 'src/shared/**')],
     },
   });
 
@@ -30,6 +17,7 @@ for (const { input, name } of entries) {
     if (event.code === 'START') {
       console.log(`[IIFE] Watching ${name}...`);
     } else if (event.code === 'BUNDLE_END') {
+      event.result.close();
       console.log(`[IIFE] Rebuilt dist/${name}.js`);
     } else if (event.code === 'ERROR') {
       console.error(`[IIFE] Error in ${name}:`, event.error);

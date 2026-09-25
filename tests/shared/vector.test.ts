@@ -82,3 +82,16 @@ describe('findRelatedRecords', () => {
     expect(result.map((r) => r.record.url)).toEqual(['https://related.com']);
   });
 });
+
+import { searchRecords } from '../../src/shared/vector';
+
+describe('searchRecords (reading library search)', () => {
+  const rec = (url: string, embedding: number[]) => ({ id: url, url, normalizedUrl: url, title: url, excerpt: '', embedding, timestamp: 0 });
+
+  it('ranks by similarity to the query vector, drops weak matches and other dimensions', () => {
+    const out = searchRecords([
+      rec('near', [1, 0.1]), rec('far', [0, 1]), rec('mid', [1, 1]), rec('otherModel', [1, 0, 0]),
+    ], [1, 0], 5, 0.5);
+    expect(out.map((r) => r.record.url)).toEqual(['near', 'mid']);
+  });
+});

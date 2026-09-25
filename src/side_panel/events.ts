@@ -27,14 +27,18 @@ export const EVENTS = {
    *  history. The stream handler re-attaches an in-flight answer bubble for
    *  the now-active tab (and saves an answer that finished in the background). */
   CHAT_RERENDERED: 'chatRerendered',
+  /** A citation chip ([#N]) in an answer was clicked. Payload: the paragraph index. */
+  CITATION_CLICK: 'citationClick',
+  /** F10: show another continuation of a branched conversation. */
+  BRANCH_SWITCH: 'branchSwitch',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 /** Typed event map — maps event names to their handler signatures */
 interface EventMap {
-  [EVENTS.RETRY]: (args: { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote?: string }) => void;
-  [EVENTS.EDIT]: (args: { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote?: string }) => void;
+  [EVENTS.RETRY]: (args: { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote?: string; msgId?: string }) => void;
+  [EVENTS.EDIT]: (args: { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote?: string; msgId?: string }) => void;
   [EVENTS.REMOVE_SUGGEST_QUESTIONS]: () => void;
   [EVENTS.REQUEST_RERENDER]: () => void;
   [EVENTS.GENERATE_SUGGESTIONS]: (args: { msgEl: HTMLElement; history: ChatMessage[] }) => void;
@@ -47,6 +51,8 @@ interface EventMap {
   [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string; content?: string }) => void;
   [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
   [EVENTS.CHAT_RERENDERED]: () => void;
+  [EVENTS.CITATION_CLICK]: (args: { index: number }) => void;
+  [EVENTS.BRANCH_SWITCH]: (args: { anchor: string; to: number }) => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();

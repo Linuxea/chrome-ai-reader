@@ -23,6 +23,23 @@ describe('shared/prompts', () => {
       expect(out).not.toContain('{content}');
     });
 
+    it('inserts values verbatim: no $-pattern expansion, no re-expansion of placeholders inside values', () => {
+      const out = getPrompt('default.article', 'zh', { title: 'has {content} inside', content: "code: s.replace(x, '$&') $' $1" });
+      expect(out).toContain('has {content} inside');
+      expect(out).toContain("code: s.replace(x, '$&') $' $1");
+    });
+
+    it('leaves unknown placeholders and JSON braces untouched', () => {
+      const out = getPrompt('annotation.user', 'zh', { fullArticle: 'A', chunkIndex: '0', chunkText: 'B' });
+      expect(out).toContain('{"annotations": []}');
+      expect(getPrompt('draft.supplement', 'zh', {})).toContain('{draft}');
+    });
+
+    it('localizes the custom-prompt block', () => {
+      expect(getPrompt('default.custom', 'zh', { custom: 'X' })).toBe('【补充要求】\nX');
+      expect(getPrompt('default.custom', 'en', { custom: 'X' })).toBe('[Additional requirements]\nX');
+    });
+
     it('leaves a blank line when {custom} is empty (no raw token leak)', () => {
       const out = getPrompt('default', 'zh', { custom: '' });
       expect(out).not.toContain('{custom}');

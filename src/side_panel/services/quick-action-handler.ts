@@ -15,7 +15,7 @@ let _submit: SubmitFn;
  * 'podcast' handled above, 'annotation' handled by its own feature) must be
  * ignored here, otherwise sendToAI would be called with an undefined prompt.
  */
-const KNOWN_ACTIONS = new Set(['summarize', 'translate', 'keyInfo']);
+const KNOWN_ACTIONS = new Set(['summarize', 'translate', 'keyInfo', 'explain']);
 
 export function initQuickActionHandler({ submit }: { submit: SubmitFn }): void {
   _submit = submit;
@@ -42,12 +42,14 @@ export async function handleQuickAction(action: string): Promise<void> {
     summarize: hasSelection ? getPrompt('summarize.quote', getCurrentLang()) : getPrompt('summarize.full', getCurrentLang()),
     translate: hasSelection ? getPrompt('translate.quote', getCurrentLang()) : getPrompt('translate.full', getCurrentLang()),
     keyInfo: hasSelection ? getPrompt('keyInfo.quote', getCurrentLang()) : getPrompt('keyInfo.full', getCurrentLang()),
+    explain: hasSelection ? getPrompt('explain.quote', getCurrentLang()) : getPrompt('explain.full', getCurrentLang()),
   };
 
   const actionNames: Record<string, string> = {
     summarize: t('action.summarize'),
     translate: t('action.translate'),
     keyInfo: t('action.keyInfo'),
+    explain: t('action.explain'),
   };
 
   // Same pipeline as the send button: the draft text rides along as extra

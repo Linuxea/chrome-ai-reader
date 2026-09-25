@@ -129,3 +129,28 @@ describe('extractPageContent — missing content script', () => {
     expect(result.error.message).toBe('[error.pageUnsupported]');
   });
 });
+
+describe('extractPageContent — PDF tabs (F3)', () => {
+  it('reads a .pdf tab with pdf.js instead of the content script', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/side_panel/services/pdf-extractor.js', () => ({
+      extractPdf: vi.fn(async () => ({ ok: true, value: { title: 'P', textContent: 'pdf text', excerpt: 'pdf', paragraphs: ['pdf text'] } })),
+      servesPdf: vi.fn(async () => false),
+    }));
+    const { extractPageContent } = await import('../../src/side_panel/services/page-extractor.js');
+    const { getActiveTabId, getStateForTab } = await import('../../src/side_panel/state.js');
+    getActiveTabId.mockReturnValue(5);
+    const ts = {};
+    getStateForTab.mockReturnValue(ts);
+    chrome.tabs.get.mockResolvedValueOnce({ url: 'https://x.com/a.pdf' });
+    chrome.tabs.sendMessage.mockClear();
+
+    const result = await extractPageContent(5);
+
+    expect(result.ok).toBe(true);
+    expect(result.value.kind).toBe('pdf');
+    expect(ts.pageParagraphs).toEqual(['pdf text']);
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    vi.doUnmock('../../src/side_panel/services/pdf-extractor.js');
+  });
+});

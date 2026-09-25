@@ -29,6 +29,13 @@ export type MessageContentPart =
   | { type: 'image_url'; image_url: { url: string } };
 
 export interface ChatMessage {
+  /**
+   * Stable local id (panel-generated UUID). Retry / edit address a history
+   * entry by it — content matching picked the wrong turn when two user
+   * messages had the same text. Absent only on legacy persisted messages,
+   * which get one on restore (ensureMessageIds). Never sent to the API.
+   */
+  id?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   /**
    * 纯文字消息为 `string`；视觉/多模态消息为 `MessageContentPart[]`
@@ -54,6 +61,12 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** Optional function/tool name (used with role 'tool' or 'assistant' tool_calls). */
   name?: string;
+  /**
+   * Agent loop only: the provider's native assistant content for this turn
+   * (e.g. Anthropic thinking + tool_use blocks), replayed verbatim to the same
+   * provider on the next request. Never persisted, never shown.
+   */
+  providerContent?: unknown;
 }
 
 export interface UserMessageMeta {
@@ -63,6 +76,8 @@ export interface UserMessageMeta {
   displayText: string;
   /** Full quoted page text, when the message carried a quote. */
   quote?: string;
+  /** Other tabs attached as context (F4); re-read on retry. */
+  tabs?: { id: number; title: string; url: string }[];
 }
 
 /**
@@ -78,12 +93,25 @@ export interface ToolCall {
   arguments: string;
 }
 
+export interface BranchSet {
+  tails: (ChatMessage[] | null)[];
+  active: number;
+}
+
 export interface TabState {
   pageContent: string;
   pageTitle: string;
   pageExcerpt: string;
   /** URL the cached page content was extracted from (hash stripped). */
   pageUrl?: string;
+  /** The article split into paragraphs ([#N] in prompts, citation targets). */
+  pageParagraphs?: string[];
+  /**
+   * F10 branches: alternative continuations after a message (key: the id of
+   * the message before the fork, or ROOT_BRANCH). `tails[active]` is null —
+   * that continuation is the live one in conversationHistory.
+   */
+  branches?: Record<string, BranchSet>;
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
   selectedText: string;

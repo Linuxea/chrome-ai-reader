@@ -7,6 +7,7 @@ import { renderTranscript, resetHighlightState } from './ui';
 import { setPodcastTitle, resetRoundTimings, generatePodcastAudio } from './audio';
 import { isNowPlayingGenerating, updateNowPlaying, type NlpRound } from './now-playing';
 import type { PodcastLLMRequest } from '../../../shared/protocol';
+import { openAIChatPort, openPodcastLLMPort } from '../../../platform/ports';
 
 let podcastLlmPort: chrome.runtime.Port | null = null;
 
@@ -89,9 +90,9 @@ export function extractPodcastTitle(rounds: NlpRound[]): string {
 }
 
 function generatePodcastMetadata(card: HTMLElement, fullScript: string): void {
-  const port = chrome.runtime.connect({ name: 'ai-chat' });
+  const port = openAIChatPort();
   let result = '';
-  port.postMessage({ type: 'chat', messages: [{ role: 'system', content: 'Generate a captivating title and a short summary description for this podcast conversation. Return ONLY valid JSON with two keys: "title" (string, max 30 chars) and "description" (string, max 100 chars, highlighting the core topic).' }, { role: 'user', content: fullScript.slice(0, 4000) }], response_format: { type: 'json_object' } });
+  port.postMessage({ type: 'chat', messages: [{ role: 'system', content: getPrompt('podcast.meta', getCurrentLang()) }, { role: 'user', content: fullScript.slice(0, 4000) }], response_format: { type: 'json_object' } });
   port.onMessage.addListener((msg: { type: string; content?: string }) => {
     if (msg.type === 'chunk' && msg.content) result += msg.content;
     else if (msg.type === 'done') {
@@ -122,7 +123,7 @@ async function onScriptDone(card: HTMLElement, fullScript: string): Promise<void
 }
 
 async function generatePodcastScript(card: HTMLElement, textContent: string, images: string[] = []): Promise<void> {
-  const port = chrome.runtime.connect({ name: 'podcast-llm' });
+  const port = openPodcastLLMPort();
   podcastLlmPort = port;
   let fullScript = '';
   const req: PodcastLLMRequest = { type: 'generate', prompt: getPrompt('podcast.system', getCurrentLang()), text: textContent };

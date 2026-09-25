@@ -8,7 +8,9 @@
     "sidePanel",
     "scripting",
     "storage",
-    "tabs"
+    "tabs",
+    "contextMenus",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -18,8 +20,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -37,6 +43,20 @@
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+S"
+      },
+      "description": "打开小🍐子阅读助手"
+    },
+    "ask-selection": {
+      "suggested_key": {
+        "default": "Alt+Q"
+      },
+      "description": "就网页上选中的内容提问"
     }
   }
 }
