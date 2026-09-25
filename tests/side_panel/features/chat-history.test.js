@@ -337,6 +337,20 @@ describe('saveCurrentChat', () => {
     expect((await listChats()).map(h => h.title).sort()).toEqual(['first chat', 'second chat']);
   });
 
+  it('two new chats saved in the same millisecond get distinct ids', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    addUserMessage('chat A');
+    const first = saveCurrentChat();
+    const idA = currentId;
+    stateMock.setCurrentChatId(null);
+    chatArea.innerHTML = '';
+    addUserMessage('chat B');
+    const second = saveCurrentChat();
+    await Promise.all([first, second]);
+    expect(currentId).not.toBe(idA);
+    nowSpy.mockRestore();
+  });
+
   it('keeps the quote apart from the question (titles show the question)', () => {
     const el = document.createElement('div');
     el.className = 'message message-user';
@@ -350,3 +364,4 @@ describe('saveCurrentChat', () => {
     ]);
   });
 });
+

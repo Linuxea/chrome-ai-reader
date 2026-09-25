@@ -146,6 +146,11 @@
             <span data-i18n="settings.tts.autoPlay">AI 回复后自动朗读</span>
             <input type="checkbox" id="ttsAutoPlay">
           </label>
+          <label class="toggle-row">
+            <span data-i18n="settings.podcast.direct">播客直连（无需本地代理）</span>
+            <input type="checkbox" id="podcastDirect">
+          </label>
+          <p class="hint" data-i18n="settings.podcast.direct.hint">开启后由扩展直接连接火山引擎播客接口（通过 declarativeNetRequest 注入鉴权请求头），不用再运行 proxy/。直连失败时会自动回退到本地代理。</p>
         </div>
       </details>
 

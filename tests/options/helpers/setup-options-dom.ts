@@ -23,7 +23,7 @@ const TEXT_INPUT_IDS = [
 
 /** IDs of all checkbox elements */
 const CHECKBOX_IDS = [
-  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'citations', 'agentMode',
+  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'citations', 'agentMode', 'podcastDirect',
 ] as const;
 
 /** IDs of all button elements */

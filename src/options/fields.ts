@@ -21,6 +21,7 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
   embeddingEnabled: document.getElementById('embeddingEnabled') as HTMLInputElement,
   citations: document.getElementById('citations') as HTMLInputElement,
   agentMode: document.getElementById('agentMode') as HTMLInputElement,
+  podcastDirect: document.getElementById('podcastDirect') as HTMLInputElement,
 };
 
 /**

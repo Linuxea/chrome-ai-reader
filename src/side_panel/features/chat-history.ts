@@ -6,6 +6,7 @@ import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
 import { showToast } from '../ui/toast';
 import { stripImagesForPersistence } from '../../shared/strip-images';
+import { genId } from '../../shared/ids';
 import { addTTSButton } from '../services/tts/index.js';
 import { renderMarkdown, sanitizeHtml, parseInertHtml } from '../ui/markdown';
 import { emit, EVENTS } from '../events';
@@ -125,7 +126,9 @@ export function saveCurrentChat(): Promise<void> {
   let chatId = state.getCurrentChatId();
   const isNew = !chatId;
   if (!chatId) {
-    chatId = 'chat_' + now;
+    // Unique even for two chats saved in the same millisecond (a bare
+    // timestamp id let the second overwrite the first).
+    chatId = `chat_${now}_${genId().slice(0, 8)}`;
     state.setCurrentChatId(chatId);
   }
   const snapshot = {
