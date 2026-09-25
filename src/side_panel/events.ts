@@ -29,6 +29,8 @@ export const EVENTS = {
   CHAT_RERENDERED: 'chatRerendered',
   /** A citation chip ([#N]) in an answer was clicked. Payload: the paragraph index. */
   CITATION_CLICK: 'citationClick',
+  /** F10: show another continuation of a branched conversation. */
+  BRANCH_SWITCH: 'branchSwitch',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -50,6 +52,7 @@ interface EventMap {
   [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
   [EVENTS.CHAT_RERENDERED]: () => void;
   [EVENTS.CITATION_CLICK]: (args: { index: number }) => void;
+  [EVENTS.BRANCH_SWITCH]: (args: { anchor: string; to: number }) => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();

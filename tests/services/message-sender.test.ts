@@ -141,6 +141,15 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
     if (idx !== -1) hist.splice(idx, hist.length - idx);
     return idx;
   }),
+  // Branching behaves like truncation for these tests (branches are covered in history-ops tests).
+  branchFromId: vi.fn((ts: { conversationHistory: { id?: string }[] }, id: string) => {
+    const hist = ts.conversationHistory;
+    const idx = hist.findIndex(m => m.id === id);
+    if (idx !== -1) hist.splice(idx, hist.length - idx);
+    return idx;
+  }),
+  anchorAt: vi.fn(() => '__root__'),
+  branchInfo: vi.fn(() => null),
   truncateHistoryFromUserContent: vi.fn((ts: { conversationHistory: unknown[] }, content: unknown) => {
     const hist = ts.conversationHistory;
     const idx = hist.findLastIndex((m: { role: string; content: unknown }) =>
@@ -697,7 +706,7 @@ describe('services/message-sender', () => {
 
       await retryMessage(wrapper, 'summarize', 'summarize', undefined, 'u1');
 
-      expect(truncateHistoryFromUserContent).not.toHaveBeenCalled();
+      expect(truncateHistoryFromUserContent).not.toHaveBeenCalled(); // the id path branches instead
       const contents = (tabState.conversationHistory as { content: unknown }[]).map(m => m.content);
       expect(contents).not.toContain('first answer');
       expect(contents).not.toContain('second answer');

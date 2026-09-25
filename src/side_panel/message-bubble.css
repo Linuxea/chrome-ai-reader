@@ -236,3 +236,22 @@
 .agent-step { opacity: 0.7; }
 .agent-step.done { opacity: 1; }
 .agent-step:not(.done)::after { content: ' …'; }
+
+/* F10: ‹ n/m › branch switcher on a retried / edited message */
+.branch-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.branch-switch button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 13px;
+}
+.branch-switch button:disabled { opacity: 0.3; cursor: default; }

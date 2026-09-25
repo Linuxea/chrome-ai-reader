@@ -13,6 +13,7 @@ import { readSettings } from '../platform/settings';
 import { openOptionsPage } from '../platform/messaging';
 import { initAIChat } from './services/ai-chat';
 import { submit, retryMessage, editMessage } from './services/message-sender';
+import { switchBranch } from './services/chat/history-ops';
 import { initComposer } from './services/composer';
 import { initChatHistory, saveCurrentChat } from './features/chat-history';
 import { initQuickCommands, isCommandPopupOpen, hideCommandPopup, getFilteredCommands, renderCommandPopup, executeQuickCommand, getCommandSelectedIndex, setCommandSelectedIndex } from './features/quick-commands';
@@ -161,6 +162,15 @@ async function init(): Promise<void> {
   on(EVENTS.PODCAST_CLICK, () => handlePodcastClick());
   on(EVENTS.ADD_TTS_BUTTON, (args) => { addTTSButton((args as { msgEl: HTMLElement }).msgEl); });
   on(EVENTS.SAVE_CURRENT_CHAT, () => saveCurrentChat());
+  on(EVENTS.BRANCH_SWITCH, ({ anchor, to }) => {
+    const tabId = state.getActiveTabId();
+    const tabState = tabId != null ? state.getStateForTab(tabId) : null;
+    if (!tabState || tabState.isGenerating) return;
+    if (switchBranch(tabState, anchor, to, tabId!)) {
+      resetUIForTabSwitch(els, deps);
+      saveCurrentChat();
+    }
+  });
   on(EVENTS.SHOW_RELATED_PAGES, () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.url) renderRelatedPages(tabs[0].url);

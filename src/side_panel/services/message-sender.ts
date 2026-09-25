@@ -18,7 +18,7 @@ import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES, type AttachedTab } from './composer';
 import { ensurePageContent, extractTabContent } from './page-extractor';
 import { callAI, takePendingAbort } from './stream-handler';
-import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, truncateHistoryFromId, toApiMessage } from './chat/history-ops';
+import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, branchFromId, anchorAt, branchInfo, toApiMessage } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
 let _chatArea: HTMLElement;
@@ -49,7 +49,10 @@ export async function sendToAI(
   if (quoteForContext) meta.quote = quoteForContext;
   if (tabs?.length) meta.tabs = tabs.map(({ id, title, url }) => ({ id, title, url }));
   const msgId = genId();
-  const userMsgEl = appendUserMessage({ ...meta, imageUris, id: msgId });
+  // F10: after a retry / edit this message starts a new branch at its fork.
+  const anchor = anchorAt(tabState.conversationHistory, tabState.conversationHistory.length);
+  const info = branchInfo(tabState, anchor);
+  const userMsgEl = appendUserMessage({ ...meta, imageUris, id: msgId }, info ? { branch: { anchor, ...info } } : undefined);
   if (quoteForContext) emit(EVENTS.CLEAR_QUOTE_PREVIEW);
 
   try {
@@ -301,7 +304,8 @@ async function resendUserMessage(opts: {
     ?? (bubbleImages.length > 0 ? bubbleImages : undefined);
   const retriedTabs = msgId ? tabState.conversationHistory.find((m) => m.id === msgId)?.meta?.tabs : undefined;
 
-  if (msgId) truncateHistoryFromId(tabState, msgId, startTabId!);
+  // Keep what is being replaced as a branch (‹ n/m › on the new bubble).
+  if (msgId) branchFromId(tabState, msgId, startTabId!);
   else truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
   await sendToAI(sendText, sendDisplay, rawQuote, retriedImages, retriedTabs);

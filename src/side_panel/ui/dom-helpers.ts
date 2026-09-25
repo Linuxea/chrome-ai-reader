@@ -40,6 +40,16 @@ export interface AppendOptions {
   target?: HTMLElement | DocumentFragment;
   /** Skip the per-message scroll-to-bottom; batch callers scroll once at the end. */
   deferScroll?: boolean;
+  /** F10: this user message starts a branched continuation. */
+  branch?: BranchPosition;
+}
+
+/** Where a user message sits among the continuations of its fork. */
+export interface BranchPosition {
+  anchor: string;
+  /** 1-based. */
+  index: number;
+  total: number;
 }
 
 export function appendMessage(role: string, content: string, imageUris?: string[], options?: AppendOptions): HTMLDivElement {
@@ -111,6 +121,28 @@ export interface UserBubble {
   tabs?: { title: string }[];
 }
 
+/** ‹ n/m › switcher on a user bubble whose message was retried / edited. */
+function addBranchSwitcher(wrapper: HTMLElement, branch: BranchPosition): void {
+  const box = document.createElement('span');
+  box.className = 'branch-switch';
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.textContent = '‹';
+  prev.title = t('branch.previous');
+  prev.disabled = branch.index <= 1;
+  prev.addEventListener('click', () => emit(EVENTS.BRANCH_SWITCH, { anchor: branch.anchor, to: branch.index - 2 }));
+  const label = document.createElement('span');
+  label.textContent = `${branch.index}/${branch.total}`;
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.textContent = '›';
+  next.title = t('branch.next');
+  next.disabled = branch.index >= branch.total;
+  next.addEventListener('click', () => emit(EVENTS.BRANCH_SWITCH, { anchor: branch.anchor, to: branch.index }));
+  box.append(prev, label, next);
+  (wrapper.querySelector('.msg-actions') ?? wrapper).prepend(box);
+}
+
 const QUOTE_PREVIEW_CHARS = 50;
 
 /**
@@ -131,6 +163,10 @@ export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): 
   el.dataset.rawText = rawText;
   el.dataset.rawDisplay = displayText;
   if (id) el.dataset.msgId = id;
+  if (options?.branch) {
+    const wrapper = el.closest('.user-msg-group') as HTMLElement | null;
+    if (wrapper) addBranchSwitcher(wrapper, options.branch);
+  }
   if (tabs?.length) {
     const line = document.createElement('div');
     line.className = 'bubble-tabs';

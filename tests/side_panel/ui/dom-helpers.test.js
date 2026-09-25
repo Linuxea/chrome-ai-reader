@@ -7,7 +7,7 @@ vi.mock('../../../src/shared/i18n.js', () => ({
 
 vi.mock('../../../src/side_panel/events.js', () => ({
   emit: vi.fn(),
-  EVENTS: { RETRY: 'retry', EDIT: 'edit' },
+  EVENTS: { RETRY: 'retry', EDIT: 'edit', BRANCH_SWITCH: 'branchSwitch', ADD_TTS_BUTTON: 'addTTSButton' },
 }));
 
 import {
@@ -492,5 +492,21 @@ describe('dom-helpers', () => {
 
       expect(div.className).toContain('message-ai');
     });
+  });
+});
+
+describe('branch switcher (F10)', () => {
+  it('renders ‹ n/m › and emits BRANCH_SWITCH with the target index', () => {
+    const div = appendMessageFromHistory(
+      { id: 'u', role: 'user', content: 'q', meta: { rawText: 'q', displayText: 'q' } },
+      { branch: { anchor: 'a1', index: 2, total: 3 } },
+    );
+    const box = div.closest('.user-msg-group').querySelector('.branch-switch');
+    expect(box.textContent).toContain('2/3');
+    const [prev, , next] = box.children;
+    prev.click();
+    expect(emit).toHaveBeenCalledWith(EVENTS.BRANCH_SWITCH, { anchor: 'a1', to: 0 });
+    next.click();
+    expect(emit).toHaveBeenCalledWith(EVENTS.BRANCH_SWITCH, { anchor: 'a1', to: 2 });
   });
 });

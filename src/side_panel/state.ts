@@ -67,6 +67,12 @@ function writeTabState(tabId: number, ts: TabState): void {
     ...ts,
     conversationHistory: ts.conversationHistory.map(stripImagesForPersistence),
   };
+  if (ts.branches) {
+    persistable.branches = Object.fromEntries(Object.entries(ts.branches).map(([k, set]) => [k, {
+      active: set.active,
+      tails: set.tails.map((tail) => tail?.map(stripImagesForPersistence) ?? null),
+    }]));
+  }
   const write = (value: TabState): Promise<void> => {
     try { return Promise.resolve(chrome.storage.session.set({ [key]: value })); } catch (e) { return Promise.reject(e); }
   };
@@ -294,7 +300,7 @@ export function setIsPodcastGenerating(v: boolean): void { if (!_activeState) re
 // than going through the debounced setter path.
 
 export function getConversationHistory(): ChatMessage[] { return _activeState?.conversationHistory ?? []; }
-export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = ensureMessageIds(v); persistActiveNow(); }
+export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = ensureMessageIds(v); _activeState.branches = {}; persistActiveNow(); }
 
 export function pushConversation(msg: ChatMessage): void {
   if (!_activeState) return;
@@ -311,5 +317,6 @@ export function spliceConversation(...args: Parameters<Array<ChatMessage>['splic
 export function clearConversation(): void {
   if (!_activeState) return;
   _activeState.conversationHistory = [];
+  _activeState.branches = {};
   persistActiveNow();
 }

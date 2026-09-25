@@ -330,3 +330,42 @@ describe('toApiMessage', () => {
     expect(out).toEqual({ role: 'user', content: 'hi' });
   });
 });
+
+import { branchFromId, branchInfo, switchBranch, anchorAt, ROOT_BRANCH } from '../../../src/side_panel/services/chat/history-ops';
+
+describe('history-ops branches (F10)', () => {
+  const TAB_ID = 7;
+  const msg = (id: string, role: 'user' | 'assistant' = 'user') => ({ id, role, content: id });
+
+  it('retrying keeps the replaced continuation as a branch at the fork', () => {
+    const ts = makeTabState([msg('u1'), msg('a1', 'assistant'), msg('u2'), msg('a2', 'assistant')]);
+    expect(branchFromId(ts, 'u2', TAB_ID)).toBe(2);
+    expect(ts.conversationHistory.map((m) => m.id)).toEqual(['u1', 'a1']);
+    ts.conversationHistory.push(msg('u2b'), msg('a2b', 'assistant'));
+    expect(branchInfo(ts, 'a1')).toEqual({ index: 2, total: 2 });
+    expect(anchorAt(ts.conversationHistory, 2)).toBe('a1');
+  });
+
+  it('switching swaps the live continuation with the chosen one, both ways', () => {
+    const ts = makeTabState([msg('u1'), msg('a1', 'assistant'), msg('u2'), msg('a2', 'assistant')]);
+    branchFromId(ts, 'u2', TAB_ID);
+    ts.conversationHistory.push(msg('u2b'), msg('a2b', 'assistant'));
+
+    expect(switchBranch(ts, 'a1', 0, TAB_ID)).toBe(true);
+    expect(ts.conversationHistory.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+    expect(branchInfo(ts, 'a1')).toEqual({ index: 1, total: 2 });
+
+    expect(switchBranch(ts, 'a1', 1, TAB_ID)).toBe(true);
+    expect(ts.conversationHistory.map((m) => m.id)).toEqual(['u1', 'a1', 'u2b', 'a2b']);
+    expect(switchBranch(ts, 'a1', 1, TAB_ID)).toBe(false); // already active
+  });
+
+  it('forks at the first message use the root anchor', () => {
+    const ts = makeTabState([msg('u1'), msg('a1', 'assistant')]);
+    branchFromId(ts, 'u1', TAB_ID);
+    ts.conversationHistory.push(msg('u1b'));
+    expect(branchInfo(ts, ROOT_BRANCH)).toEqual({ index: 2, total: 2 });
+    switchBranch(ts, ROOT_BRANCH, 0, TAB_ID);
+    expect(ts.conversationHistory.map((m) => m.id)).toEqual(['u1', 'a1']);
+  });
+});

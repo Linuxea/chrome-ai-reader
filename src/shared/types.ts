@@ -93,6 +93,11 @@ export interface ToolCall {
   arguments: string;
 }
 
+export interface BranchSet {
+  tails: (ChatMessage[] | null)[];
+  active: number;
+}
+
 export interface TabState {
   pageContent: string;
   pageTitle: string;
@@ -101,6 +106,12 @@ export interface TabState {
   pageUrl?: string;
   /** The article split into paragraphs ([#N] in prompts, citation targets). */
   pageParagraphs?: string[];
+  /**
+   * F10 branches: alternative continuations after a message (key: the id of
+   * the message before the fork, or ROOT_BRANCH). `tails[active]` is null —
+   * that continuation is the live one in conversationHistory.
+   */
+  branches?: Record<string, BranchSet>;
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
   selectedText: string;

@@ -9,6 +9,8 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../../../src/shared/i18n.js', () => ({ t: (k: string) => `[${k}]` }));
 vi.mock('../../../src/side_panel/state.js', () => ({
+  getActiveTabId: vi.fn(() => 1),
+  getStateForTab: vi.fn(() => ({ conversationHistory: [], branches: {} })),
   getIsPodcastGenerating: vi.fn(() => false),
   setIsPodcastGenerating: vi.fn(),
   setCurrentChatId: vi.fn(),
