@@ -17,7 +17,11 @@
 | 0.6 | proxy `listen(PORT,'127.0.0.1')` + Origin 校验 | S3 | `tests/proxy` 新增 Origin 拒绝用例 |
 | 0.7 | 设置页文案修正；导出默认脱敏 | S2（部分） | 导出 JSON 默认不含 `*Key`/`accessKey` |
 
-## Phase 1 — 护栏（约 2–3 天）
+## Phase 1 — 护栏（约 2–3 天）✅ 已完成（2026-09-25）
+
+> 分层用 dependency-cruiser（按真实解析路径检查，含 type-only import 与循环）而非 `eslint-plugin-boundaries`；ESLint 专注代码规则。
+> 1.3 只把 `global-events` / `tab-switch-handler` 迁入 `shell/`，`main.ts` 仍是入口（作为组合根的一部分，不被任何模块 import）。
+> 1.5 顺带修复：`annotation.user`、`podcast.meta`、`default.custom` 三处内联提示词收口到 `prompts.ts`；`getPrompt` 改为单遍替换（原实现会展开值里的 `$&` 并重复展开占位符）。
 
 1. GitHub Actions：`npm ci` → `tsc --noEmit` → `eslint` → `vitest run --coverage` → `npm run build`，另起 job 安装 `proxy/` 依赖跑 proxy 测试。
 2. 引入 `typescript-eslint`（让 ESLint 真正检查 `.ts`）+ `eslint-plugin-boundaries`，按设计 §3.1 分层配置，先 warn、清零后改 error。

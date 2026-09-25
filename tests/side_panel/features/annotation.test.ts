@@ -4,7 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 // vi.hoisted ensures the mock fn exists before vi.mock's factory runs (vi.mock
 // is hoisted above imports).
 const { updateQuotePreview } = vi.hoisted(() => ({ updateQuotePreview: vi.fn() }));
-vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
+vi.mock('../../../src/side_panel/ui/quote-preview.js', () => ({
   updateQuotePreview,
 }));
 

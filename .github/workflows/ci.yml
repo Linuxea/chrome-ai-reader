@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            proxy/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # tests/proxy imports proxy/server.js, which needs `ws`
+      - name: Install proxy deps
+        run: npm ci
+        working-directory: proxy
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint (ESLint + layering / cycles)
+        run: npm run lint
+
+      - name: Test (with coverage thresholds)
+        run: npm run test:coverage
+
+      - name: Build extension
+        run: npm run build

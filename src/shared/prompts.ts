@@ -31,8 +31,11 @@ export type PromptKey =
   | 'suggest.userLabel'
   | 'suggest.aiLabel'
   | 'outline'
+  | 'default.custom'
   | 'annotation.system'
-  | 'podcast.system';
+  | 'annotation.user'
+  | 'podcast.system'
+  | 'podcast.meta';
 
 type PromptTable = Record<PromptKey, string>;
 
@@ -82,6 +85,9 @@ const ZH: PromptTable = {
   // Appended to a quick action / quick command prompt when the input box
   // still holds a draft — the draft rides along as extra instructions.
   'draft.supplement': '【用户补充要求】\n{draft}',
+
+  // The user's custom system prompt, folded into `default` as {custom}.
+  'default.custom': '【补充要求】\n{custom}',
 
   'outline': [
     '你是一个内容分析专家。请将文章内容分析为结构化大纲。',
@@ -152,6 +158,37 @@ const ZH: PromptTable = {
 
   // Podcast is intentionally zh-only: the TTS voice pipeline (SPEAKER_MAP)
   // targets Chinese voices, so an English prompt variant would be misleading.
+  // Paragraphs in {fullArticle} are labelled "[#N]" (content/annotation/chunk-collector.ts).
+  'annotation.user': [
+    '以下是完整文章作为上下文（每段以 [#N] 标注序号）：',
+    '',
+    '<full_article>',
+    '{fullArticle}',
+    '</full_article>',
+    '',
+    '请只对第 [#{chunkIndex}] 段进行批注。该段内容：',
+    '',
+    '<target_chunk>',
+    '{chunkText}',
+    '</target_chunk>',
+    '',
+    '返回格式（JSON object）：',
+    '{',
+    '  "annotations": [',
+    '    {',
+    '      "perspective": "critique" | "counterpoint" | "flaw",',
+    '      "quote": "段落中原样引用的句子",',
+    '      "comment": "你的批注，1-2句"',
+    '    }',
+    '  ]',
+    '}',
+    '',
+    '如果该段没有值得批注的点，返回 {"annotations": []}。',
+  ].join('\n'),
+
+  // Title + description for a generated podcast; the user message is the script.
+  'podcast.meta': 'Generate a captivating title and a short summary description for this podcast conversation. Return ONLY valid JSON with two keys: "title" (string, max 30 chars) and "description" (string, max 100 chars, highlighting the core topic).',
+
   'podcast.system': [
     '你是一位经验丰富的播客制作人，擅长将复杂内容转化为引人入胜的双人对谈。',
     '',
@@ -244,6 +281,8 @@ const EN: Partial<PromptTable> = {
 
   'draft.supplement': '[Additional instructions from the user]\n{draft}',
 
+  'default.custom': '[Additional requirements]\n{custom}',
+
   'outline': [
     'You are a content analysis expert. Analyze the article content into a structured outline.',
     '',
@@ -310,6 +349,32 @@ const EN: Partial<PromptTable> = {
     'Example (input passage: "Our new model improves over all baselines by 50%, far exceeding competitors."):',
     '{"annotations":[{"perspective":"critique","quote":"improves over all baselines by 50%","comment":"No baseline model or benchmark set is named; the 50% figure has no verifiable source."}]}',
   ].join('\n'),
+  'annotation.user': [
+    'Here is the full article for context (each paragraph is labelled [#N]):',
+    '',
+    '<full_article>',
+    '{fullArticle}',
+    '</full_article>',
+    '',
+    'Annotate ONLY paragraph [#{chunkIndex}]. Its text:',
+    '',
+    '<target_chunk>',
+    '{chunkText}',
+    '</target_chunk>',
+    '',
+    'Response format (JSON object):',
+    '{',
+    '  "annotations": [',
+    '    {',
+    '      "perspective": "critique" | "counterpoint" | "flaw",',
+    '      "quote": "a verbatim sentence from the paragraph",',
+    '      "comment": "your annotation, 1-2 sentences"',
+    '    }',
+    '  ]',
+    '}',
+    '',
+    'If nothing in the paragraph merits annotation, return {"annotations": []}.',
+  ].join('\n'),
   // 'podcast.system' intentionally omitted — zh-only feature (see note above).
 };
 
@@ -329,11 +394,12 @@ export function getPrompt(
   params?: Record<string, string>,
 ): string {
   const resolvedLang: Lang = lang === 'en' ? 'en' : 'zh';
-  let text = TABLES[resolvedLang]?.[key] ?? ZH[key] ?? key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
-    }
-  }
-  return text;
+  const text = TABLES[resolvedLang]?.[key] ?? ZH[key] ?? key;
+  if (!params) return text;
+  // One pass over the template, with a replacer FUNCTION: values (page text,
+  // user input) are inserted verbatim — a string replacement would expand
+  // `$&` / `$'` inside them, and sequential per-key passes would re-expand a
+  // `{placeholder}` that happens to appear inside an earlier value. Unknown
+  // placeholders (and JSON braces like `{"annotations": []}`) are left as-is.
+  return text.replace(/\{(\w+)\}/g, (m, k: string) => (Object.hasOwn(params, k) ? params[k] : m));
 }

@@ -23,10 +23,11 @@ export function iifePlugins() {
   ];
 }
 
-export function iifeOutput(name) {
+/** `dev`: inline source maps (watch mode); production ships without them. */
+export function iifeOutput(name, { dev = false } = {}) {
   return {
     file: resolve(ROOT, `dist/${name}.js`),
     format: 'iife',
-    sourcemap: 'inline',
+    sourcemap: dev ? 'inline' : false,
   };
 }

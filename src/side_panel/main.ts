@@ -23,9 +23,10 @@ import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initMiniPlayer } from './features/podcast/mini-player.js';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
-import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
-import type { UIElements } from './ui/global-events';
-import { handleLoadChat, resetUIForTabSwitch } from './ui/tab-switch-handler';
+import { bindGlobalEvents } from './shell/global-events';
+import type { UIElements } from './shell/types';
+import { updateQuotePreview } from './ui/quote-preview';
+import { handleLoadChat, resetUIForTabSwitch } from './shell/tab-switch-handler';
 import type { ChatMessage } from '../shared/types';
 
 const els = {

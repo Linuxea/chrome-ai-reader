@@ -1,11 +1,11 @@
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
-import { appendMessageFromHistory, scrollToBottom } from './dom-helpers';
+import { appendMessageFromHistory, scrollToBottom } from '../ui/dom-helpers';
 import { clearImagePreviews } from '../services/images.js';
-import { updateQuotePreview } from './global-events';
+import { updateQuotePreview } from '../ui/quote-preview';
 import type { ChatMessage } from '../../shared/types';
-import type { UIElements, GlobalEventDeps } from './global-events';
+import type { UIElements, GlobalEventDeps } from './types';
 
 export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): void {
   if (deps.isTTSPlaying()) deps.stopTTS();

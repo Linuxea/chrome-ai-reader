@@ -1,49 +1,23 @@
+/**
+ * Shell: binds the panel's global controls (header buttons, input, tab
+ * activation, selection relay) to services and features. As part of the
+ * composition root it may import every side-panel layer; nothing below
+ * imports it (enforced by .dependency-cruiser.cjs).
+ */
 import { t } from '../../shared/i18n.js';
 import * as state from '../state';
-import { setButtonsDisabled, updateSendButtonDim } from './dom-helpers';
-import { showToast } from './toast';
+import { setButtonsDisabled, updateSendButtonDim } from '../ui/dom-helpers';
+import { showToast } from '../ui/toast';
+import { updateQuotePreview } from '../ui/quote-preview';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
 import { clearImagePreviews } from '../services/images.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
 import { emit, EVENTS } from '../events';
 import { resetUIForTabSwitch, cleanupActiveFeatures } from './tab-switch-handler.js';
+import type { UIElements, GlobalEventDeps } from './types';
 
-export interface UIElements {
-  settingsBtn: HTMLElement;
-  newChatBtn: HTMLElement;
-  exportBtn: HTMLElement;
-  historyBtn: HTMLElement;
-  historyBackBtn: HTMLElement;
-  quoteClose: HTMLElement;
-  chatArea: HTMLElement;
-  quoteText: HTMLElement;
-  quotePreview: HTMLElement;
-  historyPanel: HTMLElement;
-  historyList: HTMLElement;
-  userInput: HTMLTextAreaElement;
-}
-
-export interface GlobalEventDeps {
-  removeSuggestQuestions: () => void;
-  isTTSPlaying: () => boolean;
-  stopTTS: () => void;
-}
-
-/** Subset of UIElements that updateQuotePreview touches. Accepting a Pick lets
- *  callers (e.g. the annotation feature) pass just these two elements. */
-type QuotePreviewEls = Pick<UIElements, 'quoteText' | 'quotePreview'>;
-
-export function updateQuotePreview(els: QuotePreviewEls, text: string): void {
-  state.setSelectedText(text);
-  if (text) {
-    const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
-    els.quoteText.textContent = truncated;
-    els.quotePreview.classList.remove('hidden');
-  } else {
-    els.quoteText.textContent = '';
-    els.quotePreview.classList.add('hidden');
-  }
-}
+export type { UIElements, GlobalEventDeps } from './types';
+export { updateQuotePreview } from '../ui/quote-preview';
 
 export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
   els.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());

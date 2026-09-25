@@ -5,7 +5,7 @@ import { downloadFile } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
 import { showToast } from '../ui/toast';
-import { stripImagesForPersistence } from '../services/chat/strip-images';
+import { stripImagesForPersistence } from '../../shared/strip-images';
 import { addTTSButton } from '../services/tts/index.js';
 import { renderMarkdown, sanitizeHtml, parseInertHtml } from '../ui/markdown';
 import { emit, EVENTS } from '../events';

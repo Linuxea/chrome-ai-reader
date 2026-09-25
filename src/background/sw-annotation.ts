@@ -15,34 +15,9 @@ export function buildAnnotationMessages(
   { fullArticle, chunkIndex, chunkText }: BuildArgs,
   lang: Lang = 'zh',
 ): { role: 'system' | 'user'; content: string }[] {
-  const userPrompt = `以下是完整文章作为上下文：
-
-<full_article>
-${fullArticle}
-</full_article>
-
-请只对【第 ${chunkIndex} 段】进行批注。该段内容：
-
-<target_chunk>
-${chunkText}
-</target_chunk>
-
-返回格式（JSON object）：
-{
-  "annotations": [
-    {
-      "perspective": "critique" | "counterpoint" | "flaw",
-      "quote": "段落中原样引用的句子",
-      "comment": "你的批注，1-2句"
-    }
-  ]
-}
-
-如果该段没有值得批注的点，返回 {"annotations": []}。`;
-
   return [
     { role: 'system', content: getPrompt('annotation.system', lang) },
-    { role: 'user', content: userPrompt },
+    { role: 'user', content: getPrompt('annotation.user', lang, { fullArticle, chunkIndex: String(chunkIndex), chunkText }) },
   ];
 }
 

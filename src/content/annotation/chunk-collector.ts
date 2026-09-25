@@ -45,7 +45,11 @@ export function collectChunks(root: Document | HTMLElement = document): Collecte
   return chunks;
 }
 
-/** Build the full-article context string from collected chunks. */
+/**
+ * Build the full-article context string from collected chunks. The "[#N]"
+ * labels are language-neutral; the `annotation.user` prompt (zh and en)
+ * refers to the target paragraph by the same label.
+ */
 export function buildFullArticle(chunks: CollectedChunk[]): string {
-  return chunks.map((c, i) => `[第${i}段] ${c.text}`).join('\n\n');
+  return chunks.map((c, i) => `[#${i}] ${c.text}`).join('\n\n');
 }

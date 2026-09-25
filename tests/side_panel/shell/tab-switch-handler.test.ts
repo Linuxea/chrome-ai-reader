@@ -1,5 +1,5 @@
 /**
- * Tests for side_panel/ui/tab-switch-handler.ts — feature cleanup + UI reset.
+ * Tests for side_panel/shell/tab-switch-handler.ts — feature cleanup + UI reset.
  *
  * cleanupActiveFeatures(): stops TTS, removes podcast cards, resets flags.
  * handleLoadChat(): restores state from saved chat data.
@@ -32,7 +32,7 @@ vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   }),
 }));
 vi.mock('../../../src/side_panel/services/images.js', () => ({ clearImagePreviews: vi.fn() }));
-vi.mock('../../../src/side_panel/ui/global-events.js', () => ({
+vi.mock('../../../src/side_panel/ui/quote-preview.js', () => ({
   updateQuotePreview: vi.fn(),
 }));
 
@@ -42,7 +42,7 @@ import {
   resetUIForTabSwitch,
   type UIElements,
   type GlobalEventDeps,
-} from '../../../src/side_panel/ui/tab-switch-handler';
+} from '../../../src/side_panel/shell/tab-switch-handler';
 import * as stateMock from '../../../src/side_panel/state.js';
 import { appendMessage, appendMessageFromHistory, scrollToBottom } from '../../../src/side_panel/ui/dom-helpers.js';
 
@@ -71,7 +71,7 @@ function createDeps(): GlobalEventDeps {
   };
 }
 
-describe('ui/tab-switch-handler', () => {
+describe('shell/tab-switch-handler', () => {
   let els: UIElements;
   let deps: GlobalEventDeps;
 

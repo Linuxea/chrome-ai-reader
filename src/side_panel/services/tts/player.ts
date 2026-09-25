@@ -1,7 +1,6 @@
 import { stripMarkdown, SENTENCE_ENDS } from './utils';
 import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
 
-let _chatArea: HTMLElement;
 let _fullStopFn: (() => void) | null = null;
 
 let ttsPort: chrome.runtime.Port | null = null;
@@ -34,9 +33,8 @@ export function setTTSButton(btn: Element | null): void {
   if (btn && ttsPlaying) btn.classList.add(_audioStarted ? 'tts-playing' : 'tts-loading');
 }
 
-export function initPlayer(chatArea: HTMLElement): void {
-  _chatArea = chatArea;
-}
+/** Kept for the init contract; the player holds no chat-area reference. */
+export function initPlayer(_chatArea: HTMLElement): void {}
 
 export function setFullStopFn(fn: (() => void) | null): void {
   _fullStopFn = fn;

@@ -6,7 +6,7 @@ for (const { input, name } of IIFE_ENTRIES) {
   const watcher = watch({
     input: resolve(ROOT, input),
     plugins: iifePlugins(),
-    output: iifeOutput(name),
+    output: iifeOutput(name, { dev: true }),
     watch: {
       // Shared modules are bundled into both scripts — watch them too.
       include: [resolve(ROOT, 'src/content/**'), resolve(ROOT, 'src/background/**'), resolve(ROOT, 'src/shared/**')],

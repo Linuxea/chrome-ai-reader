@@ -82,7 +82,20 @@ describe('sw-annotation prompt assembly', () => {
       expect(user).toContain('TARGET CHUNK TEXT');
       expect(user).toContain('<full_article>');
       expect(user).toContain('<target_chunk>');
-      expect(user).toContain('第 3 段');
+      expect(user).toContain('[#3]');
+    });
+
+    it('builds the user prompt in English when lang is en (was always Chinese)', () => {
+      const messages = buildAnnotationMessages({ fullArticle: 'A', chunkIndex: 1, chunkText: 'B' }, 'en');
+      const user = messages[1].content as string;
+      expect(user).toContain('Annotate ONLY paragraph [#1]');
+      expect(user).not.toMatch(/[\u4e00-\u9fff]/);
+    });
+
+    it('inserts article text verbatim even when it contains $& / $\' / {placeholders}', () => {
+      const tricky = "price: $& and $' and {chunkText} and $1";
+      const user = buildAnnotationMessages({ fullArticle: tricky, chunkIndex: 0, chunkText: 'T' })[1].content as string;
+      expect(user).toContain(tricky);
     });
   });
 

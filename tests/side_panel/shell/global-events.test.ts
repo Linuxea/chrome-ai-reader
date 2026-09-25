@@ -1,5 +1,5 @@
 /**
- * Tests for side_panel/ui/global-events.ts — global event binding + quote preview.
+ * Tests for side_panel/shell/global-events.ts — global event binding + quote preview.
  *
  * Primary test target: updateQuotePreview() (pure function).
  * Also tests bindGlobalEvents() listener registration and basic behaviors.
@@ -45,12 +45,12 @@ vi.mock('../../../src/side_panel/features/chat-history.js', () => ({
   exportChatAsMarkdown: vi.fn(),
   renderHistoryList: vi.fn(),
 }));
-vi.mock('../../../src/side_panel/ui/tab-switch-handler.js', () => ({
+vi.mock('../../../src/side_panel/shell/tab-switch-handler.js', () => ({
   resetUIForTabSwitch: vi.fn(),
   cleanupActiveFeatures: vi.fn(),
 }));
 
-import { updateQuotePreview, bindGlobalEvents, type UIElements, type GlobalEventDeps } from '../../../src/side_panel/ui/global-events';
+import { updateQuotePreview, bindGlobalEvents, type UIElements, type GlobalEventDeps } from '../../../src/side_panel/shell/global-events';
 import * as stateMock from '../../../src/side_panel/state.js';
 import * as eventsMock from '../../../src/side_panel/events.js';
 import * as chatHistoryMock from '../../../src/side_panel/features/chat-history.js';
@@ -83,7 +83,7 @@ function createDeps(): GlobalEventDeps {
   };
 }
 
-describe('ui/global-events', () => {
+describe('shell/global-events', () => {
   let els: UIElements;
   let deps: GlobalEventDeps;
 

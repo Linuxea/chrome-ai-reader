@@ -77,7 +77,7 @@ export async function sendToAI(
       // and DeepSeek both honor multiple system messages correctly.
       const customSystemPrompt = state.getCustomSystemPrompt();
       const customBlock = customSystemPrompt
-        ? `【补充要求】\n${customSystemPrompt}`
+        ? getPrompt('default.custom', lang, { custom: customSystemPrompt })
         : '';
       const ruleContent = getPrompt('default', lang, { custom: customBlock });
       const articleContent = getPrompt('default.article', lang, {

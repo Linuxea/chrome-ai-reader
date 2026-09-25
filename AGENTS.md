@@ -5,10 +5,11 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (1036 tests across 67 files; proxy test file needs `ws` installed — see Testing)
+npm run test   # vitest run (1043 tests across 68 files; proxy test file needs `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
-npm run lint   # eslint src/ proxy/
+npm run lint   # eslint (JS + TS via typescript-eslint) && lint:deps
+npm run lint:deps  # dependency-cruiser: layer rules + no import cycles (.dependency-cruiser.cjs)
 npm run format # prettier --write 'src/**/*.js' 'proxy/**/*.js'
 npx tsc --noEmit  # TypeScript type check (strict:true)
 ```
@@ -46,6 +47,9 @@ Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
 | UI | `src/side_panel/ui/` | shared + state |
 | Services | `src/side_panel/services/` | shared + platform + state + UI |
 | Features | `src/side_panel/features/` | services + UI + state |
+| Shell | `src/side_panel/shell/` | everything (composition root: global event wiring, tab switching; with `main.ts`) — nothing imports it |
+
+Layering is **enforced**: `npm run lint:deps` (dependency-cruiser, runs in `npm run lint` and CI) fails on any upward import, on side panel ↔ background/content imports, on `shared/`/`platform/` importing app code, and on any import cycle. Type-only imports count too. Pure helpers used across layers go to `shared/` (e.g. `shared/strip-images.ts`); DOM primitives to `ui/` (e.g. `ui/quote-preview.ts`).
 
 **Platform layer (`src/platform/`)** — single seam for all `chrome.*` access:
 - `ports.ts` — typed `openXxxPort()` helpers + `PORT_NAMES` (single source of truth for port names)
@@ -95,16 +99,18 @@ Strings in `src/shared/i18n.js` keyed by dot-notation. DOM auto-translates via `
 
 ## LLM Prompts
 
-All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts are semantically distinct from UI strings (they never bind to `data-i18n`) and `i18n.js` is unsafe to import from the service worker (it touches `document`). `prompts.ts` is pure data + a pure `getPrompt(key, lang?, params?)` getter, importable from both the SW (`sw-annotation.ts`) and the side panel. Keys are typed (`PromptKey`); zh is complete, en is partial (podcast is zh-only because its TTS voices are Chinese). Side-panel callers pass `getCurrentLang()` from `i18n.js`; the SW reads `language` from `chrome.storage.sync` and normalizes to `'zh'|'en'`. Built-in quick-action prompts follow the UI language (zh + en both defined).
+All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts are semantically distinct from UI strings (they never bind to `data-i18n`) and `i18n.js` is unsafe to import from the service worker (it touches `document`). `prompts.ts` is pure data + a pure `getPrompt(key, lang?, params?)` getter, importable from both the SW (`sw-annotation.ts`) and the side panel. Keys are typed (`PromptKey`); zh is complete, en is partial (podcast is zh-only because its TTS voices are Chinese). Placeholders are substituted in ONE pass with a replacer function, so values (page text) are inserted verbatim — `$&` is not expanded and a `{placeholder}` inside a value is not re-expanded; unknown placeholders and JSON braces stay as-is. The annotation chunk labels are language-neutral `[#N]` (`content/annotation/chunk-collector.ts`), referenced by `annotation.user` in both languages. Side-panel callers pass `getCurrentLang()` from `i18n.js`; the SW reads `language` from `chrome.storage.sync` and normalizes to `'zh'|'en'`. Built-in quick-action prompts follow the UI language (zh + en both defined).
 
 ## Testing
 
-- **Vitest** with jsdom environment, 1036 tests across 67 files
+- **Vitest** with jsdom environment, 1043 tests across 68 files
 - **Proxy tests need proxy deps**: `tests/proxy/protocol.test.js` imports `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
 - Coverage (`npm run test:coverage`): includes `src/**/*.{js,ts}` + `proxy/**/*.js`; excludes pure type defs and entry orchestrators (`main.ts`, `options/index.ts`, `content/index.ts`). Enforces thresholds — lines 55 / functions 50 / branches 45 / statements 52 — failing them fails the run
-- **Circular dependencies**: run `npx madge --circular --extensions ts,js src/` — currently 1 known cycle (`ui/global-events` ↔ `ui/tab-switch-handler`, pre-existing)
+- **Circular dependencies**: none — `npm run lint:deps` fails on any cycle
+- **CI** (`.github/workflows/ci.yml`, push to main + PRs): `tsc --noEmit` → `npm run lint` → `npm run test:coverage` → `npm run build`, with proxy deps installed for the proxy tests
+- **Prompt guard** (`tests/shared/no-inline-prompts.test.ts`): fails on a chat message with a literal `content` or a CJK string literal anywhere in `src/` outside `shared/prompts.ts` (allowlist: `content/annotation-meta.ts`)
 
 ## Docs
 
@@ -130,7 +136,8 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - **Message ids**: every `ChatMessage` has an `id` (`shared/ids.ts` `genId`; legacy persisted messages get one on restore via `ensureMessageIds`). User bubbles carry `data-msg-id`; retry / edit truncate history with `truncateHistoryFromId` — content matching (`truncateHistoryFromUserContent`) is only the fallback for id-less legacy bubbles, since it picks the wrong turn when two messages share text
 - **User message meta**: user `ChatMessage`s carry `meta` (`rawText` / `displayText` / `quote`) next to the assembled API `content`; `appendUserMessage()` renders bubbles from it for live sends, tab switches, reopen and history loads alike (so retry / edit keep working). `toApiMessage()` strips local fields (`meta`, `hadImages`, `type`) before anything goes to the model
 - **IME-safe Enter**: keydown handlers that send on Enter must guard `e.isComposing || e.keyCode === 229` (IME composition, see `ai-chat.ts`) — otherwise Chinese/Japanese input sends mid-composition
-- **Layering guardrail**: ESLint `no-restricted-imports` for `side_panel/ui/**` is `warn` (base rule is `off` during the refactor); it blocks ui/ imports of services/, features/, and a planned `shell/` orchestration layer that does **not exist yet** — `ui/global-events.ts` is slated to move there in a future phase. Note: ESLint only lints `.js` by default (no typescript-eslint plugin); `.ts` layering is enforced via tsc + review.
+- **Layering guardrail**: dependency-cruiser (`.dependency-cruiser.cjs`), not ESLint — see Source Layout. ESLint lints `.ts` through typescript-eslint (syntax-level `recommended` rules; `@typescript-eslint/no-unused-vars` is an error, `_`-prefixed args exempt)
+- **Source maps**: inline only in dev/watch builds; `npm run build` ships none (keeps `dist/` ~4x smaller)
 - **Image intake**: `services/images.ts` `ingestImages()` is the single entry point for adding images (upload button + paste + drag-drop all funnel through it). The chat model is assumed multimodal: images are always sent as `image_url` parts — there is no OCR fallback and no vision toggle (GLM-OCR and `visionEnabled` were removed; the options page clears the stale keys on save).
 - **Sending**: every entry point that sends to the model goes through `submit()` / `services/composer.ts` — never read `userInput.value` or the preview bar directly. A non-empty draft rides along with quick actions / quick commands as extra instructions (`draft.supplement` prompt); suggestion chips only fill the input.
 - **History operations**: use `services/chat/history-ops.ts` (`appendMessage`/`rollbackTrailingUserMessage`/`truncateHistoryFromId`) instead of mutating `tabState.conversationHistory` directly — it centralizes persistence + rollback policy.

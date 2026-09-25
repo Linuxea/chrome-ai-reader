@@ -1,5 +1,5 @@
 import type { TabState, ChatMessage } from '../shared/types';
-import { stripImagesForPersistence } from './services/chat/strip-images';
+import { stripImagesForPersistence } from '../shared/strip-images';
 import { ensureMessageIds } from '../shared/ids';
 
 /**

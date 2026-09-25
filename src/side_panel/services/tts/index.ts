@@ -1,4 +1,3 @@
-import { t } from '../../../shared/i18n.js';
 import { CSS } from '../../../shared/css-selectors';
 import { onSyncChange } from '../../../platform/storage';
 import { createTTSButtons } from '../../ui/tts-buttons';
@@ -14,11 +13,7 @@ import {
 } from './player';
 import { initDownloader, stopTTSDownload, handleTTSDownloadClick } from './downloader';
 
-let _chatArea: HTMLElement;
-
 export function initTTS({ chatArea }: { chatArea: HTMLElement }): void {
-  _chatArea = chatArea;
-
   initPlayer(chatArea);
   initDownloader(chatArea);
 

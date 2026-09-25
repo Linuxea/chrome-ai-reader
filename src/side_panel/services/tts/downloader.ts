@@ -2,7 +2,6 @@ import { t } from '../../../shared/i18n.js';
 import { downloadFile } from '../../../shared/download';
 import { splitToSegments } from './utils';
 
-let _chatArea: HTMLElement;
 
 let ttsDownloadPort: chrome.runtime.Port | null = null;
 let ttsDownloadChunks: string[] = [];
@@ -13,9 +12,8 @@ let ttsDownloading = false;
 /** The download button of the message being downloaded. */
 let _downloadBtn: HTMLButtonElement | null = null;
 
-export function initDownloader(chatArea: HTMLElement): void {
-  _chatArea = chatArea;
-}
+/** Kept for the init contract; the downloader holds no chat-area reference. */
+export function initDownloader(_chatArea: HTMLElement): void {}
 
 export function stopTTSDownload(): void {
   ttsDownloading = false;

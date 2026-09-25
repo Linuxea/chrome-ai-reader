@@ -1,8 +1,12 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
 export default [
   js.configs.recommended,
+  // TypeScript: without a parser ESLint never linted a single .ts file (the
+  // vast majority of src/). Syntax-level rules only — type safety is tsc's job.
+  ...tseslint.configs.recommended.map((c) => ({ ...c, files: ['**/*.ts'] })),
   {
     languageOptions: {
       ecmaVersion: 2022,
@@ -17,40 +21,20 @@ export default [
       'prefer-const': 'warn',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-undef': 'off',
-      // Layering guardrails. Currently WARN during the refactor (Phase 0-1);
-      // promoted to ERROR once violations are removed in Phase 2.
-      'no-restricted-imports': 'off',
+      // Layering (which directory may import which) is enforced by
+      // dependency-cruiser — see .dependency-cruiser.cjs / `npm run lint:deps`.
     },
   },
   {
-    // UI layer (side_panel/ui/) must not reach down into services, features,
-    // or shell — it should be pure DOM primitives. Tracked as a warn until
-    // the existing ui/global-events.ts is relocated to shell/ in Phase 2.
-    // NOTE: ESLint in this repo only lints .js by default; the rule guards
-    // future .js migrations. .ts layering is enforced via tsc + review.
-    files: ['src/side_panel/ui/**'],
+    files: ['**/*.ts'],
     rules: {
-      'no-restricted-imports': ['warn', {
-        patterns: [
-          {
-            // Match both relative ('../services/...') and absolute-style specifiers.
-            group: [
-              '../services/*', '../services/**',
-              '../features/*', '../features/**',
-              '../shell/*', '../shell/**',
-              '*/side_panel/services/*', '*/side_panel/services/**',
-              '*/side_panel/features/*', '*/side_panel/features/**',
-              '*/side_panel/shell/*', '*/side_panel/shell/**',
-            ],
-            message: 'UI layer (ui/) must not import from services/, features/, or shell/. Move the dependency up to the orchestration layer.',
-            allowTypeImports: true,
-          },
-        ],
-      }],
+      // The base rule misreads type-only usages; the TS-aware one replaces it.
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
     },
   },
   {
-    files: ['proxy/**/*.js'],
+    files: ['proxy/**/*.js', 'scripts/**/*.js', '*.config.js', 'build-extension.js'],
     languageOptions: {
       globals: {
         ...globals.node,

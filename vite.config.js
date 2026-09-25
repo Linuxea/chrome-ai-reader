@@ -12,7 +12,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: !isWatch,
-    sourcemap: 'inline',
+    // Inline maps roughly double the shipped bundle; dev (watch) keeps them.
+    sourcemap: isWatch ? 'inline' : false,
     modulePreload: false,  // Not needed for Chrome extensions
     rollupOptions: {
       input: {

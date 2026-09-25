@@ -19,7 +19,7 @@
 import { t } from '../../shared/i18n.js';
 import { sendToContentScript } from '../../platform/messaging';
 import * as state from '../state';
-import { updateQuotePreview, type UIElements } from '../ui/global-events.js';
+import { updateQuotePreview, type QuotePreviewEls } from '../ui/quote-preview';
 import { appendDraftText } from '../services/composer';
 
 type AnnotationState = 'idle' | 'annotating' | 'done' | 'error';
@@ -42,7 +42,7 @@ const ICON_ALERT =
 const IDLE: TabAnnotation = { kind: 'idle' };
 
 let _button: HTMLButtonElement | null = null;
-let _uiEls: Pick<UIElements, 'quoteText' | 'quotePreview'> | null = null;
+let _uiEls: QuotePreviewEls | null = null;
 const _byTab = new Map<number, TabAnnotation>();
 
 export interface AnnotationDeps {
