@@ -29,21 +29,28 @@
 4. 生产构建关闭 inline sourcemap（dev 保留）。
 5. 测试：扫描 `src/**` 中内联 LLM 提示词字面量的守卫测试（C6）。
 
-## Phase 2 — 基础设施（约 1–2 周）
+## Phase 2 — 基础设施（约 1–2 周）✅ 已完成（2026-09-25）
+
+> 落地与计划的差异：settings 放在 `platform/settings.ts`（需要 `chrome.storage`，不属 shared）；RPC 以 `background/sw-router.ts`（路由表 + 发送方校验 + `PORT_NAMES`）实现，未单独做 `platform/rpc.ts` 的 define/register 泛型层；IndexedDB 为 `shared/db.ts` v2（`pageRecords/chats/highlights/annotations/translations`），标签页状态仍在 `storage.session`，写满时降级（丢图片 → 提示）。
 
 1. **Settings**：`shared/settings.ts`（schema + 默认值 + 存储区 + 敏感标记 + 版本迁移）；密钥迁移到 `storage.local`（S2、A2）。
 2. **类型化 RPC**：`platform/rpc.ts`（`defineStream/defineCall/registerStream/registerCall`，AbortSignal、sender 校验、统一错误结构）。按通道逐个迁移：`embedding` → `suggest-questions` → `ai-chat` → `tts` → `podcast-*` → `annotation` → 一次性消息（A1、S5）。
 3. **SSE**：抽出 `shared/sse.ts` 纯函数 + 空闲超时 + `finish`/`usage` 消息（C5）。
 4. **IndexedDB 统一库**：`chats`、`messages`、`pages` store + 迁移旧 `chatHistories` / `tabState_*`；`storage.session` 只存指针；写入失败统一提示（C4）。
 
-## Phase 3 — 核心重构（约 1–2 周）
+## Phase 3 — 核心重构（约 1–2 周）✅ 已完成（2026-09-25，部分取舍见下）
+
+> 落地：`ContextBuilder`（段落编号 + BM25 预算选段 + 历史预算）；`background/providers/{openai,anthropic}.ts` + `chat-runner.ts`（统一流式、空闲看门狗、usage、工具循环），`fastModelName` 按用途路由；`callAI` 拆出 `ui/answer-view.ts`；`state.subscribe` 类型化。
+> 未做 / 推迟：独立的 `ConversationStore`/`ChatSession` 状态机（分支落在 `chat/history-ops.ts`）；事件载荷仍含 DOM 元素（A3 后半）；未新增 `ollama` Provider（其 OpenAI 兼容接口可直接用 openai Provider）。
 
 1. `side_panel/core/`：`ConversationStore`（id/parentId 分支）、`ChatSession` 状态机、`SessionRegistry`；`stream-handler.callAI` 拆为 session + `ui/MessageView`（A4）。
 2. 合并 `state.subscribe` 与 `events.ts`；事件载荷改为数据（A3）。
 3. `ContextBuilder`：token 预算、长页分块、历史压缩；批阅改为"摘要 + 邻段"上下文（A5）。
 4. `background/providers/`：`openai-compatible` 迁入，新增 `anthropic`、`ollama`；模型档案 + 功能路由（A7）。
 
-## Phase 4 — 新功能（按优先级）
+## Phase 4 — 新功能（按优先级）✅ F1–F13 已全部实现（2026-09-25）
+
+> 设计与取舍见 `specs/2026-09-25-phase4-features-design.md`。未覆盖的子项：F2 map-reduce 总结、F3 B 站字幕、F5 导出到 Obsidian/Notion。
 
 F1 引用溯源 → F2 长文问答 → F4 多标签页对比 → F8 右键菜单/快捷键 → F10 分支对话 → F6 高亮笔记 → F5 阅读知识库 → F3 PDF/字幕 → F7 双语对照 → F9 用量面板 → F12 学习模式 → F11 Agent 模式 → F13 播客去代理化。
 
