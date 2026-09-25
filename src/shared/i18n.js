@@ -196,6 +196,7 @@ const TRANSLATIONS = {
 
     'ai.thinking': '思考过程',
     'ai.stopped': '已停止生成',
+    'action.explain': '解释',
     'notes.title': '高亮与笔记',
     'notes.highlightSelection': '高亮选中文字并保存到笔记',
     'notes.exportAll': '导出全部笔记',
@@ -491,6 +492,7 @@ const TRANSLATIONS = {
 
     'ai.thinking': 'Thinking',
     'ai.stopped': 'Generation stopped',
+    'action.explain': 'Explain',
     'notes.title': 'Highlights & notes',
     'notes.highlightSelection': 'Highlight the selection and save it to notes',
     'notes.exportAll': 'Export all notes',

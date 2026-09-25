@@ -27,6 +27,7 @@ import { initCitations } from './features/citations';
 import { initTabContext } from './features/tab-context';
 import { initReadingSearch } from './features/reading-search';
 import { initNotes } from './features/notes';
+import { initPanelActions } from './features/panel-actions';
 import { bindGlobalEvents } from './shell/global-events';
 import type { UIElements } from './shell/types';
 import { updateQuotePreview } from './ui/quote-preview';
@@ -179,6 +180,8 @@ async function init(): Promise<void> {
   });
 
   bindGlobalEvents(els, deps);
+  // After state + quick actions are ready: run a context-menu / shortcut action.
+  initPanelActions({ quoteEls: { quoteText: els.quoteText, quotePreview: els.quotePreview }, userInput: els.userInput });
 
   if (state.getConversationHistory().length > 0) {
     resetUIForTabSwitch(els, deps);

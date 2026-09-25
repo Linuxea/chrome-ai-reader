@@ -14,13 +14,22 @@ import {
   getCachedAnnotations, saveCachedAnnotations, respond,
 } from './sw-highlights';
 import type { AnnotationCacheEntry } from '../shared/highlights';
-import { migrateSecretsToLocal, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
+import { migrateSecretsToLocal, onSettingsChange, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
+import { setupContextMenus, onMenuClicked, onCommand } from './sw-menus';
 import { listAnthropicModels } from './providers/anthropic';
 import type { PodcastLLMRequest } from '../shared/protocol';
 import type { MessageContentPart } from '../shared/types';
 
 // Secrets saved by older versions lived in storage.sync; move them to local.
 migrateSecretsToLocal().catch((e: unknown) => console.error('secret migration failed:', e));
+
+// F8: context menu + shortcuts. Menus are rebuilt on install/startup and
+// when the UI language changes (their titles follow it).
+chrome.runtime.onInstalled?.addListener(() => { void setupContextMenus(); });
+chrome.runtime.onStartup?.addListener(() => { void setupContextMenus(); });
+onSettingsChange(['language'], () => { void setupContextMenus(); });
+chrome.contextMenus?.onClicked.addListener(onMenuClicked);
+chrome.commands?.onCommand.addListener(onCommand);
 
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });

@@ -57,7 +57,12 @@ const {
 
 vi.mock('../../src/platform/settings.js', () => ({
   migrateSecretsToLocal: vi.fn(() => Promise.resolve()),
+  onSettingsChange: vi.fn(() => () => {}),
   DEFAULT_API_BASE: 'https://api.deepseek.com',
+  DEFAULT_ANTHROPIC_API_BASE: 'https://api.anthropic.com',
+}));
+vi.mock('../../src/background/sw-menus.js', () => ({
+  setupContextMenus: vi.fn(), onMenuClicked: vi.fn(), onCommand: vi.fn(),
 }));
 
 // --- Mock all handler modules so we can verify routing ---

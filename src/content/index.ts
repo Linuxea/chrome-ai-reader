@@ -25,6 +25,12 @@ chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chr
     return true;
   }
 
+  // F8: Alt+Q — the worker needs the page's current selection.
+  if (request.action === 'getSelection') {
+    sendResponse({ text: window.getSelection()?.toString().trim() ?? '' });
+    return;
+  }
+
   // Citation click in the panel: jump to and flash the cited paragraph.
   if (request.action === 'highlightParagraph') {
     sendResponse({ ok: highlightParagraph(String((request as { text?: string }).text ?? '')) });

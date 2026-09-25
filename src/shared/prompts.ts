@@ -26,6 +26,8 @@ export type PromptKey =
   | 'translate.quote'
   | 'keyInfo.full'
   | 'keyInfo.quote'
+  | 'explain.full'
+  | 'explain.quote'
   | 'draft.supplement'
   | 'suggest'
   | 'suggest.userLabel'
@@ -65,6 +67,9 @@ const ZH: PromptTable = {
     '【文章内容】',
     '{content}',
   ].join('\n'),
+
+  'explain.full': '请用通俗易懂的语言解释这篇文章的核心概念和论点，必要时补充背景知识。',
+  'explain.quote': '请用通俗易懂的语言解释用户引用的这段内容：它在说什么、涉及哪些概念，必要时结合文章上下文和背景知识。',
 
   'summarize.full': '请总结这篇文章的内容。',
   'summarize.quote': '请总结用户引用的这段内容。',
@@ -276,6 +281,9 @@ const EN: Partial<PromptTable> = {
     '[Article content]',
     '{content}',
   ].join('\n'),
+
+  'explain.full': 'Explain the core concepts and arguments of this article in plain language, adding background where it helps.',
+  'explain.quote': 'Explain the passage the user quoted in plain language: what it says and which concepts it involves, using the article\'s context and background knowledge where it helps.',
 
   'summarize.full': 'Please summarize this article.',
   'summarize.quote': 'Please summarize the content the user quoted.',

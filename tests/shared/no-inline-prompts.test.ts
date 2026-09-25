@@ -21,6 +21,8 @@ const CJK_ALLOWED = new Set([
   // Content-script UI labels: the content script cannot import i18n.js
   // (panel-only), so it carries its own small zh/en map.
   'src/content/annotation-meta.ts',
+  // Context-menu labels: the service worker cannot import i18n.js either.
+  'src/background/sw-menus.ts',
 ]);
 
 /** CJK ideographs only: punctuation alone (a '：' separator, a sentence-splitting set) is not prose. */
