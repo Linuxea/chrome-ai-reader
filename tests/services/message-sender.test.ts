@@ -112,6 +112,9 @@ vi.mock('../../src/side_panel/services/images.js', () => ({
 
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({
   ensurePageContent: vi.fn(() => Promise.resolve({ ok: true, value: null })),
+  extractTabContent: vi.fn((id: number) => Promise.resolve(id === 9
+    ? { ok: false, error: new Error('nope') }
+    : { ok: true, value: { title: `Tab ${id}`, url: `https://t${id}.example`, textContent: `content of ${id}`, excerpt: '' } })),
 }));
 
 vi.mock('../../src/side_panel/services/stream-handler.js', () => ({
@@ -292,6 +295,23 @@ describe('services/message-sender', () => {
       expect(article).toContain('[#2500] The secret launch code');
       expect(article).toContain('…');
       expect(article.length).toBeLessThan(70_000);
+    });
+
+    it('F4: reads attached tabs fresh into a system message and records them in meta', async () => {
+      await sendToAI('compare', 'compare', undefined, undefined, [
+        { id: 5, title: 'Five', url: 'https://t5.example' },
+        { id: 9, title: 'Nine', url: 'https://t9.example' },
+      ]);
+      const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0] as { role: string; content: string }[];
+      const multi = messages.find((m) => typeof m.content === 'string' && m.content.includes('multitab.context'));
+      expect(multi?.role).toBe('system');
+      expect(multi?.content).toContain('content of 5');
+      expect(multi?.content).toContain('multitab.unreadable');
+      const userMsg = tabState.conversationHistory.at(-1) as { meta: { tabs: unknown[] } };
+      expect(userMsg.meta.tabs).toEqual([
+        { id: 5, title: 'Five', url: 'https://t5.example' },
+        { id: 9, title: 'Nine', url: 'https://t9.example' },
+      ]);
     });
 
     it('includes conversation history in messages', async () => {

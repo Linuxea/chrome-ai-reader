@@ -107,6 +107,8 @@ export interface UserBubble {
   imageUris?: string[];
   /** History message id — retry / edit truncate history at exactly this entry. */
   id?: string;
+  /** Other tabs attached as context (shown as a line under the text). */
+  tabs?: { title: string }[];
 }
 
 const QUOTE_PREVIEW_CHARS = 50;
@@ -117,7 +119,7 @@ const QUOTE_PREVIEW_CHARS = 50;
  * exactly like the original.
  */
 export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): HTMLDivElement {
-  const { rawText, displayText, quote, imageUris, id } = bubble;
+  const { rawText, displayText, quote, imageUris, id, tabs } = bubble;
   let el: HTMLDivElement;
   if (quote) {
     const preview = quote.length > QUOTE_PREVIEW_CHARS ? quote.slice(0, QUOTE_PREVIEW_CHARS) + '...' : quote;
@@ -129,6 +131,12 @@ export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): 
   el.dataset.rawText = rawText;
   el.dataset.rawDisplay = displayText;
   if (id) el.dataset.msgId = id;
+  if (tabs?.length) {
+    const line = document.createElement('div');
+    line.className = 'bubble-tabs';
+    line.textContent = tabs.map((t) => `📄 ${t.title}`).join('  ');
+    el.appendChild(line);
+  }
   return el;
 }
 
@@ -438,7 +446,7 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
     // to the assembled content (retry then re-sends that content verbatim).
     div = appendUserMessage(
       msg.meta
-        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris, id: msg.id }
+        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris, id: msg.id, tabs: msg.meta.tabs }
         : { rawText: text, displayText: text, imageUris, id: msg.id },
       options,
     );

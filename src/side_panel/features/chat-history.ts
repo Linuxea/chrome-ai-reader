@@ -75,9 +75,11 @@ export function getDisplayMessages(): DisplayMessage[] {
       // so titles show what the user asked, not the quoted page text.
       const quoteEl = userEl.querySelector('.quote-in-bubble');
       const quote = quoteEl ? (userEl.dataset.rawQuote || quoteEl.textContent || '') : '';
-      const text = (quoteEl
-        ? (userEl.dataset.rawDisplay ?? userEl.querySelector(':scope > span')?.textContent ?? '')
-        : (userEl.textContent || '')).trim();
+      // rawDisplay is what the user typed; textContent would also pick up the
+      // quote and the attached-tabs line.
+      const text = (userEl.dataset.rawDisplay ?? (quoteEl
+        ? (userEl.querySelector(':scope > span')?.textContent ?? '')
+        : (userEl.textContent || ''))).trim();
       // An image-only message has no text — keep a placeholder so titles and
       // exports don't show an empty turn.
       const imageOnly = !text && userEl.querySelector('.bubble-images') !== null;

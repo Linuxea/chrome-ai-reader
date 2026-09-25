@@ -15,8 +15,8 @@ import {
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
 import { isTTSPlaying, stopTTS } from './tts/index.js';
-import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES } from './composer';
-import { ensurePageContent } from './page-extractor';
+import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES, type AttachedTab } from './composer';
+import { ensurePageContent, extractTabContent } from './page-extractor';
 import { callAI, takePendingAbort } from './stream-handler';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, truncateHistoryFromId, toApiMessage } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
@@ -32,6 +32,7 @@ export async function sendToAI(
   displayText: string,
   retryQuote?: string,
   imageUris?: string[],
+  tabs?: AttachedTab[],
 ): Promise<void> {
   emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
 
@@ -46,6 +47,7 @@ export async function sendToAI(
 
   const meta: UserMessageMeta = { rawText: text, displayText };
   if (quoteForContext) meta.quote = quoteForContext;
+  if (tabs?.length) meta.tabs = tabs.map(({ id, title, url }) => ({ id, title, url }));
   const msgId = genId();
   const userMsgEl = appendUserMessage({ ...meta, imageUris, id: msgId });
   if (quoteForContext) emit(EVENTS.CLEAR_QUOTE_PREVIEW);
@@ -95,6 +97,18 @@ export async function sendToAI(
       });
       messages.push({ role: 'system', content: ruleContent });
       messages.push({ role: 'system', content: articleContent });
+    }
+
+    // F4: other tabs the user attached, each read fresh (they may have changed).
+    if (tabs?.length) {
+      const lang = getCurrentLang();
+      const blocks = await Promise.all(tabs.map(async (tab) => {
+        const r = await extractTabContent(tab.id);
+        return r.ok
+          ? getPrompt('multitab.tab', lang, { title: r.value.title || tab.title, url: r.value.url || tab.url, content: r.value.textContent })
+          : getPrompt('multitab.unreadable', lang, { title: tab.title, url: tab.url });
+      }));
+      messages.push({ role: 'system', content: getPrompt('multitab.context', lang, { tabs: blocks.join('\n\n') }) });
     }
 
     // Newest turns within the history budget (the page already has its own).
@@ -204,8 +218,8 @@ export async function submit(intent: SubmitIntent = {}): Promise<void> {
   }
 
   clearDraftText();
-  const { imageUris } = consumeAttachments();
-  await sendToAI(text, display, undefined, imageUris);
+  const { imageUris, tabs } = consumeAttachments();
+  await sendToAI(text, display, undefined, imageUris, tabs);
 }
 
 /** Enter / send button. */
@@ -285,11 +299,12 @@ async function resendUserMessage(opts: {
   // these are gone from history, so we capture them now to re-send.
   const retriedImages = extractImagesForRetry(tabState, userContent, msgId)
     ?? (bubbleImages.length > 0 ? bubbleImages : undefined);
+  const retriedTabs = msgId ? tabState.conversationHistory.find((m) => m.id === msgId)?.meta?.tabs : undefined;
 
   if (msgId) truncateHistoryFromId(tabState, msgId, startTabId!);
   else truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
-  await sendToAI(sendText, sendDisplay, rawQuote, retriedImages);
+  await sendToAI(sendText, sendDisplay, rawQuote, retriedImages, retriedTabs);
 }
 
 /**

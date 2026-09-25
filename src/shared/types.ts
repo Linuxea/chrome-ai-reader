@@ -76,6 +76,8 @@ export interface UserMessageMeta {
   displayText: string;
   /** Full quoted page text, when the message carried a quote. */
   quote?: string;
+  /** Other tabs attached as context (F4); re-read on retry. */
+  tabs?: { id: number; title: string; url: string }[];
 }
 
 /**

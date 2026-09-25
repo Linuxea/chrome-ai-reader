@@ -196,6 +196,11 @@ const TRANSLATIONS = {
 
     'ai.thinking': '思考过程',
     'ai.stopped': '已停止生成',
+    'sidebar.attachTabs': '附加其他标签页（一起提问 / 对比）',
+    'tabs.pickerTitle': '选择要一起参考的标签页（最多 {max} 个）',
+    'tabs.none': '当前窗口没有其他网页标签页',
+    'tabs.limit': '最多附加 {max} 个标签页',
+    'tabs.remove': '移除',
     'agent.step': '🔧 {tool} {args}',
     'agent.tool.search_page': '搜索页面',
     'agent.tool.read_paragraphs': '读取段落',
@@ -473,6 +478,11 @@ const TRANSLATIONS = {
 
     'ai.thinking': 'Thinking',
     'ai.stopped': 'Generation stopped',
+    'sidebar.attachTabs': 'Attach other tabs (ask across / compare)',
+    'tabs.pickerTitle': 'Pick tabs to use as context (up to {max})',
+    'tabs.none': 'No other web page tabs in this window',
+    'tabs.limit': 'You can attach up to {max} tabs',
+    'tabs.remove': 'Remove',
     'agent.step': '🔧 {tool} {args}',
     'agent.tool.search_page': 'Search page',
     'agent.tool.read_paragraphs': 'Read paragraphs',

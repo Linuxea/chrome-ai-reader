@@ -828,3 +828,73 @@ body.drag-over::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* F4: attach other tabs */
+.tab-chip-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 0;
+}
+.tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--bg-secondary, rgba(128, 128, 128, 0.12));
+  font-size: 12px;
+}
+.tab-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.tab-chip-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.tab-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 8px;
+  right: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--bg-primary, #fff);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+}
+.tab-picker-title { font-size: 12px; color: var(--text-secondary); padding: 4px 6px; }
+.tab-picker-empty { font-size: 12px; padding: 6px; }
+.tab-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.tab-picker-item:hover { background: var(--bg-secondary, rgba(128, 128, 128, 0.12)); }
+.tab-picker-item.selected::before { content: '✓ '; color: var(--accent); }
+
+.bubble-tabs {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+}
