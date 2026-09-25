@@ -9,6 +9,7 @@ import { initSuggestSettings, loadSuggestValues, collectSuggestSaveData } from '
 import { initEmbeddingSettings, loadEmbeddingValues, collectEmbeddingSaveData } from './embedding-settings';
 import { initQuickCommandsEditor } from './quick-commands-editor';
 import { initImportExport } from './import-export';
+import { initUsagePanel } from './usage-panel';
 
 initThemeSettings();
 initLlmSettings();
@@ -17,6 +18,7 @@ initSuggestSettings();
 initEmbeddingSettings();
 initQuickCommandsEditor();
 initImportExport();
+initUsagePanel();
 
 readStoredSettings(SYNC_FIELDS as SettingKey[]).then((data) => {
   loadLlmValues(data as Record<string, unknown>);

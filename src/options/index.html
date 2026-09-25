@@ -210,6 +210,21 @@
       <button id="addCommandBtn" class="add-command-btn" type="button" data-i18n="settings.commands.add">+ 添加指令</button>
     </section>
 
+    <!-- F9: 用量统计 -->
+    <section class="settings-section">
+      <h2 class="section-title" data-i18n="settings.usage">用量统计</h2>
+      <p class="hint" data-i18n="settings.usage.hint">按模型统计的请求次数和 token 用量（只统计接口返回了用量数据的请求）。</p>
+      <div class="usage-controls">
+        <select id="usageRange">
+          <option value="1" data-i18n="settings.usage.today">今天</option>
+          <option value="7" selected data-i18n="settings.usage.week">最近 7 天</option>
+          <option value="30" data-i18n="settings.usage.month">最近 30 天</option>
+        </select>
+        <button id="usageClearBtn" type="button" class="ie-btn" data-i18n="settings.usage.clear">清空统计</button>
+      </div>
+      <div id="usageTable"></div>
+    </section>
+
     <!-- 数据管理 -->
     <section class="settings-section">
       <h2 class="section-title" data-i18n="settings.data">数据管理</h2>
