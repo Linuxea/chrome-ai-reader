@@ -148,6 +148,11 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
 }));
 
 
+const { settingsMock } = vi.hoisted(() => ({ settingsMock: { citations: false } as Record<string, unknown> }));
+vi.mock('../../src/platform/settings.js', () => ({
+  readSettings: vi.fn(async (keys: string[]) => Object.fromEntries(keys.map((k) => [k, settingsMock[k]]))),
+}));
+
 // --- Import after mocks ---
 import {
   initMessageSender,
@@ -260,6 +265,33 @@ describe('services/message-sender', () => {
       // in the long article message where it would be buried.
       expect(systemMsgs[0].content).toContain('Be concise');
       expect(systemMsgs[1].content).not.toContain('Be concise');
+    });
+
+    it('with citations on, adds the citation rule and labels the article paragraphs [#N]', async () => {
+      settingsMock.citations = true;
+      try {
+        tabState.pageContent = 'First paragraph text.\n\nSecond paragraph text.';
+        tabState.pageParagraphs = ['First paragraph text.', 'Second paragraph text.'];
+        await sendToAI('q', 'q');
+        const messages = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(messages[0].content).toContain('citations.rule'); // getPrompt is mocked to echo keys
+        expect(messages[1].content).toContain('[#0] First paragraph text.');
+        expect(messages[1].content).toContain('[#1] Second paragraph text.');
+      } finally {
+        settingsMock.citations = false;
+      }
+    });
+
+    it('a page over the budget sends the relevant part and says it is partial', async () => {
+      const paras = Array.from({ length: 3000 }, (_, i) => `Filler paragraph number ${i} with nothing special in it.`);
+      paras[2500] = 'The secret launch code is described here.';
+      tabState.pageContent = paras.join('\n\n');
+      tabState.pageParagraphs = paras;
+      await sendToAI('what is the secret launch code', 'd');
+      const article = (callAI as ReturnType<typeof vi.fn>).mock.calls[0][0][1].content as string;
+      expect(article).toContain('[#2500] The secret launch code');
+      expect(article).toContain('…');
+      expect(article.length).toBeLessThan(70_000);
     });
 
     it('includes conversation history in messages', async () => {

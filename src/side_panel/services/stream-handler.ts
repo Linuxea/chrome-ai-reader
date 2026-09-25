@@ -2,7 +2,6 @@ import { t } from '../../shared/i18n.js';
 import { openOptionsPage } from '../../platform/messaging';
 import * as state from '../state';
 import { on, emit, EVENTS } from '../events';
-import { createInnerFollower } from '../ui/auto-scroll';
 import {
   appendMessage, appendMessageFromHistory, appendErrorMessage, addTypingIndicator,
   removeTypingIndicator, smartScrollToBottom, scrollToBottom,
@@ -14,7 +13,7 @@ import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay,
 } from './tts/index.js';
-import { renderMarkdown } from '../ui/markdown';
+import { createAnswerView } from '../ui/answer-view';
 import { genId } from '../../shared/ids';
 import type { ChatMessage } from '../../shared/types';
 import type { StreamMessage, FinishReason, TokenUsage } from '../../shared/protocol';
@@ -122,13 +121,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   // bubble is re-attached.
   const msgEl = appendMessage('ai', '');
   const typingEl = addTypingIndicator(msgEl);
-  let fullText = '';
-  let thinkingText = '';
-  let thinkingEl: HTMLDetailsElement | null = null;
-  let thinkingSummaryEl: HTMLElement | null = null;
-  let thinkingContentEl: HTMLDivElement | null = null;
-  let thinkingStartedAt: number | null = null;
-  let contentEl: HTMLDivElement | null = null;
+  const view = createAnswerView(msgEl, () => isCurrentTab());
   let finished = false;
 
   const port = openAIChatPort();
@@ -145,128 +138,22 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   function isCurrentTab(): boolean { return state.getActiveTabId() === tabId; }
 
-  // --- Streamed render throttling -------------------------------------------
-  // marked.parse over the full accumulated text is O(n); running it once per
-  // SSE chunk (10–50/s) makes a long answer O(n²) CPU, plus an innerHTML
-  // rebuild and a forced reflow (smartScrollToBottom reads scrollHeight) each
-  // time. Chunks buffer into fullText/thinkingText and the DOM is refreshed at
-  // most once per interval; the end of the stream always performs a final flush.
-  const STREAM_FLUSH_INTERVAL_MS = 80;
-  let flushTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastFlushAt = 0;
-  let followThinking: (() => void) | null = null;
-
-  /** Close an unterminated ``` fence so partially streamed code blocks render stably. */
-  function balanceFences(text: string): string {
-    const fenceCount = text.match(/^\s{0,3}```/gm)?.length ?? 0;
-    return fenceCount % 2 === 1 ? text + '\n```' : text;
-  }
-
-  function flushContent(): void {
-    if (!contentEl || !contentEl.isConnected) return;
-    contentEl.innerHTML = renderMarkdown(balanceFences(fullText));
-    /* Always the smart variant: with the stick-to-bottom state machine
-       (ui/auto-scroll.ts) stuck users follow the answer from its first
-       character; unstuck users keep their reading position. */
-    smartScrollToBottom();
-  }
-
-  function flushThinking(): void {
-    if (!thinkingContentEl || !thinkingContentEl.isConnected) return;
-    thinkingContentEl.innerHTML = renderMarkdown(balanceFences(thinkingText));
-    followThinking?.();
-    smartScrollToBottom();
-  }
-
-  function flushNow(): void {
-    lastFlushAt = performance.now();
-    if (thinkingEl && thinkingEl.open) flushThinking();
-    if (contentEl) flushContent();
-  }
-
-  function cancelScheduledFlush(): void {
-    if (flushTimer !== null) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-  }
-
-  function scheduleFlush(): void {
-    // Hidden tab / detached bubble: reattach() flushes everything at once.
-    if (!msgEl.isConnected || !isCurrentTab()) return;
-    if (flushTimer !== null) return; // pending timer picks up the buffered text
-    const elapsed = performance.now() - lastFlushAt;
-    if (elapsed >= STREAM_FLUSH_INTERVAL_MS) {
-      flushNow();
-    } else {
-      flushTimer = setTimeout(() => {
-        flushTimer = null;
-        flushNow();
-      }, STREAM_FLUSH_INTERVAL_MS - elapsed);
-    }
-  }
-
-  function ensureThinkingEl(): void {
-    if (thinkingEl) return;
-    thinkingEl = document.createElement('details');
-    thinkingEl.className = 'thinking-block';
-    thinkingEl.open = true;
-    const summary = document.createElement('summary');
-    summary.className = 'thinking-summary';
-    summary.textContent = t('ai.thinking');
-    thinkingSummaryEl = summary;
-    thinkingEl.appendChild(summary);
-    thinkingContentEl = document.createElement('div');
-    thinkingContentEl.className = 'thinking-content';
-    thinkingEl.appendChild(thinkingContentEl);
-    followThinking = createInnerFollower(thinkingContentEl);
-    // Collapsed thinking isn't flushed while streaming; render the latest
-    // reasoning whenever the user expands it.
-    thinkingEl.addEventListener('toggle', () => { if (thinkingEl?.open) flushThinking(); });
-    msgEl.appendChild(thinkingEl);
-  }
-
-  function ensureContentEl(): void {
-    if (contentEl) return;
-    contentEl = document.createElement('div');
-    contentEl.className = 'thinking-response-content';
-    msgEl.appendChild(contentEl);
-  }
-
   /** The tab became active again and its chat area was rebuilt: put the live bubble back. */
   function reattach(): void {
     if (finished || msgEl.isConnected || !isCurrentTab()) return;
     _chatArea.appendChild(msgEl);
-    flushNow();
+    view.flushNow();
     scrollToBottom();
   }
 
   port.onMessage.addListener((msg: StreamMessage) => {
     if (finished) return;
     if (msg.type === 'thinking') {
-      thinkingStartedAt ??= performance.now();
-      thinkingText += msg.content || '';
       removeTypingIndicator(typingEl);
-      ensureThinkingEl();
-      scheduleFlush();
+      view.appendThinking(msg.content || '');
     } else if (msg.type === 'chunk') {
-      const firstChunk = fullText === '';
-      fullText += msg.content || '';
       removeTypingIndicator(typingEl);
-
-      if (firstChunk) {
-        // The answer started: stamp the thinking duration and collapse the
-        // reasoning ONCE — the user may re-open it while the answer streams.
-        if (thinkingStartedAt !== null && thinkingSummaryEl) {
-          const elapsedSeconds = (performance.now() - thinkingStartedAt) / 1000;
-          thinkingSummaryEl.textContent = `${t('ai.thinking')} · ${elapsedSeconds.toFixed(1)}s`;
-          thinkingStartedAt = null;
-        }
-        if (thinkingEl) thinkingEl.open = false;
-      }
-
-      ensureContentEl();
-      scheduleFlush();
+      view.appendText(msg.content || '');
       if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
@@ -292,7 +179,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   function finalize(outcome: Outcome): void {
     if (finished) return;
     finished = true;
-    cancelScheduledFlush();
+    view.cancelFlush();
     _activeStreams.delete(tabId!);
     try { port.disconnect(); } catch { /* already disconnected */ }
     removeTypingIndicator(typingEl);
@@ -301,13 +188,13 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     // (so nothing streamed is lost); one that produced nothing is a failure
     // (disconnect) or a silent no-op (stop).
     // A refusal with nothing written is an error the user should see, not an empty answer.
-    if (outcome.kind === 'done' && outcome.finishReason === 'refusal' && fullText === '') {
+    if (outcome.kind === 'done' && outcome.finishReason === 'refusal' && view.text === '') {
       outcome = { kind: 'error', errorText: t('error.refused'), errorKey: 'error.refused' };
     }
-    const keepsAnswer = outcome.kind === 'done' || (fullText !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
+    const keepsAnswer = outcome.kind === 'done' || (view.text !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
-      appendHistory(tabState!, { id: genId(), role: 'assistant', content: fullText }, tabId!);
+      appendHistory(tabState!, { id: genId(), role: 'assistant', content: view.text }, tabId!);
       state.setGeneratingForTab(tabId!, false);
       finishAnswer(outcome.kind === 'done');
       if (outcome.kind === 'done' && isCurrentTab()) annotateAnswer(outcome);
@@ -333,7 +220,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     state.setGeneratingForTab(tabId!, false);
 
     if (isCurrentTab() && msgEl.isConnected) {
-      if (thinkingEl) thinkingEl.open = false;
+      view.collapseThinking();
       msgEl.className = 'message message-error';
       msgEl.textContent = errorText;
       addErrorMessageActions(msgEl, errorActions(findUserWrapperBefore(msgEl), errorKey));
@@ -372,15 +259,15 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       _pendingSaves.add(tabId!);
       return;
     }
-    msgEl.dataset.markdown = fullText; // copy button copies the markdown source
+    msgEl.dataset.markdown = view.text; // copy button copies the markdown source
     let answerEl: HTMLElement | null = msgEl;
     if (!msgEl.isConnected) {
       emit(EVENTS.REQUEST_RERENDER);
       const answers = _chatArea.querySelectorAll<HTMLElement>('.message-ai');
       answerEl = answers[answers.length - 1] ?? null;
     } else {
-      flushNow(); // render the complete text before buttons/summary attach
-      if (thinkingEl) thinkingEl.open = false;
+      view.flushNow(); // render the complete text before buttons/summary attach
+      view.collapseThinking();
       addTTSButton(msgEl);
     }
     setButtonsDisabled(false);

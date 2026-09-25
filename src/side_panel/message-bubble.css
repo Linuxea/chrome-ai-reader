@@ -204,3 +204,23 @@
 .md-blocked-image {
   font-size: 12px;
 }
+
+/* Citation chip: [#N] in an answer, jumps to the cited paragraph */
+.cite-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4em;
+  height: 1.4em;
+  padding: 0 4px;
+  margin: 0 1px;
+  border: none;
+  border-radius: 0.7em;
+  background: var(--accent-soft, rgba(128, 128, 128, 0.18));
+  color: var(--accent, inherit);
+  font-size: 0.75em;
+  line-height: 1;
+  vertical-align: super;
+  cursor: pointer;
+}
+.cite-chip:hover { filter: brightness(0.92); }

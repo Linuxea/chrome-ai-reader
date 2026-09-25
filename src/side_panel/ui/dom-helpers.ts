@@ -2,6 +2,7 @@ import { escapeHtml } from '../../shared/constants';
 import { t } from '../../shared/i18n.js';
 import { CSS } from '../../shared/css-selectors';
 import { renderMarkdown } from './markdown';
+import { linkifyCitations } from './citations';
 import { emit, EVENTS } from '../events';
 import * as autoScroll from './auto-scroll';
 import type { ChatMessage, MessageContentPart } from '../../shared/types';
@@ -51,6 +52,7 @@ export function appendMessage(role: string, content: string, imageUris?: string[
 
   if (role === 'ai' && content) {
     div.innerHTML = renderMarkdown(content);
+    linkifyCitations(div);
   } else if (content) {
     div.textContent = content;
   }

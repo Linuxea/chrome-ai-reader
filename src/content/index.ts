@@ -1,6 +1,7 @@
 import { handleExtract } from './page-extractor';
 import { handleStartAnnotation, handleClearAnnotation, injectAnnotationCSS, initAnnotationLang } from './annotation';
 import { scrollBegin, scrollNext, scrollRestore } from './scroll-controller';
+import { highlightParagraph } from './paragraphs';
 
 // Localized annotation icon/bubble labels — read once at script load so the
 // language is ready long before the user can trigger an annotation run.
@@ -8,6 +9,12 @@ initAnnotationLang();
 
 chrome.runtime.onMessage.addListener((request: { action?: string }, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => {
   if (request.action === 'extract') return handleExtract(request, sendResponse);
+
+  // Citation click in the panel: jump to and flash the cited paragraph.
+  if (request.action === 'highlightParagraph') {
+    sendResponse({ ok: highlightParagraph(String((request as { text?: string }).text ?? '')) });
+    return;
+  }
 
   // Annotation actions are fire-and-forget (no response payload needed).
   if (request.action === 'startAnnotation') {

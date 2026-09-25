@@ -32,6 +32,8 @@ export type PromptKey =
   | 'suggest.aiLabel'
   | 'outline'
   | 'default.custom'
+  | 'default.partial'
+  | 'citations.rule'
   | 'annotation.system'
   | 'annotation.user'
   | 'podcast.system'
@@ -88,6 +90,13 @@ const ZH: PromptTable = {
 
   // The user's custom system prompt, folded into `default` as {custom}.
   'default.custom': '【补充要求】\n{custom}',
+
+  // Prepended to the article when context-builder had to leave paragraphs out.
+  'default.partial': '（文章较长，下面只包含开头和与问题相关的段落，… 表示省略的部分。如果回答需要的内容可能在省略部分，请说明。）',
+
+  // Rule added to `default` when citations are on. Paragraphs are labelled
+  // [#N] by context-builder; the panel turns [#N] into jump-to-source chips.
+  'citations.rule': '3. 文章的每一段都以 [#N] 标注编号。回答中依据文章内容的陈述，请在句末用 [#N] 标出出处段落（可以写多个，如 [#3][#7]）；只标注确实支持该陈述的段落，不要编造编号，常识或推断不需要标注。',
 
   'outline': [
     '你是一个内容分析专家。请将文章内容分析为结构化大纲。',
@@ -282,6 +291,10 @@ const EN: Partial<PromptTable> = {
   'draft.supplement': '[Additional instructions from the user]\n{draft}',
 
   'default.custom': '[Additional requirements]\n{custom}',
+
+  'default.partial': '(The article is long: below are its opening and the paragraphs relevant to the question; … marks omitted parts. Say so if the answer may be in an omitted part.)',
+
+  'citations.rule': '3. Every paragraph of the article is labelled [#N]. When a statement in your answer rests on the article, end that sentence with the paragraph label(s) it comes from, e.g. [#3][#7]. Only cite paragraphs that actually support the statement, never invent labels, and do not cite general knowledge or your own inferences.',
 
   'outline': [
     'You are a content analysis expert. Analyze the article content into a structured outline.',

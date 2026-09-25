@@ -23,6 +23,7 @@ import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initMiniPlayer } from './features/podcast/mini-player.js';
 import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
+import { initCitations } from './features/citations';
 import { bindGlobalEvents } from './shell/global-events';
 import type { UIElements } from './shell/types';
 import { updateQuotePreview } from './ui/quote-preview';
@@ -119,6 +120,7 @@ async function init(): Promise<void> {
   initPodcast({ chatArea: els.chatArea });
   initMiniPlayer();
   initRelatedPages({ chatArea: els.chatArea });
+  initCitations({ chatArea: els.chatArea });
   const annotationBtn = document.querySelector<HTMLButtonElement>('[data-action="annotation"]');
   if (annotationBtn) {
     initAnnotation({

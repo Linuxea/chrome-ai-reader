@@ -232,7 +232,8 @@ describe('loading a saved chat', () => {
     initChatHistory({ chatArea, historyPanel, historyList, onLoadChat, onRenderOutline: vi.fn(), onOutlineToMarkdown: vi.fn() });
     await renderHistoryList();
     historyList.querySelector('.history-item-info').click();
-    await new Promise(r => setTimeout(r, 0));
+    // Both load paths end by hiding the history panel (IndexedDB is async).
+    await vi.waitFor(() => expect(historyPanel.classList.contains('hidden')).toBe(true));
     return { chatArea, historyPanel, onLoadChat };
   }
 

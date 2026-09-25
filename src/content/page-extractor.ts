@@ -1,4 +1,5 @@
 import { Readability } from '@mozilla/readability';
+import { paragraphsFromHtml, extractParagraphs } from './paragraphs';
 
 interface ExtractData {
   title: string;
@@ -7,6 +8,8 @@ interface ExtractData {
   content: string;
   byline: string;
   siteName: string;
+  /** Article paragraphs (labelled [#N] in prompts; citations point back to them). */
+  paragraphs: string[];
 }
 
 export function handleExtract(_msg: unknown, sendResponse: (response: { success: boolean; data?: ExtractData; error?: string }) => void): true {
@@ -25,6 +28,7 @@ export function handleExtract(_msg: unknown, sendResponse: (response: { success:
           content: article.content || '',
           byline: article.byline || '',
           siteName: article.siteName || '',
+          paragraphs: paragraphsFromHtml(article.content || ''),
         },
       });
     } else {
@@ -37,6 +41,7 @@ export function handleExtract(_msg: unknown, sendResponse: (response: { success:
           content: '',
           byline: '',
           siteName: '',
+          paragraphs: document.body ? extractParagraphs(document.body) : [],
         },
       });
     }

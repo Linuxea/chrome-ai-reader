@@ -49,7 +49,7 @@ describe('events', () => {
 
     it('EVENTS object is frozen or sealed to prevent accidental mutation', () => {
       // EVENTS is a plain const object — verify no extra keys sneaked in
-      expect(Object.keys(EVENTS).length).toBe(14);
+      expect(Object.keys(EVENTS).length).toBe(15);
     });
   });
 

@@ -4,6 +4,8 @@ import { getPrompt } from '../../shared/prompts';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
 import { genId } from '../../shared/ids';
+import { buildPageContext, splitParagraphs, trimHistory } from '../../shared/context-builder';
+import { readSettings } from '../../platform/settings';
 import type { ChatMessage, MessageContentPart, UserMessageMeta } from '../../shared/types';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
@@ -67,18 +69,24 @@ export async function sendToAI(
 
     const messages: ChatMessage[] = [];
     const pageContent = tabState.pageContent || '';
+    const { citations } = await readSettings(['citations']);
     if (pageContent) {
-      const context = safeTruncate(pageContent, TRUNCATE_LIMITS.CONTEXT);
       const lang = getCurrentLang();
+      // Budgeted page context (context-builder): all paragraphs when they fit,
+      // otherwise the opening + the paragraphs relevant to this question.
+      const paragraphs = tabState.pageParagraphs?.length ? tabState.pageParagraphs : splitParagraphs(pageContent);
+      const page = buildPageContext(paragraphs, [quoteForContext, text].filter(Boolean).join('\n'));
+      const context = page.partial ? `${getPrompt('default.partial', lang)}\n\n${page.text}` : page.text;
       // Two system messages: [1] rules + custom (short, ~200 chars), [2] the
       // article as reference data. Splitting them keeps the custom prompt in a
       // short instruction message where the model still attends to it, instead
       // of being buried under thousands of characters of article text. OpenAI
       // and DeepSeek both honor multiple system messages correctly.
       const customSystemPrompt = state.getCustomSystemPrompt();
-      const customBlock = customSystemPrompt
-        ? getPrompt('default.custom', lang, { custom: customSystemPrompt })
-        : '';
+      const customBlock = [
+        citations ? getPrompt('citations.rule', lang) : '',
+        customSystemPrompt ? getPrompt('default.custom', lang, { custom: customSystemPrompt }) : '',
+      ].filter(Boolean).join('\n');
       const ruleContent = getPrompt('default', lang, { custom: customBlock });
       const articleContent = getPrompt('default.article', lang, {
         title: tabState.pageTitle,
@@ -88,8 +96,9 @@ export async function sendToAI(
       messages.push({ role: 'system', content: articleContent });
     }
 
-    const conversationHistory = tabState.conversationHistory || [];
-    messages.push(...conversationHistory.map(toApiMessage));
+    // Newest turns within the history budget (the page already has its own).
+    const { messages: recentHistory } = trimHistory(tabState.conversationHistory || []);
+    messages.push(...recentHistory.map(toApiMessage));
 
     let apiContent = text;
 

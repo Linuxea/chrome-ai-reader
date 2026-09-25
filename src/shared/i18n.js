@@ -196,6 +196,8 @@ const TRANSLATIONS = {
 
     'ai.thinking': '思考过程',
     'ai.stopped': '已停止生成',
+    'citation.unavailable': '这条引用对应的页面内容已不可用（页面已跳转或重新打开）。',
+    'citation.notFound': '在当前页面中没有找到这段原文。',
     'ai.truncatedByLimit': '回答达到长度上限，已被截断。可以让我"继续"。',
     'ai.refusedPartway': '模型中途拒绝继续回答。',
     'ai.usage': '{model} · 输入 {in} / 输出 {out} tokens',
@@ -462,6 +464,8 @@ const TRANSLATIONS = {
 
     'ai.thinking': 'Thinking',
     'ai.stopped': 'Generation stopped',
+    'citation.unavailable': 'The cited page content is no longer available (the page changed or was reopened).',
+    'citation.notFound': 'Could not find that passage on the current page.',
     'ai.truncatedByLimit': 'The answer hit the length limit and was cut off. Ask me to "continue".',
     'ai.refusedPartway': 'The model stopped and declined to continue.',
     'ai.usage': '{model} · {in} in / {out} out tokens',

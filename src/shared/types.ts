@@ -97,6 +97,8 @@ export interface TabState {
   pageExcerpt: string;
   /** URL the cached page content was extracted from (hash stripped). */
   pageUrl?: string;
+  /** The article split into paragraphs ([#N] in prompts, citation targets). */
+  pageParagraphs?: string[];
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
   selectedText: string;

@@ -27,6 +27,8 @@ export const EVENTS = {
    *  history. The stream handler re-attaches an in-flight answer bubble for
    *  the now-active tab (and saves an answer that finished in the background). */
   CHAT_RERENDERED: 'chatRerendered',
+  /** A citation chip ([#N]) in an answer was clicked. Payload: the paragraph index. */
+  CITATION_CLICK: 'citationClick',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -47,6 +49,7 @@ interface EventMap {
   [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string; content?: string }) => void;
   [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
   [EVENTS.CHAT_RERENDERED]: () => void;
+  [EVENTS.CITATION_CLICK]: (args: { index: number }) => void;
 }
 
 const handlers = new Map<string, Set<EventHandler>>();

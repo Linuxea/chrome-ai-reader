@@ -5,11 +5,13 @@ import * as state from '../state';
 import { emit, EVENTS } from '../events';
 import { showExtractingToast } from '../ui/toast';
 import { sendToContentScript } from '../../platform/messaging';
+import { splitParagraphs } from '../../shared/context-builder';
 
 export interface ExtractResult {
   textContent: string;
   excerpt: string;
   title: string;
+  paragraphs?: string[];
 }
 
 /**
@@ -68,6 +70,7 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
     tabState.pageExcerpt = response.data.excerpt;
     tabState.pageTitle = response.data.title;
     tabState.pageUrl = url;
+    tabState.pageParagraphs = response.data.paragraphs?.length ? response.data.paragraphs : splitParagraphs(response.data.textContent);
     state.persistForTab(tabId);
   }
 
