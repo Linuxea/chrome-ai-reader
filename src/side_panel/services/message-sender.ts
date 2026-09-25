@@ -69,7 +69,7 @@ export async function sendToAI(
 
     const messages: ChatMessage[] = [];
     const pageContent = tabState.pageContent || '';
-    const { citations } = await readSettings(['citations']);
+    const { citations, agentMode } = await readSettings(['citations', 'agentMode']);
     if (pageContent) {
       const lang = getCurrentLang();
       // Budgeted page context (context-builder): all paragraphs when they fit,
@@ -85,6 +85,7 @@ export async function sendToAI(
       const customSystemPrompt = state.getCustomSystemPrompt();
       const customBlock = [
         citations ? getPrompt('citations.rule', lang) : '',
+        agentMode ? getPrompt('agent.rule', lang) : '',
         customSystemPrompt ? getPrompt('default.custom', lang, { custom: customSystemPrompt }) : '',
       ].filter(Boolean).join('\n');
       const ruleContent = getPrompt('default', lang, { custom: customBlock });
@@ -129,7 +130,7 @@ export async function sendToAI(
       }
     }
 
-    await callAI(messages, startTabId);
+    await callAI(messages, startTabId, { agent: agentMode === true });
   } catch (e: unknown) {
     takePendingAbort(startTabId!); // a Stop racing the failure is moot now
     const errMsg = toErrorMessage(e);

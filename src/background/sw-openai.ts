@@ -38,48 +38,51 @@ export async function callSuggestQuestions(messages: ChatMessage[], port: chrome
   });
 }
 
-export async function callEmbedding(text: string, port: chrome.runtime.Port): Promise<void> {
-  // Embedding must be configured independently — there is no fallback to the
-  // chat apiKey/apiBase. The default `doubao-embedding-vision` model and the
-  // hardcoded volcano-engine base URL previously caused silent 401/404 when
-  // users only configured a chat provider (e.g. DeepSeek). Now any missing
-  // field surfaces as an explicit error the UI can show.
+/** An embedding failure the UI can explain (errorKey) or show verbatim (message). */
+export class EmbeddingError extends Error {
+  constructor(message: string, readonly errorKey?: string) { super(message); }
+}
+
+/**
+ * Embed one text with the independently configured embedding provider.
+ * There is no fallback to the chat provider: a DeepSeek-only setup used to
+ * hit a hard-coded Volcengine default and fail with a silent 401/404.
+ */
+export async function embedText(text: string, signal?: AbortSignal): Promise<number[]> {
   const { embeddingApiKey, embeddingApiBase, embeddingModel } = await readSettings([
     'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
   ]);
-
   if (!embeddingApiKey || !embeddingApiBase || !embeddingModel) {
-    safePostMessage(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });
-    return;
+    throw new EmbeddingError('embedding not configured', 'error.embeddingNotConfigured');
   }
+  const response = await fetch(`${embeddingApiBase}/embeddings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${embeddingApiKey}` },
+    body: JSON.stringify({ model: embeddingModel, input: text }),
+    signal,
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new EmbeddingError(
+      (errorData as Record<string, { message?: string }>).error?.message || `Embedding API request failed (${response.status})`,
+      'error.embeddingRequestFailed',
+    );
+  }
+  const data = await response.json() as { data?: { embedding: number[] }[] };
+  const embedding = data.data?.[0]?.embedding;
+  if (!embedding || embedding.length === 0) throw new EmbeddingError('empty embedding', 'error.emptyEmbedding');
+  return embedding;
+}
 
-  const baseUrl = embeddingApiBase;
-  const model = embeddingModel;
-
+export async function callEmbedding(text: string, port: chrome.runtime.Port): Promise<void> {
   const controller = new AbortController();
   port.onDisconnect.addListener(() => controller.abort());
-
   try {
-    const response = await fetch(`${baseUrl}/embeddings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${embeddingApiKey}` },
-      body: JSON.stringify({ model, input: text }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error((errorData as Record<string, { message?: string }>).error?.message || `Embedding API request failed (${response.status})`);
-    }
-
-    const data = await response.json() as { data?: { embedding: number[] }[] };
-    const embedding = data.data?.[0]?.embedding;
-    if (!embedding || embedding.length === 0) {
-      safePostMessage(port, { type: 'error', errorKey: 'error.emptyEmbedding' });
-      return;
-    }
-    safePostMessage(port, { type: 'embedding', embedding });
+    safePostMessage(port, { type: 'embedding', embedding: await embedText(text, controller.signal) });
   } catch (e: unknown) {
-    safePostMessage(port, { type: 'error', error: (e as Error).message, errorKey: 'error.embeddingRequestFailed' });
+    const err = e as EmbeddingError;
+    // Config problems carry only a key; request failures also carry the detail.
+    if (err.errorKey && err.errorKey !== 'error.embeddingRequestFailed') safePostMessage(port, { type: 'error', errorKey: err.errorKey });
+    else safePostMessage(port, { type: 'error', error: err.message, errorKey: 'error.embeddingRequestFailed' });
   }
 }

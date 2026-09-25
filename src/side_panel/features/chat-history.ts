@@ -55,7 +55,7 @@ export function initChatHistory({ chatArea, historyPanel, historyList, onLoadCha
  * and again when loading legacy records that stored it, so saved chats hold
  * content only and reloads don't resurrect dead buttons.
  */
-const MESSAGE_CHROME_SELECTOR = '.tts-btn, .tts-download-btn, .ai-action-btn, .thinking-block, .typing-indicator, .answer-usage';
+const MESSAGE_CHROME_SELECTOR = '.tts-btn, .tts-download-btn, .ai-action-btn, .thinking-block, .typing-indicator, .answer-usage, .agent-steps';
 
 export function stripMessageChrome(html: string): string {
   // Inert parse: a stored snapshot may carry remote <img> tags that must not

@@ -224,3 +224,15 @@
   cursor: pointer;
 }
 .cite-chip:hover { filter: brightness(0.92); }
+
+/* Agent mode: the tools the model used for this answer */
+.agent-steps {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent, #999);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.agent-step { opacity: 0.7; }
+.agent-step.done { opacity: 1; }
+.agent-step:not(.done)::after { content: ' …'; }

@@ -98,6 +98,7 @@ registerMessage('fetchModels', 'extension', (msg, _sender, sendResponse) => {
 
 registerMessage('pageRecords:store', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
 registerMessage('pageRecords:findRelated', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
+registerMessage('pageRecords:search', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
 
 chrome.runtime.onConnect.addListener(dispatchConnect);
 chrome.runtime.onMessage.addListener(dispatchMessage);

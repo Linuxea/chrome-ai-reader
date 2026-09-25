@@ -87,6 +87,11 @@ vi.mock('../../src/side_panel/ui/markdown.js', () => ({
   renderMarkdown: vi.fn((s: string) => `<p>${s}</p>`),
 }));
 
+vi.mock('../../src/side_panel/services/agent-tools.js', () => ({
+  AGENT_TOOL_SPECS: [{ name: 'search_page', description: 'd', parameters: { type: 'object' } }],
+  runAgentTool: vi.fn(async () => 'tool output'),
+}));
+
 // --- Import after mocks ---
 import { initStreamHandler, callAI, abortGeneration, takePendingAbort } from '../../src/side_panel/services/stream-handler.js';
 import { renderMarkdown } from '../../src/side_panel/ui/markdown.js';
@@ -95,6 +100,7 @@ import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
 import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
 import * as ttsMock from '../../src/side_panel/services/tts/index.js';
+import { runAgentTool } from '../../src/side_panel/services/agent-tools.js';
 
 // --- Programmable port mock for chrome.runtime.connect ---
 function createMockPort() {
@@ -146,6 +152,24 @@ describe('services/stream-handler', () => {
     } as unknown as typeof chrome;
 
     initStreamHandler({ chatArea: document.createElement('div') });
+  });
+
+  describe('agent mode', () => {
+    it('offers the tools, runs requested calls in the panel and returns the results', async () => {
+      await callAI([{ role: 'user', content: 'q' }], 1, { agent: true });
+      expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'agent', tools: expect.any(Array) }));
+
+      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'search_page', arguments: '{"query":"x"}' }], assistant: { role: 'assistant', content: '' } });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith({
+        type: 'tool_results', results: [{ tool_call_id: 'c1', name: 'search_page', content: 'tool output' }],
+      }));
+      expect(runAgentTool).toHaveBeenCalledWith('search_page', '{"query":"x"}', 1);
+    });
+
+    it('a plain chat does not offer tools', async () => {
+      await callAI([], 1);
+      expect(port.postMessage).toHaveBeenCalledWith({ type: 'chat', messages: [] });
+    });
   });
 
   it('stops any ongoing TTS when a new call starts', async () => {

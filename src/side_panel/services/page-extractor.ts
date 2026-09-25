@@ -87,3 +87,27 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
 
   return ok(response.data!);
 }
+
+/** Characters of another tab's text kept for multi-tab context / agent reads. */
+export const OTHER_TAB_CHARS = 20_000;
+
+/**
+ * Read another tab's article without touching any tab's cache (multi-tab
+ * questions, the agent's read_tab). Long pages are truncated.
+ */
+export async function extractTabContent(tabId: number): Promise<Result<ExtractResult & { url: string }>> {
+  let response: { success?: boolean; error?: string; data?: ExtractResult } | undefined;
+  try {
+    response = await sendToContentScript(tabId, { action: 'extract' });
+  } catch {
+    return err(new Error(t('error.pageUnsupported')));
+  }
+  if (!response?.success || !response.data) return err(new Error(response?.error || t('error.extractFailed')));
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const text = response.data.textContent || '';
+  return ok({
+    ...response.data,
+    textContent: text.length > OTHER_TAB_CHARS ? text.slice(0, OTHER_TAB_CHARS) + '\n' + t('ai.truncated') : text,
+    url: tab?.url ?? '',
+  });
+}

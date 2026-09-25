@@ -14,8 +14,9 @@ import {
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay,
 } from './tts/index.js';
 import { createAnswerView } from '../ui/answer-view';
+import { AGENT_TOOL_SPECS, runAgentTool } from './agent-tools';
 import { genId } from '../../shared/ids';
-import type { ChatMessage } from '../../shared/types';
+import type { ChatMessage, ToolCall } from '../../shared/types';
 import type { StreamMessage, FinishReason, TokenUsage } from '../../shared/protocol';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
 import { openAIChatPort } from '../../platform/ports';
@@ -103,7 +104,12 @@ type Outcome =
   /** The service worker's end went away (worker restart / crash). */
   | { kind: 'disconnected' };
 
-export async function callAI(messages: ChatMessage[], tabId: number | null): Promise<void> {
+export interface CallAIOptions {
+  /** Agent mode: offer the panel's tools; the worker loops until an answer. */
+  agent?: boolean;
+}
+
+export async function callAI(messages: ChatMessage[], tabId: number | null, options: CallAIOptions = {}): Promise<void> {
   if (isTTSPlaying()) stopTTS();
 
   const tabState = state.getStateForTab(tabId!);
@@ -126,10 +132,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   const port = openAIChatPort();
 
-  port.postMessage({
-    type: 'chat',
-    messages: messages,
-  });
+  port.postMessage(options.agent
+    ? { type: 'chat', messages, purpose: 'agent', tools: AGENT_TOOL_SPECS }
+    : { type: 'chat', messages });
 
   _activeStreams.set(tabId!, {
     abort: () => finalize({ kind: 'aborted' }),
@@ -157,6 +162,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
+    } else if (msg.type === 'tool_calls') {
+      removeTypingIndicator(typingEl);
+      void runToolCalls(msg.calls);
     } else if (msg.type === 'done') {
       finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model });
     } else if (msg.type === 'error') {
@@ -167,6 +175,28 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
       });
     }
   });
+
+  /** Agent mode: show each step, run the tools here, send the results back. */
+  async function runToolCalls(calls: ToolCall[]): Promise<void> {
+    let steps = msgEl.querySelector<HTMLElement>('.agent-steps');
+    if (!steps) {
+      steps = document.createElement('div');
+      steps.className = 'agent-steps';
+      msgEl.insertBefore(steps, msgEl.firstChild);
+    }
+    const results: { tool_call_id: string; name: string; content: string }[] = [];
+    for (const call of calls) {
+      const line = document.createElement('div');
+      line.className = 'agent-step';
+      line.textContent = t('agent.step', { tool: t(`agent.tool.${call.name}`), args: describeArgs(call.arguments) });
+      steps.appendChild(line);
+      const content = await runAgentTool(call.name, call.arguments, tabId!);
+      if (finished) return;
+      line.classList.add('done');
+      results.push({ tool_call_id: call.id, name: call.name, content });
+    }
+    try { port.postMessage({ type: 'tool_results', results }); } catch { /* stream ended */ }
+  }
 
   // Fires only when the service worker's end goes away — never for our own
   // disconnect() (see abortGeneration).
@@ -282,5 +312,17 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     // TTS button + suggestion loading attach below the answer; keep a stuck
     // view pinned over the newly added chrome.
     smartScrollToBottom();
+  }
+}
+
+/** Short human-readable argument summary for the step list. */
+function describeArgs(json: string): string {
+  try {
+    const args = JSON.parse(json || '{}') as Record<string, unknown>;
+    const parts = Object.values(args).map((v) => String(v)).filter(Boolean);
+    const text = parts.join(', ');
+    return text.length > 60 ? text.slice(0, 60) + '…' : text;
+  } catch {
+    return '';
   }
 }

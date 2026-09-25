@@ -225,6 +225,13 @@ export interface PageRecordsFindRelatedMessage {
   limit: number;
 }
 
+/** Semantic search over reading history (worker embeds the query). */
+export interface PageRecordsSearchMessage {
+  action: 'pageRecords:search';
+  query: string;
+  limit?: number;
+}
+
 export interface PageRecordsStoreResponse {
   success: boolean;
   error?: string;
@@ -234,6 +241,7 @@ export interface PageRecordsFindRelatedResponse {
   success: boolean;
   relations?: PageRelation[];
   error?: string;
+  errorKey?: string;
 }
 
 // ---------------------------------------------------------------------------
