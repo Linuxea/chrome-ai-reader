@@ -33,8 +33,8 @@ export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 /** Typed event map — maps event names to their handler signatures */
 interface EventMap {
-  [EVENTS.RETRY]: (args: { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote?: string }) => void;
-  [EVENTS.EDIT]: (args: { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote?: string }) => void;
+  [EVENTS.RETRY]: (args: { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote?: string; msgId?: string }) => void;
+  [EVENTS.EDIT]: (args: { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote?: string; msgId?: string }) => void;
   [EVENTS.REMOVE_SUGGEST_QUESTIONS]: () => void;
   [EVENTS.REQUEST_RERENDER]: () => void;
   [EVENTS.GENERATE_SUGGESTIONS]: (args: { msgEl: HTMLElement; history: ChatMessage[] }) => void;

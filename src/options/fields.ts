@@ -19,4 +19,11 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
   embeddingEnabled: document.getElementById('embeddingEnabled') as HTMLInputElement,
 };
 
+/**
+ * Credentials. Left out of settings exports unless the user opts in (the
+ * export is a plain-text file), and never cleared by an import that lacks
+ * them — so re-importing a redacted backup keeps the keys already configured.
+ */
+export const SECRET_FIELDS: readonly string[] = ['apiKey', 'ttsAccessKey', 'embeddingApiKey'];
+
 export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language', 'embeddingThreshold', 'embeddingMaxPages'];

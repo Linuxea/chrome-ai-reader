@@ -17,6 +17,7 @@ vi.mock('../../../src/side_panel/state.js', () => ({
 import {
   rollbackTrailingUserMessage,
   truncateHistoryFromUserContent,
+  truncateHistoryFromId,
   appendMessage,
   stripImagesForPersistence,
 } from '../../../src/side_panel/services/chat/history-ops';
@@ -100,6 +101,31 @@ describe('services/chat/history-ops', () => {
         { role: 'user', content: 'q1' },
         { role: 'assistant', content: 'a1' },
       ]);
+    });
+  });
+
+  // ==========================================================================
+  // truncateHistoryFromId
+  // ==========================================================================
+  describe('truncateHistoryFromId', () => {
+    it('truncates from the message with that id — not a later one with the same text', () => {
+      const ts = makeTabState([
+        { id: 'u1', role: 'user', content: 'hello' },
+        { id: 'a1', role: 'assistant', content: 'a1' },
+        { id: 'u2', role: 'user', content: 'hello' },
+        { id: 'a2', role: 'assistant', content: 'a2' },
+      ]);
+
+      const idx = truncateHistoryFromId(ts, 'u1', TAB_ID);
+
+      expect(idx).toBe(0);
+      expect(ts.conversationHistory).toEqual([]);
+    });
+
+    it('leaves history unchanged when the id is unknown (e.g. already rolled back)', () => {
+      const ts = makeTabState([{ id: 'u1', role: 'user', content: 'q' }]);
+      expect(truncateHistoryFromId(ts, 'gone', TAB_ID)).toBe(-1);
+      expect(ts.conversationHistory).toHaveLength(1);
     });
   });
 

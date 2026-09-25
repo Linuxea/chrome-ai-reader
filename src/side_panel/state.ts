@@ -1,5 +1,6 @@
 import type { TabState, ChatMessage } from '../shared/types';
 import { stripImagesForPersistence } from './services/chat/strip-images';
+import { ensureMessageIds } from '../shared/ids';
 
 /**
  * Debounce window for field-setter persistence. High-frequency setters
@@ -85,6 +86,7 @@ function persistActiveNow(): void {
  */
 function restoreTabState(stored: TabState | undefined): TabState {
   if (!stored) return createFreshTabState();
+  ensureMessageIds(stored.conversationHistory ?? []);
   return { ...stored, isGenerating: false, isPodcastGenerating: false };
 }
 
@@ -268,7 +270,7 @@ export function setIsPodcastGenerating(v: boolean): void { if (!_activeState) re
 // than going through the debounced setter path.
 
 export function getConversationHistory(): ChatMessage[] { return _activeState?.conversationHistory ?? []; }
-export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = v; persistActiveNow(); }
+export function setConversationHistory(v: ChatMessage[]): void { if (!_activeState) return; _activeState.conversationHistory = ensureMessageIds(v); persistActiveNow(); }
 
 export function pushConversation(msg: ChatMessage): void {
   if (!_activeState) return;

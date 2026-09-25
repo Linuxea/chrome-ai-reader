@@ -7,7 +7,7 @@ import { scrollToBottom } from '../ui/dom-helpers';
 import { showToast } from '../ui/toast';
 import { stripImagesForPersistence } from '../services/chat/strip-images';
 import { addTTSButton } from '../services/tts/index.js';
-import { marked } from 'marked';
+import { renderMarkdown, sanitizeHtml, parseInertHtml } from '../ui/markdown';
 import { emit, EVENTS } from '../events';
 import type { ChatMessage } from '../../shared/types';
 
@@ -27,6 +27,12 @@ interface DisplayMessage {
   type?: string;
   /** User messages: the quoted page text (kept apart so titles show the question). */
   quote?: string;
+  /**
+   * 'md': assistant `content` is the Markdown source. Absent on legacy
+   * records, whose assistant content is a rendered HTML snapshot (untrusted —
+   * always sanitized before it is rendered).
+   */
+  format?: 'md';
 }
 
 interface ChatHistoryEntry {
@@ -92,10 +98,11 @@ function saveChatHistories(histories: ChatHistoryEntry[]): Promise<void> {
 const MESSAGE_CHROME_SELECTOR = '.tts-btn, .tts-download-btn, .ai-action-btn, .thinking-block, .typing-indicator';
 
 export function stripMessageChrome(html: string): string {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  tmp.querySelectorAll(MESSAGE_CHROME_SELECTOR).forEach(el => el.remove());
-  return tmp.innerHTML;
+  // Inert parse: a stored snapshot may carry remote <img> tags that must not
+  // be fetched while it is being inspected.
+  const tpl = parseInertHtml(html);
+  tpl.content.querySelectorAll(MESSAGE_CHROME_SELECTOR).forEach(el => el.remove());
+  return sanitizeHtml(tpl.innerHTML);
 }
 
 export function getDisplayMessages(): DisplayMessage[] {
@@ -125,7 +132,12 @@ export function getDisplayMessages(): DisplayMessage[] {
           type: 'outline',
         });
       } else {
-        messages.push({ role: 'assistant', content: stripMessageChrome(el.innerHTML) });
+        // Store the Markdown source, never the rendered HTML: a snapshot would
+        // persist whatever markup the model produced.
+        const md = (el as HTMLElement).dataset.markdown;
+        messages.push(md !== undefined
+          ? { role: 'assistant', content: md, format: 'md' }
+          : { role: 'assistant', content: stripMessageChrome(el.innerHTML) });
       }
     }
   });
@@ -266,10 +278,13 @@ async function loadChat(id: string): Promise<void> {
           div.dataset.type = 'outline';
           div.dataset.json = msg.content;
         } else {
-          div.innerHTML = marked.parse(msg.content) as string;
+          div.innerHTML = renderMarkdown(msg.content);
         }
+      } else if (msg.format === 'md') {
+        div.innerHTML = renderMarkdown(msg.content);
+        div.dataset.markdown = msg.content;
       } else {
-        // Legacy records may contain persisted UI chrome — strip it on the way in.
+        // Legacy HTML snapshot: strip persisted UI chrome and sanitize.
         div.innerHTML = stripMessageChrome(msg.content);
       }
       // Restored answers get their copy/TTS/download buttons back.
@@ -351,9 +366,7 @@ export function sanitizeFilename(title: string): string {
 }
 
 export function stripHtml(html: string): string {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.textContent || '';
+  return parseInertHtml(html).content.textContent || '';
 }
 
 export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[]; conversationHistory?: ChatMessage[]; pageTitle?: string; title?: string }): Promise<void> {
@@ -391,7 +404,7 @@ export async function exportChatAsMarkdown(chatData: { messages: DisplayMessage[
       }
       const raw = assistantIdx < assistantEntries.length
         ? assistantEntries[assistantIdx].content
-        : stripHtml(msg.content);
+        : (msg.format === 'md' ? msg.content : stripHtml(msg.content));
       assistantIdx++;
       md += '## ' + t('chat.ai') + '\n\n' + raw + '\n\n---\n\n';
     }

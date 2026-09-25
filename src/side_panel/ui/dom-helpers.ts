@@ -1,7 +1,7 @@
 import { escapeHtml } from '../../shared/constants';
 import { t } from '../../shared/i18n.js';
 import { CSS } from '../../shared/css-selectors';
-import { marked } from 'marked';
+import { renderMarkdown } from './markdown';
 import { emit, EVENTS } from '../events';
 import * as autoScroll from './auto-scroll';
 import type { ChatMessage, MessageContentPart } from '../../shared/types';
@@ -50,7 +50,7 @@ export function appendMessage(role: string, content: string, imageUris?: string[
   div.className = `message message-${role}`;
 
   if (role === 'ai' && content) {
-    div.innerHTML = marked.parse(content) as string;
+    div.innerHTML = renderMarkdown(content);
   } else if (content) {
     div.textContent = content;
   }
@@ -103,6 +103,8 @@ export interface UserBubble {
   /** Full quoted page text (shown truncated). */
   quote?: string;
   imageUris?: string[];
+  /** History message id — retry / edit truncate history at exactly this entry. */
+  id?: string;
 }
 
 const QUOTE_PREVIEW_CHARS = 50;
@@ -113,7 +115,7 @@ const QUOTE_PREVIEW_CHARS = 50;
  * exactly like the original.
  */
 export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): HTMLDivElement {
-  const { rawText, displayText, quote, imageUris } = bubble;
+  const { rawText, displayText, quote, imageUris, id } = bubble;
   let el: HTMLDivElement;
   if (quote) {
     const preview = quote.length > QUOTE_PREVIEW_CHARS ? quote.slice(0, QUOTE_PREVIEW_CHARS) + '...' : quote;
@@ -124,6 +126,7 @@ export function appendUserMessage(bubble: UserBubble, options?: AppendOptions): 
   }
   el.dataset.rawText = rawText;
   el.dataset.rawDisplay = displayText;
+  if (id) el.dataset.msgId = id;
   return el;
 }
 
@@ -168,7 +171,7 @@ function addUserActions(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void {
     const rawText = msgEl.dataset.rawText || '';
     const rawQuote = msgEl.dataset.rawQuote || '';
     const rawDisplay = msgEl.dataset.rawDisplay || rawText;
-    emit(EVENTS.RETRY, { wrapper, rawText, rawDisplay, rawQuote });
+    emit(EVENTS.RETRY, { wrapper, rawText, rawDisplay, rawQuote, msgId: msgEl.dataset.msgId });
   });
 
   actions.appendChild(editBtn);
@@ -225,6 +228,7 @@ function openInlineEditor(wrapper: HTMLDivElement, msgEl: HTMLDivElement): void 
       originalRawText: msgEl.dataset.rawText || '',
       editedText: edited,
       rawQuote: msgEl.dataset.rawQuote || undefined,
+      msgId: msgEl.dataset.msgId,
     });
   };
 
@@ -325,6 +329,7 @@ export function emitRetryFromWrapper(wrapper: HTMLElement): void {
     rawText: userEl?.dataset.rawText || '',
     rawDisplay: userEl?.dataset.rawDisplay || userEl?.textContent || '',
     rawQuote: userEl?.dataset.rawQuote || '',
+    msgId: userEl?.dataset.msgId,
   });
 }
 
@@ -344,7 +349,7 @@ export function updateLastMessage(role: string, content: string): void {
     const last = messages[messages.length - 1];
     last.className = `message message-${role}`;
     if (role === 'ai') {
-      last.innerHTML = marked.parse(content) as string;
+      last.innerHTML = renderMarkdown(content);
     } else {
       last.textContent = content;
     }
@@ -425,8 +430,8 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
     // to the assembled content (retry then re-sends that content verbatim).
     div = appendUserMessage(
       msg.meta
-        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris }
-        : { rawText: text, displayText: text, imageUris },
+        ? { rawText: msg.meta.rawText, displayText: msg.meta.displayText, quote: msg.meta.quote, imageUris, id: msg.id }
+        : { rawText: text, displayText: text, imageUris, id: msg.id },
       options,
     );
   } else {

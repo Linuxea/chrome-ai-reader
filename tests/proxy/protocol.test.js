@@ -11,7 +11,7 @@ vi.mock('http', () => ({
 // server.js is CJS — use createRequire to import it
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { buildFrame, parseFrame, MsgType, PodcastEvent } = require('../../proxy/server.js');
+const { buildFrame, parseFrame, MsgType, PodcastEvent, isAllowedOrigin } = require('../../proxy/server.js');
 
 // --- Constants tests ---
 
@@ -194,5 +194,30 @@ describe('parseFrame', () => {
     expect(parsed.msgType).toBe(MsgType.AudioOnlyServer);
     expect(parsed.payload).toBeInstanceOf(Uint8Array);
     expect(Array.from(parsed.payload)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+// --- Origin policy ---
+
+describe('isAllowedOrigin', () => {
+  it('allows requests without an Origin (curl / local scripts)', () => {
+    expect(isAllowedOrigin(undefined)).toBe(true);
+    expect(isAllowedOrigin('')).toBe(true);
+  });
+
+  it('allows a Chrome extension origin', () => {
+    expect(isAllowedOrigin('chrome-extension://abcdefghijklmnopabcdefghijklmnop')).toBe(true);
+  });
+
+  it('rejects web pages and malformed extension origins', () => {
+    expect(isAllowedOrigin('https://evil.example')).toBe(false);
+    expect(isAllowedOrigin('http://localhost:8080')).toBe(false);
+    expect(isAllowedOrigin('null')).toBe(false);
+    expect(isAllowedOrigin('chrome-extension://short')).toBe(false);
+  });
+
+  it('allows origins explicitly listed via PROXY_ALLOWED_ORIGINS', () => {
+    expect(isAllowedOrigin('http://localhost:5173', ['http://localhost:5173'])).toBe(true);
+    expect(isAllowedOrigin('http://localhost:5174', ['http://localhost:5173'])).toBe(false);
   });
 });

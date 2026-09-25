@@ -1,6 +1,9 @@
 import { safePostMessage } from './sw-utils';
+import { genId } from '../shared/ids';
 
-const PODCAST_PROXY_URL = 'http://localhost:3456';
+// Must match the proxy's loopback bind (proxy/server.js HOST) — `localhost`
+// may resolve to ::1 first.
+const PODCAST_PROXY_URL = 'http://127.0.0.1:3456';
 
 interface NlpText { speaker: string; text: string; }
 interface AudioConfig { format: string; sample_rate: number; speech_rate: number; }
@@ -9,7 +12,7 @@ export async function callPodcast(nlpTexts: NlpText[], audioConfig: AudioConfig,
   const config = await chrome.storage.sync.get(['ttsAppId', 'ttsAccessKey', 'podcastResourceId']) as { ttsAppId?: string; ttsAccessKey?: string; podcastResourceId?: string };
   if (!config.ttsAppId || !config.ttsAccessKey) { safePostMessage(port, { type: 'error', errorKey: 'podcast.noTtsConfig' }); return; }
 
-  const connectId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
+  const connectId = genId();
 
   try {
     const response = await fetch(`${PODCAST_PROXY_URL}/podcast`, {

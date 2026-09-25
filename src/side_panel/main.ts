@@ -26,10 +26,7 @@ import { initAnnotation } from './features/annotation';
 import { bindGlobalEvents, updateQuotePreview } from './ui/global-events';
 import type { UIElements } from './ui/global-events';
 import { handleLoadChat, resetUIForTabSwitch } from './ui/tab-switch-handler';
-import { marked } from 'marked';
 import type { ChatMessage } from '../shared/types';
-
-marked.setOptions({ breaks: true, gfm: true });
 
 const els = {
   chatArea: document.getElementById('chatArea')!,
@@ -131,8 +128,8 @@ async function init(): Promise<void> {
     });
   }
 
-  on(EVENTS.RETRY, (args) => { const { wrapper, rawText, rawDisplay, rawQuote } = args as { wrapper: HTMLElement; rawText: string; rawDisplay: string; rawQuote: string }; retryMessage(wrapper, rawText, rawDisplay, rawQuote); });
-  on(EVENTS.EDIT, (args) => { const { wrapper, originalRawText, editedText, rawQuote } = args as { wrapper: HTMLElement; originalRawText: string; editedText: string; rawQuote: string }; editMessage(wrapper, originalRawText, editedText, rawQuote); });
+  on(EVENTS.RETRY, ({ wrapper, rawText, rawDisplay, rawQuote, msgId }) => { retryMessage(wrapper, rawText, rawDisplay, rawQuote, msgId); });
+  on(EVENTS.EDIT, ({ wrapper, originalRawText, editedText, rawQuote, msgId }) => { editMessage(wrapper, originalRawText, editedText, rawQuote, msgId); });
   on(EVENTS.REMOVE_SUGGEST_QUESTIONS, () => removeSuggestQuestions());
   on(EVENTS.REQUEST_RERENDER, () => resetUIForTabSwitch(els, deps));
   on(EVENTS.GENERATE_SUGGESTIONS, (args) => { const { msgEl, history } = args as { msgEl: HTMLElement; history: ChatMessage[] }; generateSuggestions(msgEl, history); saveCurrentChat(); });

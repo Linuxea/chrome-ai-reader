@@ -5,12 +5,34 @@
 // Solution: This Node.js proxy accepts HTTP POST, opens WebSocket with
 // proper headers, and streams audio back via SSE.
 //
-// Usage: npm start → listens on http://localhost:3456
+// Usage: npm start → listens on http://127.0.0.1:3456
+//
+// Exposure: binds to loopback only (HOST overrides) and rejects browser
+// requests whose Origin is not the extension (chrome-extension://…) or listed
+// in PROXY_ALLOWED_ORIGINS (comma-separated). Requests without an Origin
+// (curl, scripts on this machine) are allowed. Previously it listened on every
+// interface with `Access-Control-Allow-Origin: *`, so any web page — or any
+// host on the LAN — could drive it.
 
 const http = require('http');
 const { WebSocket } = require('ws');
 
 const PORT = process.env.PORT || 3456;
+const HOST = process.env.HOST || '127.0.0.1';
+const EXTRA_ORIGINS = (process.env.PROXY_ALLOWED_ORIGINS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+/** Whether a request with this Origin header may use the proxy. */
+function isAllowedOrigin(origin, extraOrigins = EXTRA_ORIGINS) {
+  if (!origin) return true; // non-browser client on this machine
+  if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin)) return true;
+  return extraOrigins.includes(origin);
+}
+
+/** CORS headers echoing an allowed origin (never `*`). */
+function corsHeaders(origin) {
+  return origin ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : {};
+}
 
 // --- Binary Protocol Constants (from Volcengine SDK) ---
 
@@ -39,7 +61,7 @@ const PodcastEvent = {
 
 // --- Binary Frame Encoding/Decoding ---
 
-module.exports = { buildFrame, parseFrame, MsgType, PodcastEvent };
+module.exports = { buildFrame, parseFrame, MsgType, PodcastEvent, isAllowedOrigin };
 
 function buildFrame(eventType, sessionId, payloadObj) {
   const payloadBytes = new TextEncoder().encode(JSON.stringify(payloadObj));
@@ -367,10 +389,18 @@ async function handlePodcast(params, res) {
 // --- HTTP Server ---
 
 const server = http.createServer(async (req, res) => {
+  const origin = req.headers.origin;
+  if (!isAllowedOrigin(origin)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Origin not allowed' }));
+    return;
+  }
+  const cors = corsHeaders(origin);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
+      ...cors,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     });
@@ -387,14 +417,14 @@ const server = http.createServer(async (req, res) => {
     try {
       params = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(400, cors);
       res.end(JSON.stringify({ error: 'Invalid JSON' }));
       return;
     }
 
     // Validate required fields
     if (!params.appId || !params.accessKey || !params.nlpTexts) {
-      res.writeHead(400, { 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(400, cors);
       res.end(JSON.stringify({ error: 'Missing required fields: appId, accessKey, nlpTexts' }));
       return;
     }
@@ -404,7 +434,7 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
+      ...cors,
     });
 
     try {
@@ -418,7 +448,7 @@ const server = http.createServer(async (req, res) => {
 
   // Health check
   if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, { 'Content-Type': 'application/json', ...cors });
     res.end(JSON.stringify({ status: 'ok' }));
     return;
   }
@@ -428,8 +458,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`[Podcast Proxy] Listening on http://localhost:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`[Podcast Proxy] Listening on http://${HOST}:${PORT}`);
     console.log(`[Podcast Proxy] POST /podcast — start podcast synthesis`);
     console.log(`[Podcast Proxy] GET  /health — health check`);
   });

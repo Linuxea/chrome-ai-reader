@@ -1,6 +1,7 @@
 import { safePostMessage } from './sw-utils';
 import type { Annotation, AnnotationPerspective, AnnotationResult } from '../shared/types';
 import { getPrompt } from '../shared/prompts';
+import { genId } from '../shared/ids';
 import type { Lang } from '../shared/prompts';
 
 interface BuildArgs {
@@ -99,15 +100,6 @@ export function parseAnnotationResponse(raw: string): Annotation[] {
     });
   }
   return out;
-}
-
-function genId(): string {
-  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-      });
 }
 
 interface AnnotateArgs {

@@ -3,6 +3,7 @@ import { getCurrentLang } from '../../shared/i18n.js';
 import { getPrompt } from '../../shared/prompts';
 import { TRUNCATE_LIMITS, safeTruncate } from '../../shared/constants';
 import { toErrorMessage } from '../../shared/utils';
+import { genId } from '../../shared/ids';
 import type { ChatMessage, MessageContentPart, UserMessageMeta } from '../../shared/types';
 import * as state from '../state';
 import { emit, EVENTS } from '../events';
@@ -15,7 +16,7 @@ import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES } from './composer';
 import { ensurePageContent } from './page-extractor';
 import { callAI, takePendingAbort } from './stream-handler';
-import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, toApiMessage } from './chat/history-ops';
+import { appendMessage as appendHistory, rollbackTrailingUserMessage, truncateHistoryFromUserContent, truncateHistoryFromId, toApiMessage } from './chat/history-ops';
 import { extractImageUrisFromContent } from '../ui/dom-helpers';
 
 let _chatArea: HTMLElement;
@@ -43,7 +44,8 @@ export async function sendToAI(
 
   const meta: UserMessageMeta = { rawText: text, displayText };
   if (quoteForContext) meta.quote = quoteForContext;
-  const userMsgEl = appendUserMessage({ ...meta, imageUris });
+  const msgId = genId();
+  const userMsgEl = appendUserMessage({ ...meta, imageUris, id: msgId });
   if (quoteForContext) emit(EVENTS.CLEAR_QUOTE_PREVIEW);
 
   try {
@@ -104,9 +106,9 @@ export async function sendToAI(
       const parts: MessageContentPart[] = [];
       if (apiContent) parts.push({ type: 'text', text: apiContent });
       for (const uri of imageUris!) parts.push({ type: 'image_url', image_url: { url: uri } });
-      userMessage = { role: 'user', content: parts, hadImages: true, meta };
+      userMessage = { id: msgId, role: 'user', content: parts, hadImages: true, meta };
     } else {
-      userMessage = { role: 'user', content: apiContent, meta };
+      userMessage = { id: msgId, role: 'user', content: apiContent, meta };
     }
     messages.push(toApiMessage(userMessage));
     appendHistory(tabState, userMessage, startTabId!);
@@ -206,8 +208,9 @@ export async function retryMessage(
   rawText: string,
   rawDisplay: string,
   rawQuote?: string,
+  msgId?: string,
 ): Promise<void> {
-  await resendUserMessage({ wrapper, lookupText: rawText, sendText: rawText, sendDisplay: rawDisplay, rawQuote });
+  await resendUserMessage({ wrapper, lookupText: rawText, sendText: rawText, sendDisplay: rawDisplay, rawQuote, msgId });
 }
 
 /**
@@ -220,15 +223,17 @@ export async function editMessage(
   originalRawText: string,
   editedText: string,
   rawQuote?: string,
+  msgId?: string,
 ): Promise<void> {
-  await resendUserMessage({ wrapper, lookupText: originalRawText, sendText: editedText, sendDisplay: editedText, rawQuote });
+  await resendUserMessage({ wrapper, lookupText: originalRawText, sendText: editedText, sendDisplay: editedText, rawQuote, msgId });
 }
 
 /**
  * Shared core for retry (resend original) and edit (resend modified).
  * Tears down the DOM from `wrapper` onward, truncates conversation history at
- * the user message identified by `lookupText` (capturing any images first),
- * then re-sends via sendToAI with `sendText`.
+ * the user message identified by `msgId` (legacy bubbles without an id fall
+ * back to matching `lookupText`), capturing any images first, then re-sends
+ * via sendToAI with `sendText`.
  */
 async function resendUserMessage(opts: {
   wrapper: HTMLElement;
@@ -236,8 +241,9 @@ async function resendUserMessage(opts: {
   sendText: string;
   sendDisplay: string;
   rawQuote?: string;
+  msgId?: string;
 }): Promise<void> {
-  const { wrapper, lookupText, sendText, sendDisplay, rawQuote } = opts;
+  const { wrapper, lookupText, sendText, sendDisplay, rawQuote, msgId } = opts;
   const startTabId = state.getActiveTabId();
   const tabState = state.getStateForTab(startTabId!);
   if (!tabState || tabState.isGenerating) return;
@@ -267,10 +273,11 @@ async function resendUserMessage(opts: {
   // Before truncating, extract any images from the user message being retried
   // (visual messages store image_url blocks in content array). After truncate
   // these are gone from history, so we capture them now to re-send.
-  const retriedImages = extractImagesForRetry(tabState, userContent)
+  const retriedImages = extractImagesForRetry(tabState, userContent, msgId)
     ?? (bubbleImages.length > 0 ? bubbleImages : undefined);
 
-  truncateHistoryFromUserContent(tabState, userContent, startTabId!);
+  if (msgId) truncateHistoryFromId(tabState, msgId, startTabId!);
+  else truncateHistoryFromUserContent(tabState, userContent, startTabId!);
 
   await sendToAI(sendText, sendDisplay, rawQuote, retriedImages);
 }
@@ -281,12 +288,14 @@ async function resendUserMessage(opts: {
  * the original visual message but whose preview-bar thumbnails were already
  * cleared by a prior sendMessage.
  */
-function extractImagesForRetry(tabState: { conversationHistory: ChatMessage[] }, userContent: string): string[] | undefined {
+function extractImagesForRetry(tabState: { conversationHistory: ChatMessage[] }, userContent: string, msgId?: string): string[] | undefined {
   const hist = tabState.conversationHistory;
-  const idx = hist.findLastIndex(m =>
-    m.role === 'user' && typeof m.content !== 'string' &&
-    m.content.filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n') === userContent,
-  );
+  const idx = msgId
+    ? hist.findIndex(m => m.id === msgId && typeof m.content !== 'string')
+    : hist.findLastIndex(m =>
+      m.role === 'user' && typeof m.content !== 'string' &&
+      m.content.filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n') === userContent,
+    );
   if (idx === -1) return undefined;
   return extractImageUrisFromContent(hist[idx]);
 }

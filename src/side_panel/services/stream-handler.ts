@@ -14,7 +14,8 @@ import {
   isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay,
 } from './tts/index.js';
-import { marked } from 'marked';
+import { renderMarkdown } from '../ui/markdown';
+import { genId } from '../../shared/ids';
 import type { ChatMessage } from '../../shared/types';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
 
@@ -161,7 +162,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   function flushContent(): void {
     if (!contentEl || !contentEl.isConnected) return;
-    contentEl.innerHTML = marked.parse(balanceFences(fullText)) as string;
+    contentEl.innerHTML = renderMarkdown(balanceFences(fullText));
     /* Always the smart variant: with the stick-to-bottom state machine
        (ui/auto-scroll.ts) stuck users follow the answer from its first
        character; unstuck users keep their reading position. */
@@ -170,7 +171,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
 
   function flushThinking(): void {
     if (!thinkingContentEl || !thinkingContentEl.isConnected) return;
-    thinkingContentEl.innerHTML = marked.parse(balanceFences(thinkingText)) as string;
+    thinkingContentEl.innerHTML = renderMarkdown(balanceFences(thinkingText));
     followThinking?.();
     smartScrollToBottom();
   }
@@ -307,7 +308,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     const keepsAnswer = outcome.kind === 'done' || (fullText !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
-      appendHistory(tabState!, { role: 'assistant', content: fullText }, tabId!);
+      appendHistory(tabState!, { id: genId(), role: 'assistant', content: fullText }, tabId!);
       state.setGeneratingForTab(tabId!, false);
       finishAnswer(outcome.kind === 'done');
       return;

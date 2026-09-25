@@ -397,6 +397,46 @@ describe('content/annotation orchestration', () => {
     expect(document.querySelectorAll('.anno-icon')).toHaveLength(0);
   });
 
+  it('clear settles every in-flight request — the cancelled run finishes without any port reply', async () => {
+    document.body.innerHTML = `<article>
+      <p>First paragraph with enough text to qualify as a content chunk one.</p>
+      <p>Second paragraph with enough text to qualify as a content chunk two.</p>
+    </article>`;
+    const promise = handleStartAnnotation();
+    const ports = (chrome.runtime.connect as ReturnType<typeof vi.fn>).mock.results.map(r => r.value);
+    expect(ports).toHaveLength(2);
+
+    handleClearAnnotation();
+
+    // A port's own disconnect() never fires its onDisconnect, so the run must
+    // not depend on it: it settles with no further messages at all.
+    const settled = await Promise.race([
+      promise.then(() => 'settled'),
+      new Promise((r) => setTimeout(() => r('hung'), 50)),
+    ]);
+    expect(settled).toBe('settled');
+    for (const port of ports) expect(port.disconnect).toHaveBeenCalled();
+    expect(postedRuntime.some((m) => m.action === 'annotationDone' || m.action === 'annotationFailed')).toBe(false);
+  });
+
+  it('a run started right after clear is not ended by the cancelled run', async () => {
+    document.body.innerHTML = `<article>
+      <p>First paragraph with enough text to qualify as a content chunk one.</p>
+    </article>`;
+    const first = handleStartAnnotation();
+    handleClearAnnotation();
+    const second = handleStartAnnotation(); // port index 1
+    await first;
+
+    await flushPorts(1, [{ id: 'b1', perspective: 'flaw', quote: 'First paragraph', comment: 'c' }]);
+    await second;
+
+    const done = postedRuntime.filter((m) => m.action === 'annotationDone') as { count: number }[];
+    expect(done).toHaveLength(1);
+    expect(done[0].count).toBe(1);
+    expect(document.querySelectorAll('.anno-icon')).toHaveLength(1);
+  });
+
   it('annotates multiple chunks concurrently (bounded pool) and aggregates counts', async () => {
     document.body.innerHTML = `<article>
       <p>Chunk zero paragraph with enough text to qualify as content one.</p>

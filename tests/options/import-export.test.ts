@@ -88,7 +88,6 @@ describe('options/import-export', () => {
       const [jsonStr, filename, mimeType] = vi.mocked(downloadFile).mock.calls[0];
       const parsed = JSON.parse(jsonStr as string);
       expect(parsed.version).toBe(1);
-      expect(parsed.apiKey).toBe('sk-test');
       expect(parsed.modelName).toBe('gpt-4');
       expect(filename).toContain('ai-reader-settings-');
       expect(mimeType).toBe('application/json');
@@ -112,13 +111,37 @@ describe('options/import-export', () => {
     });
 
     it('excludes undefined/empty fields from export', () => {
-      store.sync = { apiKey: 'sk-test', apiBase: undefined as unknown as string };
+      store.sync = { modelName: 'm', apiBase: undefined as unknown as string };
+
+      exportBtn.click();
+
+      const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
+      expect(parsed.modelName).toBe('m');
+      expect(parsed).not.toHaveProperty('apiBase');
+    });
+
+    it('leaves secrets out of the export by default', () => {
+      store.sync = { apiKey: 'sk-test', ttsAccessKey: 'tts-secret', embeddingApiKey: 'emb-secret', ttsAppId: 'app', modelName: 'm' };
+
+      exportBtn.click();
+
+      const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
+      expect(parsed).not.toHaveProperty('apiKey');
+      expect(parsed).not.toHaveProperty('ttsAccessKey');
+      expect(parsed).not.toHaveProperty('embeddingApiKey');
+      expect(parsed.ttsAppId).toBe('app');
+      expect(parsed.modelName).toBe('m');
+    });
+
+    it('includes secrets when the user opts in', () => {
+      store.sync = { apiKey: 'sk-test', ttsAccessKey: 'tts-secret' };
+      (document.getElementById('exportIncludeSecrets') as HTMLInputElement).checked = true;
 
       exportBtn.click();
 
       const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
       expect(parsed.apiKey).toBe('sk-test');
-      expect(parsed).not.toHaveProperty('apiBase');
+      expect(parsed.ttsAccessKey).toBe('tts-secret');
     });
   });
 
@@ -167,6 +190,18 @@ describe('options/import-export', () => {
       expect(showStatus).toHaveBeenCalledWith('[status.imported]', 'success');
       // Storage should have been updated
       expect(store.sync.apiKey).toBe('sk-imported');
+    });
+
+    it('keeps configured secrets when the backup was exported without them', () => {
+      store.sync = { apiKey: 'sk-existing', ttsAccessKey: 'tts-existing', apiBase: 'https://old.example' };
+
+      simulateFileSelect(JSON.stringify({ version: 1, modelName: 'm' }));
+
+      expect(store.sync.apiKey).toBe('sk-existing');
+      expect(store.sync.ttsAccessKey).toBe('tts-existing');
+      // Non-secret fields absent from the backup are still reset.
+      expect(store.sync).not.toHaveProperty('apiBase');
+      expect(store.sync.modelName).toBe('m');
     });
 
     it('shows error for invalid JSON', () => {

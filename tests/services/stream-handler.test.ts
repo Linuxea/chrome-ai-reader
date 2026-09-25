@@ -83,13 +83,14 @@ vi.mock('../../src/side_panel/services/tts/index.js', () => ({
   isTTSAutoPlay: vi.fn(() => false),
 }));
 
-vi.mock('marked', () => ({
-  marked: { parse: vi.fn((s: string) => `<p>${s}</p>`) },
+vi.mock('../../src/side_panel/ui/markdown.js', () => ({
+  renderMarkdown: vi.fn((s: string) => `<p>${s}</p>`),
 }));
 
 // --- Import after mocks ---
 import { initStreamHandler, callAI, abortGeneration, takePendingAbort } from '../../src/side_panel/services/stream-handler.js';
-import { marked } from 'marked';
+import { renderMarkdown } from '../../src/side_panel/ui/markdown.js';
+const marked = { parse: vi.mocked(renderMarkdown) };
 import * as stateMock from '../../src/side_panel/state.js';
 import * as eventsMock from '../../src/side_panel/events.js';
 import * as domMock from '../../src/side_panel/ui/dom-helpers.js';
@@ -306,6 +307,7 @@ describe('services/stream-handler', () => {
       port._simulateMessage({ type: 'done' });
 
       expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
         role: 'assistant',
         content: 'final answer',
       });
@@ -411,6 +413,7 @@ describe('services/stream-handler', () => {
       abortGeneration(1); // disconnects the port with the user-abort flag set
 
       expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
         role: 'assistant',
         content: 'partial answer',
       });
@@ -598,6 +601,7 @@ describe('services/stream-handler', () => {
 
       // History should still be updated regardless of active tab
       expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
         role: 'assistant',
         content: 'response',
       });

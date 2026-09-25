@@ -34,8 +34,9 @@ vi.mock('../../../src/side_panel/events.js', () => ({
   EVENTS: { REQUEST_RERENDER: 'requestRerender' },
 }));
 
-vi.mock('marked', () => ({
-  marked: { parse: (text) => `<p>${text}</p>` },
+vi.mock('../../../src/side_panel/ui/markdown.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  renderMarkdown: (text) => `<p>${text}</p>`,
 }));
 
 import {
@@ -184,6 +185,25 @@ describe('stripMessageChrome / getDisplayMessages', () => {
       { role: 'user', content: 'question' },
     ]);
   });
+
+  it('getDisplayMessages stores the Markdown source of an answer, not its rendered HTML', () => {
+    const chatArea = setupChatArea();
+    const ai = document.createElement('div');
+    ai.className = 'message message-ai';
+    ai.dataset.markdown = '**answer** ![x](https://evil.example/p.gif)';
+    ai.innerHTML = '<p><strong>answer</strong></p>';
+    chatArea.appendChild(ai);
+
+    expect(getDisplayMessages()).toEqual([
+      { role: 'assistant', content: '**answer** ![x](https://evil.example/p.gif)', format: 'md' },
+    ]);
+  });
+
+  it('stripMessageChrome also sanitizes the snapshot (scripts, handlers, remote images)', () => {
+    const out = stripMessageChrome('<p onclick="x()">a</p><script>alert(1)</script><img src="https://evil.example/p.gif">');
+    expect(out).not.toMatch(/script|onclick|<img/);
+    expect(out).toContain('<p>a</p>');
+  });
 });
 
 describe('loading a saved chat', () => {
@@ -214,6 +234,33 @@ describe('loading a saved chat', () => {
     expect(emit).toHaveBeenCalledWith('requestRerender');
     expect(chatArea.children).toHaveLength(0); // not built from the display snapshot
     expect(historyPanel.classList.contains('hidden')).toBe(true);
+  });
+
+  it('sanitizes a legacy HTML answer snapshot before rendering it', async () => {
+    const { chatArea } = await openChat({
+      id: 'c3', title: 't', updatedAt: 1,
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: '<p>a</p><img src="https://evil.example/leak.gif"><script>alert(1)</script>' },
+      ],
+      conversationHistory: [],
+    });
+
+    const ai = chatArea.querySelector('.message-ai');
+    expect(ai.querySelector('img, script')).toBeNull();
+    expect(ai.textContent).toContain('a');
+  });
+
+  it('renders a Markdown-format display snapshot through the Markdown path', async () => {
+    const { chatArea } = await openChat({
+      id: 'c4', title: 't', updatedAt: 1,
+      messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'md answer', format: 'md' }],
+      conversationHistory: [],
+    });
+
+    const ai = chatArea.querySelector('.message-ai');
+    expect(ai.innerHTML).toContain('<p>md answer</p>');
+    expect(ai.dataset.markdown).toBe('md answer');
   });
 
   it('falls back to the display snapshot for legacy records without history', async () => {

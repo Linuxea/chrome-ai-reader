@@ -29,6 +29,13 @@ export type MessageContentPart =
   | { type: 'image_url'; image_url: { url: string } };
 
 export interface ChatMessage {
+  /**
+   * Stable local id (panel-generated UUID). Retry / edit address a history
+   * entry by it — content matching picked the wrong turn when two user
+   * messages had the same text. Absent only on legacy persisted messages,
+   * which get one on restore (ensureMessageIds). Never sent to the API.
+   */
+  id?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   /**
    * 纯文字消息为 `string`；视觉/多模态消息为 `MessageContentPart[]`

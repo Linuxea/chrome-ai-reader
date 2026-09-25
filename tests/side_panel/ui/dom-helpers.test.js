@@ -472,6 +472,15 @@ describe('dom-helpers', () => {
       expect(emit).toHaveBeenCalledWith(EVENTS.RETRY, expect.objectContaining({ rawText: 'orig', rawDisplay: 'Orig' }));
     });
 
+    it('a restored bubble carries its history id, and retry / edit address the message by it', () => {
+      const msg = { id: 'm-42', role: 'user', content: 'x', meta: { rawText: 'orig', displayText: 'Orig' } };
+      const div = appendMessageFromHistory(msg);
+      expect(div.dataset.msgId).toBe('m-42');
+
+      div.closest('.user-msg-group').querySelector('.msg-action-btn[title="[action.retry]"]').click();
+      expect(emit).toHaveBeenCalledWith(EVENTS.RETRY, expect.objectContaining({ msgId: 'm-42' }));
+    });
+
     it('legacy user entries (no meta) still carry retry data = their content', () => {
       const div = appendMessageFromHistory({ role: 'user', content: 'legacy text' });
       expect(div.dataset.rawText).toBe('legacy text');

@@ -3,11 +3,13 @@
 对应设计：`docs/superpowers/specs/2026-09-25-architecture-review-design.md`。
 原则：每个 Phase 可独立合并、独立回滚；每步都保持 `npx tsc --noEmit`、`npm run test`、`npm run build` 通过。
 
-## Phase 0 — 止血（约 1–2 天）
+## Phase 0 — 止血（约 1–2 天）✅ 已完成（2026-09-25）
+
+> 0.7 只做了文案修正与导出脱敏；密钥迁移到 `storage.local` 仍在 Phase 2.1。
 
 | # | 任务 | 对应问题 | 验收 |
 |---|------|----------|------|
-| 0.1 | `shared/markdown.ts`：`renderMarkdown()` = marked + DOMPurify + 链接/外链图片策略；替换所有 `marked.parse → innerHTML` | S1 | 单测：`<img onerror>`、`javascript:` 链接、外链图片、`<style>` 均被处理 |
+| 0.1 | `side_panel/ui/markdown.ts`（依赖 DOM，故不放 shared）：`renderMarkdown()` = marked + DOMPurify + 链接/外链图片策略；替换所有 `marked.parse → innerHTML` | S1 | 单测：`<img onerror>`、`javascript:` 链接、外链图片、`<style>` 均被处理 |
 | 0.2 | 聊天历史只存 Markdown 源；旧 HTML 记录加载时经 `renderMarkdown` 的净化器 | S1 | 旧记录可加载且不执行注入内容 |
 | 0.3 | `ChatMessage.id` + DOM `data-msg-id`；`truncateHistoryFromUserContent` → `truncateHistoryFromId` | C1 | 单测：两条相同内容的用户消息，重试第一条时 DOM 与历史一致 |
 | 0.4 | `requestChunk` 显式取消；删除错误注释 | C2 | 单测：clear 后所有 promise 在同一 tick 内 resolve |

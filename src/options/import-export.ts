@@ -1,20 +1,23 @@
 import { t } from '../shared/i18n.js';
 import { downloadFile } from '../shared/download';
 import { showStatus } from './status';
-import { textFields, checkboxFields, SYNC_FIELDS } from './fields';
+import { textFields, checkboxFields, SYNC_FIELDS, SECRET_FIELDS } from './fields';
 import { COMMANDS_KEY, saveQuickCommands, renderCurrentCommands } from './quick-commands-editor';
 import { fetchModels } from './llm-settings';
 
 const exportBtn = document.getElementById('exportBtn') as HTMLButtonElement;
 const importBtn = document.getElementById('importBtn') as HTMLButtonElement;
 const importFile = document.getElementById('importFile') as HTMLInputElement;
+const includeSecretsBox = document.getElementById('exportIncludeSecrets') as HTMLInputElement | null;
 
 export function initImportExport(): void {
   exportBtn.addEventListener('click', () => {
     chrome.storage.sync.get(SYNC_FIELDS, (syncData) => {
       chrome.storage.local.get([COMMANDS_KEY], (localData) => {
         const exportData: Record<string, unknown> = { version: 1 };
+        const includeSecrets = includeSecretsBox?.checked === true;
         for (const key of SYNC_FIELDS) {
+          if (!includeSecrets && SECRET_FIELDS.includes(key)) continue;
           if (key in checkboxFields) { if (syncData[key] !== undefined) exportData[key] = syncData[key]; }
           else if (syncData[key]) exportData[key] = syncData[key];
         }
@@ -38,7 +41,8 @@ export function initImportExport(): void {
         const syncData: Record<string, unknown> = {};
         for (const [key, input] of Object.entries(textFields)) { if (data[key]) { syncData[key] = data[key]; input.value = data[key] as string; } }
         for (const [key, checkbox] of Object.entries(checkboxFields)) { if (data[key] !== undefined) { syncData[key] = data[key]; checkbox.checked = data[key] as boolean; } }
-        Object.keys(textFields).forEach(f => { if (!(f in data)) chrome.storage.sync.remove(f); });
+        // A backup exported without secrets must not wipe the configured keys.
+        Object.keys(textFields).forEach(f => { if (!(f in data) && !SECRET_FIELDS.includes(f)) chrome.storage.sync.remove(f); });
         Object.keys(checkboxFields).forEach(f => { if (!(f in data)) { chrome.storage.sync.remove(f); checkboxFields[f].checked = checkboxFields[f].defaultChecked; } });
         chrome.storage.sync.set(syncData, () => {
           if (data.quickCommands && Array.isArray(data.quickCommands)) { saveQuickCommands(data.quickCommands as { name: string; prompt: string }[]); renderCurrentCommands(data.quickCommands as { name: string; prompt: string }[]); }

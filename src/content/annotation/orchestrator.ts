@@ -16,9 +16,16 @@ import { createIconFor, getBubbleHost } from './bubble-ui';
 
 /** Active annotation state, reset between runs. */
 let _running = false;
+/**
+ * Generation of the current run. A cancelled run's workers resume once their
+ * requests settle; they compare generations so they never touch (or end) a
+ * run started after the clear.
+ */
+let _runGen = 0;
 
 export function resetAnnotationState(): void {
   _running = false;
+  _runGen++;
 }
 
 /** Report an event back to the side panel via runtime messaging. */
@@ -46,6 +53,8 @@ type ChunkResult = { status: 'ok'; annotations: Annotation[] } | { status: 'erro
 export async function handleStartAnnotation(): Promise<void> {
   if (_running) return;
   _running = true;
+  const gen = ++_runGen;
+  const active = (): boolean => _running && _runGen === gen;
 
   const chunks = collectChunks(document);
   const fullArticle = buildFullArticle(chunks);
@@ -59,11 +68,11 @@ export async function handleStartAnnotation(): Promise<void> {
 
   // One task per chunk; the pool runs up to CONCURRENCY concurrently.
   const runOne = async (i: number): Promise<void> => {
-    if (!_running) return;
+    if (!active()) return;
     const result = await requestChunk(fullArticle, i, chunks[i].text);
     // A clear may have landed while this chunk was in flight — drop the result
     // so no icon is inserted after clear.
-    if (!_running) return;
+    if (!active()) return;
     if (result.status === 'error') {
       failed += 1;
       if (!firstError) firstError = result.error;
@@ -88,7 +97,7 @@ export async function handleStartAnnotation(): Promise<void> {
   // Bounded-concurrency pool: feed indices into at most CONCURRENCY workers.
   let nextIndex = 0;
   const worker = async (): Promise<void> => {
-    while (_running) {
+    while (active()) {
       const i = nextIndex++;
       if (i >= chunks.length) return;
       await runOne(i);
@@ -98,44 +107,54 @@ export async function handleStartAnnotation(): Promise<void> {
   await Promise.all(workers);
 
   // Only report a terminal event if we finished naturally (not cancelled).
-  if (_running) {
-    if (failed === total) {
-      // Every chunk failed — surface the real error instead of a silent "0 处".
-      reportToPanel({ action: 'annotationFailed', error: firstError });
-    } else {
-      reportToPanel({ action: 'annotationDone', count: produced, failed });
-    }
+  if (!active()) return;
+  if (failed === total) {
+    // Every chunk failed — surface the real error instead of a silent "0 处".
+    reportToPanel({ action: 'annotationFailed', error: firstError });
+  } else {
+    reportToPanel({ action: 'annotationDone', count: produced, failed });
   }
   _running = false;
 }
 
-/** In-flight annotation ports, tracked so handleClearAnnotation can abort them. */
-const _activePorts = new Set<chrome.runtime.Port>();
+/**
+ * In-flight chunk requests, tracked so handleClearAnnotation can cancel them.
+ * Each entry disconnects its port AND settles its promise: a port's own
+ * onDisconnect never fires for a disconnect() it initiated (only the worker's
+ * end sees it), so cancellation cannot rely on that event.
+ */
+const _inFlight = new Set<() => void>();
 
 /**
  * Request annotations for one chunk via the background 'annotation' port.
  * Returns the parsed annotations on success, or the forwarded error string on
- * failure/disconnect. The port is tracked in _activePorts so a mid-flight clear
- * can disconnect it.
+ * failure / worker disconnect / cancellation. Always settles exactly once.
  */
 function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string): Promise<ChunkResult> {
   return new Promise((resolve) => {
     const port = chrome.runtime.connect({ name: 'annotation' });
-    _activePorts.add(port);
-    const cleanup = () => { _activePorts.delete(port); port.onMessage.removeListener(onMessage); port.onDisconnect.removeListener(onDisconnect); };
+    let settled = false;
+    const settle = (result: ChunkResult, disconnect: boolean): void => {
+      if (settled) return;
+      settled = true;
+      _inFlight.delete(cancel);
+      port.onMessage.removeListener(onMessage);
+      port.onDisconnect.removeListener(onDisconnect);
+      if (disconnect) { try { port.disconnect(); } catch { /* already gone */ } }
+      resolve(result);
+    };
+    const cancel = (): void => settle({ status: 'error', error: 'cancelled' }, true);
     const onMessage = (msg: Record<string, unknown>) => {
       if (msg.type === 'annotated') {
-        cleanup();
-        port.disconnect();
-        resolve({ status: 'ok', annotations: (msg.annotations as Annotation[]) || [] });
+        settle({ status: 'ok', annotations: (msg.annotations as Annotation[]) || [] }, true);
       } else if (msg.type === 'error') {
-        cleanup();
-        port.disconnect();
         const error = (msg.error as string) || (msg.errorKey as string) || 'unknown error';
-        resolve({ status: 'error', error });
+        settle({ status: 'error', error }, true);
       }
     };
-    const onDisconnect = () => { cleanup(); resolve({ status: 'error', error: 'port disconnected' }); };
+    // Only fires when the worker's end goes away.
+    const onDisconnect = () => settle({ status: 'error', error: 'port disconnected' }, false);
+    _inFlight.add(cancel);
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(onDisconnect);
     port.postMessage({ type: 'annotate', fullArticle, chunkIndex, chunkText });
@@ -146,11 +165,11 @@ function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string
  *  Also aborts any in-flight annotation ports so no late icon is inserted. */
 export function handleClearAnnotation(): void {
   _running = false;
-  // Abort in-flight requests: disconnecting fires onDisconnect, which resolves
-  // each requestChunk promise with 'failed'. The orchestration loop then drops
-  // the result via its post-await _running check.
-  _activePorts.forEach((port) => { try { port.disconnect(); } catch { /* already gone */ } });
-  _activePorts.clear();
+  _runGen++;
+  // Abort in-flight requests: each cancel disconnects its port (the worker
+  // aborts the fetch) and settles its promise; the orchestration loop then
+  // drops the result via its post-await _running check.
+  [..._inFlight].forEach((cancel) => cancel());
   // Unwrap marks: replace each <mark.anno-mark> with its children.
   document.querySelectorAll('mark.anno-mark').forEach((mark) => {
     const parent = mark.parentNode;

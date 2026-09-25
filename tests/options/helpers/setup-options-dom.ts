@@ -72,6 +72,7 @@ export function setupOptionsDom(): void {
   parts.push('<input id="embeddingMaxPages" type="number" value="200"/>');
   parts.push('<div id="quickCommandsList"></div>');
   parts.push('<input id="importFile" type="file"/>');
+  parts.push('<input id="exportIncludeSecrets" type="checkbox"/>');
   parts.push('<div id="status"></div>');
   parts.push('<div id="themePicker"></div>');
   parts.push('<select id="languageSelect"><option value="zh">中文</option><option value="en">English</option></select>');

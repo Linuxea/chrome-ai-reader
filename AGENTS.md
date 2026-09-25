@@ -5,7 +5,7 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (1009 tests across 65 files; proxy test file needs `ws` installed — see Testing)
+npm run test   # vitest run (1036 tests across 67 files; proxy test file needs `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint src/ proxy/
@@ -13,7 +13,7 @@ npm run format # prettier --write 'src/**/*.js' 'proxy/**/*.js'
 npx tsc --noEmit  # TypeScript type check (strict:true)
 ```
 
-**`npm run dev` watches Vite + IIFE builds** via `concurrently`. All source changes (side panel, options, content script, background) are rebuilt on save.
+**`npm run dev` watches Vite + IIFE builds** via `concurrently`. All source changes (side panel, options, content script, background) are rebuilt on save. The IIFE watcher and the production build share `scripts/iife-config.js` (entries + esbuild plugin); Vite's `emptyOutDir` is off in watch mode, because Vite empties `dist/` on every watch rebuild and would delete `content.js` / `background.js`.
 
 ## Build Architecture (non-obvious)
 
@@ -99,7 +99,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 1009 tests across 65 files
+- **Vitest** with jsdom environment, 1036 tests across 67 files
 - **Proxy tests need proxy deps**: `tests/proxy/protocol.test.js` imports `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
@@ -116,7 +116,8 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - `dist/` is the loadable extension — do not reference `public/manifest.json` paths directly when reasoning about the running extension
 - Content script and service worker must be IIFE — they cannot use `import` at runtime
 - `Readability` is imported from `@mozilla/readability` npm package, not a local file
-- `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`, runs on `localhost:3456`)
+- `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`). Binds to `127.0.0.1:3456` only (`HOST`/`PORT` env override) and rejects browser requests whose `Origin` is not `chrome-extension://…` (extra origins via `PROXY_ALLOWED_ORIGINS`); the SW calls it at `http://127.0.0.1:3456`
+- **Settings export**: `options/fields.ts` `SECRET_FIELDS` (`apiKey`, `ttsAccessKey`, `embeddingApiKey`) are left out of exports unless the user ticks "include secrets", and an import never clears a secret the file lacks
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
 - TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure
 - `vitest.config.js` coverage enforces thresholds (lines 55 / functions 50 / branches 45 / statements 52) — regressing coverage fails `npm run test:coverage`
@@ -125,13 +126,14 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - **Page cache vs navigation**: `TabState.pageUrl` records where `pageContent` was extracted; `state.invalidatePageIfNavigated` (wired to `chrome.tabs.onUpdated`) drops the cache when the tab moves to another URL (hash ignored) and notifies `pageInvalidated`
 - **Talking to the content script**: use `sendToContentScript()` (`platform/messaging.ts`) — it injects `content.js` and retries when the tab has none (tabs opened before install/update). A failure means the page can't host one (chrome://, Web Store) → show `error.pageUnsupported`
 - **Annotation state is per tab**: `features/annotation.ts` keys state by `sender.tab.id` and renders the active tab's on `tabSwitched`
+- **Rendering model output**: all Markdown / stored-HTML → DOM goes through `side_panel/ui/markdown.ts` (`renderMarkdown` / `sanitizeHtml`: marked + DOMPurify). Never `marked.parse` → `innerHTML` directly — answers are untrusted (the page is in the prompt). Remote images become links (never fetched), links get `target=_blank rel=noopener noreferrer`, non-http(s)/mailto hrefs are dropped. Inspect untrusted HTML with `parseInertHtml()` (a `<template>`), not a detached `div` — a detached div in the live document still fetches `<img>` sources. Chat history stores assistant **Markdown** (`format: 'md'`), not rendered HTML
+- **Message ids**: every `ChatMessage` has an `id` (`shared/ids.ts` `genId`; legacy persisted messages get one on restore via `ensureMessageIds`). User bubbles carry `data-msg-id`; retry / edit truncate history with `truncateHistoryFromId` — content matching (`truncateHistoryFromUserContent`) is only the fallback for id-less legacy bubbles, since it picks the wrong turn when two messages share text
 - **User message meta**: user `ChatMessage`s carry `meta` (`rawText` / `displayText` / `quote`) next to the assembled API `content`; `appendUserMessage()` renders bubbles from it for live sends, tab switches, reopen and history loads alike (so retry / edit keep working). `toApiMessage()` strips local fields (`meta`, `hadImages`, `type`) before anything goes to the model
 - **IME-safe Enter**: keydown handlers that send on Enter must guard `e.isComposing || e.keyCode === 229` (IME composition, see `ai-chat.ts`) — otherwise Chinese/Japanese input sends mid-composition
-- `scripts/watch-iife.js` does NOT include the esbuild plugin (unlike `build-extension.js`) — TypeScript in content/background is only transpiled during production build, not in dev watch mode
 - **Layering guardrail**: ESLint `no-restricted-imports` for `side_panel/ui/**` is `warn` (base rule is `off` during the refactor); it blocks ui/ imports of services/, features/, and a planned `shell/` orchestration layer that does **not exist yet** — `ui/global-events.ts` is slated to move there in a future phase. Note: ESLint only lints `.js` by default (no typescript-eslint plugin); `.ts` layering is enforced via tsc + review.
 - **Image intake**: `services/images.ts` `ingestImages()` is the single entry point for adding images (upload button + paste + drag-drop all funnel through it). The chat model is assumed multimodal: images are always sent as `image_url` parts — there is no OCR fallback and no vision toggle (GLM-OCR and `visionEnabled` were removed; the options page clears the stale keys on save).
 - **Sending**: every entry point that sends to the model goes through `submit()` / `services/composer.ts` — never read `userInput.value` or the preview bar directly. A non-empty draft rides along with quick actions / quick commands as extra instructions (`draft.supplement` prompt); suggestion chips only fill the input.
-- **History operations**: use `services/chat/history-ops.ts` (`appendMessage`/`rollbackTrailingUserMessage`/`truncateHistoryFromUserContent`) instead of mutating `tabState.conversationHistory` directly — it centralizes persistence + rollback policy.
+- **History operations**: use `services/chat/history-ops.ts` (`appendMessage`/`rollbackTrailingUserMessage`/`truncateHistoryFromId`) instead of mutating `tabState.conversationHistory` directly — it centralizes persistence + rollback policy.
 - **State persistence**: `state.ts` field setters persist to `chrome.storage.session` debounced (250ms); conversation helpers + `persistForTab()` flush immediately, and `switchToTab()` flushes the outgoing tab. Add new TabState fields as explicit getter/setter pairs — the runtime `defineTabField` name-synthesis was removed.
 - **SW chat streaming**: all chat-completions SSE goes through one pipeline — `streamChatCompletion()` in `sw-openai.ts` (callers: `callOpenAI`, `callSuggestQuestions`, podcast-llm via `callOpenAI`). The delta-parse point for future `tool_calls` is that single function.
 - **Agent Readiness**: `ChatMessage` has reserved `tool_calls`/`tool_call_id`/`name` fields and `role: 'tool'`. `sw-openai.ts` and `shared/protocol.ts` have `AGENT TODO` markers showing where tool-call support plugs in. These are type-only reservations — no runtime tool-calling exists yet.

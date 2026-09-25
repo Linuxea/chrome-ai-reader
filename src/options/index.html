@@ -199,6 +199,10 @@
         <button id="importBtn" class="ie-btn import-btn" type="button" data-i18n="settings.data.import">导入设置</button>
         <input type="file" id="importFile" accept=".json" style="display:none">
       </div>
+      <label class="toggle-row">
+        <span data-i18n="settings.data.includeSecrets">导出时包含 API Key 等密钥（导出文件为明文，请妥善保管）</span>
+        <input type="checkbox" id="exportIncludeSecrets">
+      </label>
     </section>
 
     <div id="status" class="status"></div>

@@ -110,7 +110,7 @@ describe('background/sw-podcast', () => {
   });
 
   describe('fetch and SSE relay', () => {
-    it('sends fetch to localhost:3456/podcast with correct body', async () => {
+    it('sends fetch to 127.0.0.1:3456/podcast with correct body', async () => {
       const body = createSSEBody([{ event: 'done', data: {} }]);
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
@@ -120,7 +120,7 @@ describe('background/sw-podcast', () => {
       await callPodcast(sampleNlpTexts, sampleAudioConfig, port);
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3456/podcast',
+        'http://127.0.0.1:3456/podcast',
         expect.objectContaining({ method: 'POST' }),
       );
 

@@ -60,6 +60,25 @@ export function truncateHistoryFromUserContent(
 }
 
 /**
+ * Truncate conversation history starting at the message with `id` (the
+ * message itself included). Unlike content matching this is exact even when
+ * several user turns carry the same text (e.g. the same quick action twice).
+ * If no message has that id (e.g. a failed send already rolled it back),
+ * history is unchanged.
+ *
+ * @returns the index where truncation began, or -1 if nothing was removed.
+ */
+export function truncateHistoryFromId(tabState: TabState, id: string, tabId: number): number {
+  const hist = tabState.conversationHistory;
+  const idx = hist.findIndex(m => m.id === id);
+  if (idx !== -1) {
+    hist.splice(idx, hist.length - idx);
+    state.persistForTab(tabId);
+  }
+  return idx;
+}
+
+/**
  * Normalize a ChatMessage's content to a string for comparison purposes.
  * String content is returned as-is; array content is folded to its text parts
  * joined by newlines (image_url blocks are ignored).

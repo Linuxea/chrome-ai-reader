@@ -132,6 +132,12 @@ vi.mock('../../src/side_panel/services/chat/history-ops.js', () => ({
     return false;
   }),
   toApiMessage: vi.fn((m: { role: string; content: unknown }) => ({ role: m.role, content: m.content })),
+  truncateHistoryFromId: vi.fn((ts: { conversationHistory: { id?: string }[] }, id: string) => {
+    const hist = ts.conversationHistory;
+    const idx = hist.findIndex(m => m.id === id);
+    if (idx !== -1) hist.splice(idx, hist.length - idx);
+    return idx;
+  }),
   truncateHistoryFromUserContent: vi.fn((ts: { conversationHistory: unknown[] }, content: unknown) => {
     const hist = ts.conversationHistory;
     const idx = hist.findLastIndex((m: { role: string; content: unknown }) =>
@@ -274,6 +280,7 @@ describe('services/message-sender', () => {
       await sendToAI('my question', 'display');
 
       expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
         role: 'user',
         content: 'my question',
         meta: { rawText: 'my question', displayText: 'display' },
@@ -621,6 +628,29 @@ describe('services/message-sender', () => {
       expect(tabState.conversationHistory).not.toContainEqual(
         expect.objectContaining({ content: 'old answer' }),
       );
+    });
+
+    it('truncates at the clicked message by id, even when an identical message follows', async () => {
+      // The same quick action sent twice: content matching used to truncate at
+      // the LAST 'summarize', leaving the first turn (whose bubble was removed)
+      // in history.
+      tabState.conversationHistory = [
+        { id: 'u1', role: 'user', content: 'summarize' },
+        { id: 'a1', role: 'assistant', content: 'first answer' },
+        { id: 'u2', role: 'user', content: 'summarize' },
+        { id: 'a2', role: 'assistant', content: 'second answer' },
+      ];
+      const wrapper = document.createElement('div');
+      chatArea.appendChild(wrapper);
+
+      await retryMessage(wrapper, 'summarize', 'summarize', undefined, 'u1');
+
+      expect(truncateHistoryFromUserContent).not.toHaveBeenCalled();
+      const contents = (tabState.conversationHistory as { content: unknown }[]).map(m => m.content);
+      expect(contents).not.toContain('first answer');
+      expect(contents).not.toContain('second answer');
+      expect(tabState.conversationHistory).toHaveLength(1); // only the re-sent message
+      expect((tabState.conversationHistory[0] as { id: string }).id).not.toBe('u1');
     });
 
     it('re-sends the EDITED text to the AI', async () => {
