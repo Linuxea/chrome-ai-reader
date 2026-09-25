@@ -1,5 +1,6 @@
 import { stripMarkdown, SENTENCE_ENDS } from './utils';
 import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
+import { openTTSPort } from '../../../platform/ports';
 
 let _fullStopFn: (() => void) | null = null;
 
@@ -137,7 +138,7 @@ function ttsFlush(): void {
 
   safePortDisconnect(ttsPort);
 
-  ttsPort = chrome.runtime.connect({ name: 'tts' });
+  ttsPort = openTTSPort();
 
   ttsPort.onDisconnect.addListener(() => {
     if (ttsPlaying && _fullStopFn) _fullStopFn();

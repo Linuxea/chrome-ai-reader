@@ -1,7 +1,7 @@
 import { safePostMessage } from './sw-utils';
 import { readSettings, DEFAULT_API_BASE } from '../platform/settings';
+import type { ChatMessage } from '../shared/types';
 
-interface ChatMessage { role: string; content: string | unknown[]; [key: string]: unknown; }
 
 interface ChatProviderConfig {
   apiKey: string;

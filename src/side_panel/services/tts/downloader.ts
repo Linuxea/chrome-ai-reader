@@ -1,6 +1,7 @@
 import { t } from '../../../shared/i18n.js';
 import { downloadFile } from '../../../shared/download';
 import { splitToSegments } from './utils';
+import { openTTSDownloadPort } from '../../../platform/ports';
 
 
 let ttsDownloadPort: chrome.runtime.Port | null = null;
@@ -43,7 +44,7 @@ function ttsDownloadFlush(): void {
   const segment = ttsDownloadSegments[ttsDownloadSegmentIndex];
   ttsDownloadSegmentIndex++;
 
-  ttsDownloadPort = chrome.runtime.connect({ name: 'tts-download' });
+  ttsDownloadPort = openTTSDownloadPort();
 
   ttsDownloadPort.onDisconnect.addListener(() => {
     if (ttsDownloading) stopTTSDownload();

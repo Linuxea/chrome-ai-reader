@@ -13,6 +13,7 @@ import type { Annotation } from '../../shared/types';
 import { collectChunks, buildFullArticle } from './chunk-collector';
 import { findAndWrap } from './quote-wrapper';
 import { createIconFor, getBubbleHost } from './bubble-ui';
+import { openAnnotationPort } from '../../platform/ports';
 
 /** Active annotation state, reset between runs. */
 let _running = false;
@@ -132,7 +133,7 @@ const _inFlight = new Set<() => void>();
  */
 function requestChunk(fullArticle: string, chunkIndex: number, chunkText: string): Promise<ChunkResult> {
   return new Promise((resolve) => {
-    const port = chrome.runtime.connect({ name: 'annotation' });
+    const port = openAnnotationPort();
     let settled = false;
     const settle = (result: ChunkResult, disconnect: boolean): void => {
       if (settled) return;

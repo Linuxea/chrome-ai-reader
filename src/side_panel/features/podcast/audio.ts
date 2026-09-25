@@ -5,6 +5,7 @@ import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-help
 import { MAX_CHUNK_QUEUE_SIZE } from './constants';
 import { updateTranscriptHighlight } from './ui';
 import { isNowPlayingGenerating } from './now-playing';
+import { openPodcastAudioPort } from '../../../platform/ports';
 
 let podcastPort: chrome.runtime.Port | null = null;
 let podcastAudioEl: HTMLAudioElement | null = null;
@@ -235,7 +236,7 @@ export async function generatePodcastAudio(card: HTMLElement, nlpTexts: NlpRound
   if (_isCancelled?.()) return;
   cleanupPodcastAudio();
   _activeCard = card;
-  podcastPort = chrome.runtime.connect({ name: 'podcast-audio' });
+  podcastPort = openPodcastAudioPort();
   podcastPort.postMessage({ type: 'generate', nlpTexts, audioConfig: { format: 'mp3', sample_rate: 24000, speech_rate: 0 } });
   podcastPort.onMessage.addListener((msg: { type: string; data?: string; audioDuration?: number; startTime?: number; endTime?: number; error?: string; errorKey?: string }) => {
     if (!podcastPort || _isCancelled?.()) return;

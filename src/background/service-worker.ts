@@ -4,6 +4,11 @@ import { callPodcast } from './sw-podcast';
 import { annotateChunk } from './sw-annotation';
 import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
+import type {
+  AIChatRequest, TTSRequest, SuggestRequest, PodcastAudioRequest, EmbeddingRequest, AnnotationRequest,
+  SelectionChangedMessage, FetchModelsMessage,
+} from '../shared/protocol';
+import { registerPort, registerMessage, dispatchConnect, dispatchMessage } from './sw-router';
 import { migrateSecretsToLocal, DEFAULT_API_BASE } from '../platform/settings';
 import type { PodcastLLMRequest } from '../shared/protocol';
 import type { MessageContentPart } from '../shared/types';
@@ -15,68 +20,73 @@ chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
   chrome.sidePanel.open({ tabId: tab.id! });
 });
 
-chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
-  if (port.name === 'ai-chat') {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'chat') await callOpenAI(msg.messages as { role: string; content: string }[], port, { response_format: msg.response_format as Record<string, unknown> | undefined, temperature: msg.temperature as number | undefined });
-    });
-  } else if (port.name === 'tts' || port.name === 'tts-download') {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'tts') await callTTS(msg.text as string, port);
-    });
-  } else if (port.name === 'suggest-questions') {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'suggest') await callSuggestQuestions(msg.messages as { role: string; content: string }[], port);
-    });
-  } else if (port.name === 'podcast-llm') {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'generate') {
-        await callOpenAI([buildPodcastUserMessage(msg as unknown as PodcastLLMRequest)], port, { response_format: { type: 'json_object' } });
-      }
-    });
-  } else if (port.name === 'podcast-audio') {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'generate') await callPodcast(msg.nlpTexts as { speaker: string; text: string }[], msg.audioConfig as { format: string; sample_rate: number; speech_rate: number }, port);
-    });
-  } else if (port.name === PORT_NAMES.EMBEDDING) {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'embed') await callEmbedding(msg.text as string, port);
-    });
-  } else if (port.name === 'annotation') {
-    port.onMessage.addListener(async (msg: Record<string, unknown>) => {
-      if (msg.type === 'annotate') {
-        await annotateChunk(
-          {
-            fullArticle: msg.fullArticle as string,
-            chunkIndex: msg.chunkIndex as number,
-            chunkText: msg.chunkText as string,
-          },
-          port,
-        );
-      }
-    });
+// --- Ports (streaming) -------------------------------------------------------
+
+registerPort(PORT_NAMES.AI_CHAT, 'extension', async (msg, port) => {
+  const req = msg as unknown as AIChatRequest & { temperature?: number };
+  if (req.type === 'chat') await callOpenAI(req.messages, port, { response_format: req.response_format as Record<string, unknown> | undefined, temperature: req.temperature });
+});
+
+const ttsHandler = async (msg: Record<string, unknown>, port: chrome.runtime.Port) => {
+  const req = msg as unknown as TTSRequest;
+  if (req.type === 'tts') await callTTS(req.text, port);
+};
+registerPort(PORT_NAMES.TTS, 'extension', ttsHandler);
+registerPort(PORT_NAMES.TTS_DOWNLOAD, 'extension', ttsHandler);
+
+registerPort(PORT_NAMES.SUGGEST_QUESTIONS, 'extension', async (msg, port) => {
+  const req = msg as unknown as SuggestRequest;
+  if (req.type === 'suggest') await callSuggestQuestions(req.messages, port);
+});
+
+registerPort(PORT_NAMES.PODCAST_LLM, 'extension', async (msg, port) => {
+  if (msg.type === 'generate') {
+    await callOpenAI([buildPodcastUserMessage(msg as unknown as PodcastLLMRequest)], port, { response_format: { type: 'json_object' } });
   }
 });
 
-chrome.runtime.onMessage.addListener((msg: Record<string, unknown>, sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => {
-  if (msg.action === 'selectionChanged' && !msg.forwarded) {
-    chrome.runtime.sendMessage({ action: 'selectionChanged', text: msg.text, tabId: sender.tab?.id, forwarded: true }).catch(() => {});
-  }
+registerPort(PORT_NAMES.PODCAST_AUDIO, 'extension', async (msg, port) => {
+  const req = msg as unknown as PodcastAudioRequest;
+  if (req.type === 'generate') await callPodcast(req.nlpTexts, req.audioConfig, port);
+});
 
-  if (msg.action === 'fetchModels') {
-    const baseUrl = (msg.apiBase as string) || DEFAULT_API_BASE;
-    fetch(`${baseUrl}/models`, { method: 'GET', headers: { 'Authorization': `Bearer ${msg.apiKey}` } })
-      .then(res => { if (!res.ok) throw new Error(`Failed to fetch models (${res.status})`); return res.json(); })
-      .then((data: Record<string, unknown>) => { const models = ((data.data as { id: string }[]) || []).map(m => m.id); sendResponse({ success: true, models }); })
-      .catch((e: Error) => { sendResponse({ success: false, error: e.message }); });
-    return true;
-  }
+registerPort(PORT_NAMES.EMBEDDING, 'extension', async (msg, port) => {
+  const req = msg as unknown as EmbeddingRequest;
+  if (req.type === 'embed') await callEmbedding(req.text, port);
+});
 
-
-  if (msg.action === 'pageRecords:store' || msg.action === 'pageRecords:findRelated') {
-    return handlePageRecordsMessage(msg, sendResponse);
+// Opened by the content script (deep annotation runs in the page).
+registerPort(PORT_NAMES.ANNOTATION, 'content', async (msg, port) => {
+  const req = msg as unknown as AnnotationRequest;
+  if (req.type === 'annotate') {
+    await annotateChunk({ fullArticle: req.fullArticle, chunkIndex: req.chunkIndex, chunkText: req.chunkText }, port);
   }
 });
+
+// --- One-shot messages ---------------------------------------------------------
+
+registerMessage('selectionChanged', 'content', (msg, sender) => {
+  const m = msg as unknown as SelectionChangedMessage;
+  if (!m.forwarded) {
+    chrome.runtime.sendMessage({ action: 'selectionChanged', text: m.text, tabId: sender.tab?.id, forwarded: true }).catch(() => {});
+  }
+});
+
+registerMessage('fetchModels', 'extension', (msg, _sender, sendResponse) => {
+  const m = msg as unknown as FetchModelsMessage;
+  const baseUrl = m.apiBase || DEFAULT_API_BASE;
+  fetch(`${baseUrl}/models`, { method: 'GET', headers: { 'Authorization': `Bearer ${m.apiKey}` } })
+    .then(res => { if (!res.ok) throw new Error(`Failed to fetch models (${res.status})`); return res.json(); })
+    .then((data: Record<string, unknown>) => { const models = ((data.data as { id: string }[]) || []).map(x => x.id); sendResponse({ success: true, models }); })
+    .catch((e: Error) => { sendResponse({ success: false, error: e.message }); });
+  return true;
+});
+
+registerMessage('pageRecords:store', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
+registerMessage('pageRecords:findRelated', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
+
+chrome.runtime.onConnect.addListener(dispatchConnect);
+chrome.runtime.onMessage.addListener(dispatchMessage);
 
 /** Podcast script request → one user message; pending images become image_url parts. */
 export function buildPodcastUserMessage(req: PodcastLLMRequest): { role: 'user'; content: string | MessageContentPart[] } {

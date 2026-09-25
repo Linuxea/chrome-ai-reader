@@ -17,7 +17,9 @@ import {
 import { renderMarkdown } from '../ui/markdown';
 import { genId } from '../../shared/ids';
 import type { ChatMessage } from '../../shared/types';
+import type { StreamMessage } from '../../shared/protocol';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
+import { openAIChatPort } from '../../platform/ports';
 
 let _chatArea: HTMLElement;
 let _unsubscribeRerender: (() => void) | null = null;
@@ -129,7 +131,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
   let contentEl: HTMLDivElement | null = null;
   let finished = false;
 
-  const port = chrome.runtime.connect({ name: 'ai-chat' });
+  const port = openAIChatPort();
 
   port.postMessage({
     type: 'chat',
@@ -237,13 +239,6 @@ export async function callAI(messages: ChatMessage[], tabId: number | null): Pro
     _chatArea.appendChild(msgEl);
     flushNow();
     scrollToBottom();
-  }
-
-  interface StreamMessage {
-    type: string;
-    content?: string;
-    error?: string;
-    errorKey?: string;
   }
 
   port.onMessage.addListener((msg: StreamMessage) => {
