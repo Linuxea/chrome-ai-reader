@@ -72,6 +72,7 @@ import {
   setTTSAutoPlay,
   isTTSAutoPlay,
   isTTSPlaying,
+  isTTSAudioStarted,
   stopTTSPlayback,
   initTTSPlayback,
   ttsAppendChunk,
@@ -79,6 +80,10 @@ import {
   setFullStopFn,
   getTTSButton,
   setTTSButton,
+  setTTSOrigin,
+  getTTSOrigin,
+  detachTTSAnchor,
+  subscribeTTSState,
 } from '../../../src/side_panel/services/tts/player.js';
 
 describe('TTS Player', () => {
@@ -219,6 +224,106 @@ describe('TTS Player', () => {
       // The port would be created internally, but we'd need sourceopen first
       // Just verify the callback is set
       expect(fn).toBeDefined();
+    });
+  });
+
+  describe('takeover point (window-global resource)', () => {
+    it('starting a new playback while one runs fully stops the previous one', () => {
+      const fn = vi.fn();
+      setFullStopFn(fn);
+      initTTSPlayback();
+      expect(fn).not.toHaveBeenCalled();
+
+      initTTSPlayback();
+      // the old playback was stopped via the full-stop fn, the new one plays
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(isTTSPlaying()).toBe(true);
+    });
+  });
+
+  describe('origin tracking', () => {
+    it('records the origin passed to initTTSPlayback', () => {
+      initTTSPlayback(null, { tabId: 3, msgId: 'm9' });
+      expect(getTTSOrigin()).toEqual({ tabId: 3, msgId: 'm9' });
+    });
+
+    it('setTTSOrigin late-binds the msgId (autoplay starts before the bubble exists)', () => {
+      initTTSPlayback(null, { tabId: 3 });
+      expect(getTTSOrigin()).toEqual({ tabId: 3, msgId: null });
+      setTTSOrigin({ msgId: 'late-1' });
+      expect(getTTSOrigin()).toEqual({ tabId: 3, msgId: 'late-1' });
+    });
+
+    it('origin is cleared on stop', () => {
+      initTTSPlayback(null, { tabId: 3, msgId: 'm9' });
+      stopTTSPlayback();
+      expect(getTTSOrigin()).toEqual({ tabId: null, msgId: null });
+    });
+
+    it('a new playback resets a previous origin', () => {
+      initTTSPlayback(null, { tabId: 3, msgId: 'm9' });
+      initTTSPlayback(null, { tabId: 5 });
+      expect(getTTSOrigin()).toEqual({ tabId: 5, msgId: null });
+    });
+  });
+
+  describe('detachTTSAnchor (tab switch)', () => {
+    it('drops the button anchor but keeps playing', () => {
+      const btn = document.createElement('button');
+      initTTSPlayback(btn, { tabId: 1, msgId: 'm1' });
+      expect(isTTSPlaying()).toBe(true);
+
+      detachTTSAnchor();
+
+      expect(getTTSButton()).toBeNull();
+      expect(isTTSPlaying()).toBe(true);
+      expect(getTTSOrigin()).toEqual({ tabId: 1, msgId: 'm1' });
+    });
+
+    it('a detached anchor re-attached via setTTSButton gets the loading state', () => {
+      const btn = document.createElement('button');
+      initTTSPlayback(null, { tabId: 1, msgId: 'm1' });
+      detachTTSAnchor();
+
+      setTTSButton(btn);
+      expect(getTTSButton()).toBe(btn);
+      expect(btn.classList.contains('tts-loading')).toBe(true);
+    });
+  });
+
+  describe('subscribeTTSState (global indicator)', () => {
+    it('notifies start (waiting), audio start, and stop', () => {
+      const seen = [];
+      const unsubscribe = subscribeTTSState(s => seen.push({ ...s }));
+      try {
+        initTTSPlayback();
+        expect(seen.at(-1)).toEqual({ playing: true, audioStarted: false });
+        expect(isTTSAudioStarted()).toBe(false);
+
+        stopTTSPlayback();
+        expect(seen.at(-1)).toEqual({ playing: false, audioStarted: false });
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('stop without playback does not notify', () => {
+      const cb = vi.fn();
+      const unsubscribe = subscribeTTSState(cb);
+      try {
+        stopTTSPlayback();
+        expect(cb).not.toHaveBeenCalled();
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('unsubscribe stops notifications', () => {
+      const cb = vi.fn();
+      const unsubscribe = subscribeTTSState(cb);
+      unsubscribe();
+      initTTSPlayback();
+      expect(cb).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,7 +1,8 @@
 /**
  * Tests for side_panel/shell/tab-switch-handler.ts — feature cleanup + UI reset.
  *
- * cleanupActiveFeatures(): stops TTS, removes podcast cards, resets flags.
+ * cleanupActiveFeatures(): detaches the window-global TTS anchor (audio keeps
+ * playing across tabs), removes podcast cards, resets flags.
  * handleLoadChat(): restores state from saved chat data.
  * resetUIForTabSwitch(): re-renders conversation history or welcome message.
  */
@@ -68,8 +69,7 @@ function createEls(): UIElements {
 function createDeps(): GlobalEventDeps {
   return {
     removeSuggestQuestions: vi.fn(),
-    isTTSPlaying: vi.fn(() => false),
-    stopTTS: vi.fn(),
+    detachTTS: vi.fn(),
   };
 }
 
@@ -84,16 +84,11 @@ describe('shell/tab-switch-handler', () => {
   });
 
   describe('cleanupActiveFeatures()', () => {
-    it('stops TTS when playing', () => {
-      deps.isTTSPlaying.mockReturnValue(true);
+    it('detaches the TTS anchor (window-global audio keeps playing)', () => {
       cleanupActiveFeatures(els, deps);
-      expect(deps.stopTTS).toHaveBeenCalled();
-    });
-
-    it('does not stop TTS when not playing', () => {
-      deps.isTTSPlaying.mockReturnValue(false);
-      cleanupActiveFeatures(els, deps);
-      expect(deps.stopTTS).not.toHaveBeenCalled();
+      // detach-only: the shell never stops TTS — tab switches must not
+      // interrupt the audio; only resource takeover or the user does.
+      expect(deps.detachTTS).toHaveBeenCalledTimes(1);
     });
 
     it('removes existing podcast card', () => {

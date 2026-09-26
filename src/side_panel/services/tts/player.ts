@@ -23,6 +23,62 @@ let ttsAutoPlayEnabled = false;
 let _playBtn: Element | null = null;
 let _audioStarted = false;
 
+// --- Window-global playback identity ---------------------------------------
+
+/**
+ * Which tab / message this playback belongs to. TTS is a window-global
+ * "printer resource": it keeps reading across tab switches; the origin
+ * anchors let the chat-area rebuild re-attach the button state when the
+ * user returns to the originating tab (mirrors the podcast's now-playing).
+ */
+export interface TTSOrigin {
+  tabId: number | null;
+  msgId: string | null;
+}
+
+let _originTabId: number | null = null;
+let _originMsgId: string | null = null;
+
+export function setTTSOrigin(origin: Partial<TTSOrigin>): void {
+  if (origin.tabId !== undefined) _originTabId = origin.tabId;
+  if (origin.msgId !== undefined) _originMsgId = origin.msgId;
+}
+
+export function getTTSOrigin(): TTSOrigin {
+  return { tabId: _originTabId, msgId: _originMsgId };
+}
+
+export interface TTSPlaybackState {
+  playing: boolean;
+  /** Audio actually started (vs waiting for the first chunk). */
+  audioStarted: boolean;
+}
+
+type StateListener = (state: TTSPlaybackState) => void;
+const _stateListeners = new Set<StateListener>();
+
+/** Subscribe to playback lifecycle changes (drives the global indicator). */
+export function subscribeTTSState(cb: StateListener): () => void {
+  _stateListeners.add(cb);
+  return () => { _stateListeners.delete(cb); };
+}
+
+function notifyTTSState(): void {
+  const snapshot: TTSPlaybackState = { playing: ttsPlaying, audioStarted: _audioStarted };
+  _stateListeners.forEach(cb => cb(snapshot));
+}
+
+export function isTTSAudioStarted(): boolean { return _audioStarted; }
+
+/**
+ * Tab switch / chat rebuild: the anchored bubble is about to be discarded —
+ * drop the button reference so state updates stop targeting a dead element.
+ * Audio keeps playing (the global indicator offers the stop control).
+ */
+export function detachTTSAnchor(): void {
+  _playBtn = null;
+}
+
 export function getTTSButton(): Element | null { return _playBtn; }
 
 /**
@@ -49,6 +105,7 @@ export function isTTSAutoPlay(): boolean { return ttsAutoPlayEnabled; }
 export function isTTSPlaying(): boolean { return ttsPlaying; }
 
 export function stopTTSPlayback(): void {
+  const wasPlaying = ttsPlaying;
   ttsPlaying = false;
   ttsSentenceQueue = [];
   ttsTextBuffer = '';
@@ -56,6 +113,8 @@ export function stopTTSPlayback(): void {
   ttsSending = false;
   ttsChunkQueue = [];
   ttsBufferAppending = false;
+  _originTabId = null;
+  _originMsgId = null;
 
   if (ttsAudioEl) {
     ttsAudioEl.pause();
@@ -69,9 +128,15 @@ export function stopTTSPlayback(): void {
   }
   safePortDisconnect(ttsPort);
   ttsPort = null;
+  if (wasPlaying) notifyTTSState();
 }
 
-export function initTTSPlayback(btn: Element | null = null): void {
+export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTSOrigin>): void {
+  // Single takeover point: starting a playback claims the one audio
+  // resource. Any previous playback is fully stopped — its (possibly
+  // detached) Audio element would otherwise keep playing forever.
+  if (ttsPlaying) _fullStopFn?.();
+
   ttsPlaying = true;
   _audioStarted = false;
   ttsSentenceQueue = [];
@@ -80,8 +145,12 @@ export function initTTSPlayback(btn: Element | null = null): void {
   ttsSending = false;
   ttsChunkQueue = [];
   ttsBufferAppending = false;
+  _originTabId = null;
+  _originMsgId = null;
+  if (origin) setTTSOrigin(origin);
 
   setTTSButton(btn);
+  notifyTTSState();
   const updateBtnState = (removeCls: string[] | null, addCls: string[] | null) => {
     if (_playBtn) {
       if (removeCls) _playBtn.classList.remove(...removeCls);
@@ -107,8 +176,9 @@ export function initTTSPlayback(btn: Element | null = null): void {
       if (!started && ttsAudioEl && ttsSourceBuffer.buffered.length > 0) {
         started = true;
         ttsAudioEl.play().then(() => {
-          _audioStarted = true;
-          updateBtnState(['tts-loading'], ['tts-playing']);
+        _audioStarted = true;
+        updateBtnState(['tts-loading'], ['tts-playing']);
+        notifyTTSState();
         }).catch(() => {});
       }
       ttsAppendNext();

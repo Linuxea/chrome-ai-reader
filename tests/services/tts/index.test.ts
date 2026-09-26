@@ -15,6 +15,7 @@ vi.mock('../../../src/shared/css-selectors.js', () => ({
     TTS_BTN: '.tts-btn',
     TTS_PLAYING: '.tts-playing',
     TTS_LOADING: '.tts-loading',
+    TTS_DOWNLOAD_BTN: '.tts-download-btn',
   },
 }));
 vi.mock('../../../src/side_panel/ui/tts-buttons.js', () => ({
@@ -29,6 +30,7 @@ vi.mock('../../../src/side_panel/services/tts/player.js', () => ({
   setTTSAutoPlay: vi.fn(),
   isTTSPlaying: vi.fn(() => false),
   isTTSAutoPlay: vi.fn(() => false),
+  isTTSAudioStarted: vi.fn(() => false),
   initTTSPlayback: vi.fn(),
   ttsAppendChunk: vi.fn(),
   ttsEnqueue: vi.fn(),
@@ -36,23 +38,34 @@ vi.mock('../../../src/side_panel/services/tts/player.js', () => ({
   stopTTSPlayback: vi.fn(),
   getTTSButton: vi.fn(() => null),
   setTTSButton: vi.fn(),
+  setTTSOrigin: vi.fn(),
+  getTTSOrigin: vi.fn(() => ({ tabId: null, msgId: null })),
+  detachTTSAnchor: vi.fn(),
+  subscribeTTSState: vi.fn(() => () => {}),
 }));
 vi.mock('../../../src/side_panel/services/tts/downloader.js', () => ({
   initDownloader: vi.fn(),
   stopTTSDownload: vi.fn(),
   handleTTSDownloadClick: vi.fn(),
+  detachDownloadAnchor: vi.fn(),
+  reattachDownloadAnchor: vi.fn(),
+  getDownloadOrigin: vi.fn(() => ({ tabId: null, msgId: null })),
+  isTTSDownloading: vi.fn(() => false),
 }));
 
 import {
   initTTS,
   isTTSPlaying,
   stopTTS,
+  detachTTS,
   addTTSButton,
   initTTSAutoPlay,
+  initTTSPlayback,
 } from '../../../src/side_panel/services/tts/index';
 import * as playerMock from '../../../src/side_panel/services/tts/player.js';
 import * as downloaderMock from '../../../src/side_panel/services/tts/downloader.js';
 import { createTTSButtons } from '../../../src/side_panel/ui/tts-buttons.js';
+import { on, EVENTS } from '../../../src/side_panel/events.js';
 
 // chrome mock for storage
 vi.stubGlobal('chrome', {
@@ -105,6 +118,41 @@ describe('services/tts/index', () => {
 
     it('does not crash when no TTS button exists', () => {
       expect(() => stopTTS()).not.toThrow();
+    });
+  });
+
+  describe('detachTTS()', () => {
+    it('detaches both anchors without stopping playback or download', () => {
+      detachTTS();
+      expect(playerMock.detachTTSAnchor).toHaveBeenCalled();
+      expect(playerMock.stopTTSPlayback).not.toHaveBeenCalled();
+      expect(downloaderMock.detachDownloadAnchor).toHaveBeenCalled();
+      expect(downloaderMock.stopTTSDownload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('initTTSPlayback()', () => {
+    it('claims the audio resource: emits PODCAST_STOP_REQUEST, then starts the player', () => {
+      const handler = vi.fn();
+      const unsubscribe = on(EVENTS.PODCAST_STOP_REQUEST, handler);
+      try {
+        initTTSPlayback({ tabId: 7 });
+        expect(handler).toHaveBeenCalledTimes(1);
+      } finally {
+        unsubscribe();
+      }
+      expect(playerMock.initTTSPlayback).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({ tabId: 7 }),
+      );
+    });
+
+    it('defaults the origin tab to the active tab', () => {
+      initTTSPlayback();
+      expect(playerMock.initTTSPlayback).toHaveBeenCalledWith(null, {
+        tabId: null, // no active tab in this test context
+        msgId: null,
+      });
     });
   });
 

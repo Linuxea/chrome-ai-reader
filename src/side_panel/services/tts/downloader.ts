@@ -2,6 +2,7 @@ import { t } from '../../../shared/i18n.js';
 import { downloadFile } from '../../../shared/download';
 import { splitToSegments } from './utils';
 import { openTTSDownloadPort } from '../../../platform/ports';
+import * as state from '../../state';
 
 
 let ttsDownloadPort: chrome.runtime.Port | null = null;
@@ -13,6 +14,40 @@ let ttsDownloading = false;
 /** The download button of the message being downloaded. */
 let _downloadBtn: HTMLButtonElement | null = null;
 
+// --- Window-global download identity (mirrors player.ts origin tracking) ---
+
+export interface TTSDownloadOrigin {
+  tabId: number | null;
+  msgId: string | null;
+}
+
+let _originTabId: number | null = null;
+let _originMsgId: string | null = null;
+
+export function getDownloadOrigin(): TTSDownloadOrigin {
+  return { tabId: _originTabId, msgId: _originMsgId };
+}
+
+export function isTTSDownloading(): boolean { return ttsDownloading; }
+
+/**
+ * Tab switch / chat rebuild: the anchored bubble is about to be discarded —
+ * drop the button reference. The download itself keeps running.
+ */
+export function detachDownloadAnchor(): void {
+  _downloadBtn = null;
+}
+
+/** Re-bind a rebuilt card's button (tab switched back); restore its state. */
+export function reattachDownloadAnchor(btn: HTMLButtonElement | null): void {
+  _downloadBtn = btn;
+  if (btn && ttsDownloading) {
+    btn.classList.add('tts-loading');
+    btn.disabled = true;
+    btn.title = t('status.ttsDownloading');
+  }
+}
+
 /** Kept for the init contract; the downloader holds no chat-area reference. */
 export function initDownloader(_chatArea: HTMLElement): void {}
 
@@ -22,6 +57,8 @@ export function stopTTSDownload(): void {
   ttsDownloadSegments = [];
   ttsDownloadSegmentIndex = 0;
   ttsDownloadSending = false;
+  _originTabId = null;
+  _originMsgId = null;
 
   if (ttsDownloadPort) {
     try { ttsDownloadPort.disconnect(); } catch { /* cleanup */ }
@@ -115,6 +152,8 @@ function finishTTSDownload(): void {
   ttsDownloadChunks = [];
   ttsDownloadSegments = [];
   ttsDownloadSegmentIndex = 0;
+  _originTabId = null;
+  _originMsgId = null;
 }
 
 export function handleTTSDownloadClick(msgEl: HTMLElement): void {
@@ -123,6 +162,11 @@ export function handleTTSDownloadClick(msgEl: HTMLElement): void {
   const contentEl = msgEl.querySelector('.thinking-response-content');
   const text = contentEl ? contentEl.textContent : msgEl.textContent;
   if (!text || !text.trim()) return;
+
+  // Remember where this download came from so a tab-switch rebuild can
+  // re-attach the button state (see reattachDownloadAnchor).
+  _originTabId = state.getActiveTabId();
+  _originMsgId = msgEl.dataset.msgId ?? null;
 
   // The clicked message's own button — not the first one in the chat.
   const btn = msgEl.querySelector('.tts-download-btn') as HTMLButtonElement | null;

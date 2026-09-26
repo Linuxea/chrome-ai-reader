@@ -4,7 +4,7 @@ import { formatDuration } from '../../../shared/format';
 import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
 import { MAX_CHUNK_QUEUE_SIZE } from './constants';
 import { updateTranscriptHighlight } from './ui';
-import { isNowPlayingGenerating } from './now-playing';
+import { isNowPlayingGenerating, updateNowPlaying } from './now-playing';
 import { openPodcastAudioPort } from '../../../platform/ports';
 
 let podcastPort: chrome.runtime.Port | null = null;
@@ -174,6 +174,19 @@ export function handlePlayPause(): void {
   if (!podcastAudioEl || podcastPlayTransitioning) return;
   podcastPlayTransitioning = true; setTimeout(() => { podcastPlayTransitioning = false; }, 300);
   if (podcastAudioEl.paused) podcastAudioEl.play().catch(() => {}); else podcastAudioEl.pause();
+}
+
+/**
+ * TTS claimed the single audio resource (EVENTS.PODCAST_STOP_REQUEST, see
+ * services/tts). Stop the podcast audio like playback ended: pause — the
+ * 'pause' listener updates the mini-player/card icons — and mark the status
+ * done. The buffered chunks are kept, so replay and download still work.
+ */
+export function stopPodcastAudioForTTS(): void {
+  if (!podcastAudioEl || podcastAudioEl.paused) return;
+  podcastAudioEl.pause();
+  updateNowPlaying({ status: 'done' });
+  if (_activeCard?.isConnected) _showStatus?.(_activeCard, 'done');
 }
 
 export function seekToMouse(e: MouseEvent, card: HTMLElement, bar: HTMLElement): void {

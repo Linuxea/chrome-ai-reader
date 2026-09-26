@@ -9,7 +9,12 @@ import type { ChatMessage } from '../../shared/types';
 import type { UIElements, GlobalEventDeps } from './types';
 
 export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): void {
-  if (deps.isTTSPlaying()) deps.stopTTS();
+  // TTS audio/state is NOT torn down on tab switch — it is a window-global
+  // single stream ("printer resource"): it keeps reading while other tabs are
+  // shown, and the global indicator offers a stop. Only the button anchor is
+  // detached; the bubble it pointed at is about to be discarded, and
+  // CHAT_RERENDERED re-attaches when the user returns to the origin tab.
+  deps.detachTTS();
   // Podcast audio/state is NOT torn down on tab switch — it is a window-global
   // single stream that keeps playing in the background (mini-player reflects it).
   // Only detach the card DOM from the outgoing tab; the now-playing metadata

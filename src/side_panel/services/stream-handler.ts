@@ -10,7 +10,7 @@ import {
   type ErrorMessageAction,
 } from '../ui/dom-helpers';
 import {
-  isTTSPlaying, stopTTS, initTTSPlayback, ttsAppendChunk,
+  initTTSPlayback, ttsAppendChunk,
   addTTSButton, initTTSAutoPlay, isTTSAutoPlay,
 } from './tts/index.js';
 import { createAnswerView } from '../ui/answer-view';
@@ -110,8 +110,9 @@ export interface CallAIOptions {
 }
 
 export async function callAI(messages: ChatMessage[], tabId: number | null, options: CallAIOptions = {}): Promise<void> {
-  if (isTTSPlaying()) stopTTS();
-
+  // TTS is a window-global "printer resource": a plain send does NOT stop it —
+  // only an actually-starting playback takes it over (initTTSPlayback below,
+  // via the player's takeover point).
   const tabState = state.getStateForTab(tabId!);
   if (!tabState) return;
 
@@ -119,13 +120,17 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
   setButtonsDisabled(true);
 
   if (isTTSAutoPlay()) {
-    initTTSPlayback();
+    initTTSPlayback({ tabId });
   }
 
   // The answer bubble is built even while detached (tab in the background):
   // DOM nodes are cheap, and only the markdown flush is skipped until the
   // bubble is re-attached.
+  const assistantId = genId();
   const msgEl = appendMessage('ai', '');
+  // TTS re-attach anchor: the window-global playback outlives chat-area
+  // rebuilds and resolves its button by this id (see services/tts).
+  msgEl.dataset.msgId = assistantId;
   const typingEl = addTypingIndicator(msgEl);
   const view = createAnswerView(msgEl, () => isCurrentTab());
   let finished = false;
@@ -159,7 +164,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
     } else if (msg.type === 'chunk') {
       removeTypingIndicator(typingEl);
       view.appendText(msg.content || '');
-      if (isCurrentTab() && msgEl.isConnected && isTTSAutoPlay()) {
+      // Feed the window-global TTS regardless of tab visibility — autoplay
+      // keeps reading the answer aloud while it streams in the background.
+      if (isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
     } else if (msg.type === 'tool_calls') {
@@ -224,7 +231,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
     const keepsAnswer = outcome.kind === 'done' || (view.text !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
-      appendHistory(tabState!, { id: genId(), role: 'assistant', content: view.text }, tabId!);
+      appendHistory(tabState!, { id: assistantId, role: 'assistant', content: view.text }, tabId!);
       state.setGeneratingForTab(tabId!, false);
       finishAnswer(outcome.kind === 'done');
       if (outcome.kind === 'done' && isCurrentTab()) annotateAnswer(outcome);
@@ -287,6 +294,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
     if (!isCurrentTab()) {
       // Rendered from history when the user returns; save the chat then.
       _pendingSaves.add(tabId!);
+      // The window-global TTS kept reading in the background — flush the
+      // answer's tail into it and bind its re-attach anchor (msgId).
+      initTTSAutoPlay(msgEl);
       return;
     }
     msgEl.dataset.markdown = view.text; // copy button copies the markdown source

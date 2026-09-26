@@ -6,7 +6,7 @@ import { ensurePageContent } from '../../services/page-extractor';
 import { isTTSPlaying, stopTTS } from '../../services/tts/index.js';
 import { consumeAttachments, attachmentsTooLarge } from '../../services/composer';
 import { createPodcastCard, updateCardStatus, restoreWelcomeIfNeeded, resetHighlightState, initUICallbacks, rebuildPodcastCard } from './ui';
-import { handlePlayPause, seekToMouse, seekToTouch, addDownloadButton, downloadPodcastAudio, replayAudio, cleanupPodcastAudio, initAudioCallbacks, reattachCard } from './audio';
+import { handlePlayPause, seekToMouse, seekToTouch, addDownloadButton, downloadPodcastAudio, replayAudio, cleanupPodcastAudio, initAudioCallbacks, reattachCard, stopPodcastAudioForTTS } from './audio';
 import { generatePodcastScript, cleanupScriptPort, initScriptCallbacks } from './script';
 import { setNowPlaying, updateNowPlaying, clearNowPlaying, getNowPlaying, isNowPlayingGenerating, type PodcastStatus } from './now-playing';
 
@@ -64,6 +64,15 @@ export function initPodcast({ chatArea }: { chatArea: HTMLElement }): void {
   state.subscribe('isGenerating', (v) => { if (_podcastBtn && !state.getIsPodcastGenerating() && !isNowPlayingGenerating()) _podcastBtn.disabled = v as boolean; });
   // Rebuild the full card when returning to the origin tab after a switch.
   on(EVENTS.PODCAST_REBUILD_REQUEST, () => rebuildCardIfOriginTab());
+  // TTS claimed the single audio resource (mutual exclusion, mirrored from
+  // the podcast click stopping TTS). Mid-generation: cancel entirely — the
+  // speaker is gone for a while. Playing: stop like it ended (replay and
+  // download stay available).
+  on(EVENTS.PODCAST_STOP_REQUEST, () => {
+    if (!getNowPlaying()) return;
+    if (isNowPlayingGenerating()) { closePodcast(); return; }
+    stopPodcastAudioForTTS();
+  });
 }
 
 /** Rebuild the full podcast card iff the now-playing podcast originated from

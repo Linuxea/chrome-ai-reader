@@ -492,6 +492,15 @@ describe('dom-helpers', () => {
 
       expect(div.className).toContain('message-ai');
     });
+
+    it('a restored assistant bubble carries its history id (TTS re-attach anchor)', () => {
+      const msg = { id: 'a-7', role: 'assistant', content: '答案' };
+      const div = appendMessageFromHistory(msg);
+
+      expect(div.dataset.msgId).toBe('a-7');
+      // the window-global TTS playback resolves its button by this selector
+      expect(div.matches('[data-msg-id="a-7"]')).toBe(true);
+    });
   });
 });
 

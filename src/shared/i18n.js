@@ -201,6 +201,9 @@ const TRANSLATIONS = {
     'status.parseError': '解析文件失败：',
     'status.ttsDownloading': '正在生成语音...',
 
+    'tts.reading': '朗读中',
+    'tts.stop': '停止朗读',
+
     'chat.today': '今天',
     'chat.yesterday': '昨天',
     'chat.newChat': '新对话',
@@ -532,6 +535,9 @@ const TRANSLATIONS = {
     'status.imported': 'Settings imported and saved',
     'status.parseError': 'Failed to parse file: ',
     'status.ttsDownloading': 'Generating audio...',
+
+    'tts.reading': 'Reading aloud',
+    'tts.stop': 'Stop reading',
 
     'chat.today': 'Today',
     'chat.yesterday': 'Yesterday',

@@ -488,7 +488,12 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
     );
   } else {
     div = appendMessage(msg.role === 'assistant' ? 'ai' : msg.role, text, imageUris, options);
-    if (msg.role === 'assistant') div.dataset.markdown = text; // copy button source
+    if (msg.role === 'assistant') {
+      div.dataset.markdown = text; // copy button source
+      // Re-attach anchor for the window-global TTS state after a tab switch /
+      // re-render (services/tts resolves by msgId) — mirrors user bubbles.
+      if (msg.id) div.dataset.msgId = msg.id;
+    }
   }
 
   // Restored messages get their action buttons back (copy/TTS/download) via

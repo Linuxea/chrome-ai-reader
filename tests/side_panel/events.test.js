@@ -41,6 +41,8 @@ describe('events', () => {
         'SHOW_RELATED_PAGES',
         'PAGE_EXTRACTED',
         'PODCAST_REBUILD_REQUEST',
+        'CHAT_RERENDERED',
+        'PODCAST_STOP_REQUEST',
       ];
       expectedKeys.forEach(key => {
         expect(EVENTS).toHaveProperty(key);
@@ -49,7 +51,7 @@ describe('events', () => {
 
     it('EVENTS object is frozen or sealed to prevent accidental mutation', () => {
       // EVENTS is a plain const object — verify no extra keys sneaked in
-      expect(Object.keys(EVENTS).length).toBe(16);
+      expect(Object.keys(EVENTS).length).toBe(17);
     });
   });
 

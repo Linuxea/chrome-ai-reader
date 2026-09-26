@@ -80,9 +80,10 @@ Layering is **enforced**: `npm run lint:deps` (dependency-cruiser, runs in `npm 
 
 - `src/side_panel/events.ts` — lightweight synchronous event bus
 - `EVENTS` constant enum — all event names are typed constants, no string magic keys
-- Events: RETRY, EDIT, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, CLEAR_QUOTE_PREVIEW, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST, SHOW_RELATED_PAGES, PAGE_EXTRACTED, PODCAST_REBUILD_REQUEST, CHAT_RERENDERED, CITATION_CLICK, BRANCH_SWITCH
+- Events: RETRY, EDIT, REMOVE_SUGGEST_QUESTIONS, REQUEST_RERENDER, GENERATE_SUGGESTIONS, CLEAR_QUOTE_PREVIEW, PODCAST_CLICK, ADD_TTS_BUTTON, SAVE_CURRENT_CHAT, RENDER_HISTORY_LIST, SHOW_RELATED_PAGES, PAGE_EXTRACTED, PODCAST_REBUILD_REQUEST, CHAT_RERENDERED, PODCAST_STOP_REQUEST, CITATION_CLICK, BRANCH_SWITCH
 - `PAGE_EXTRACTED` decouples `page-extractor` (service) from `related-pages` (feature) — the service emits, the feature subscribes
 - `PODCAST_REBUILD_REQUEST` is the same pattern: `ui/tab-switch-handler` emits after rebuilding the chat area on tab switch, the podcast feature subscribes to rebuild its card — keeps `ui/**` from importing the feature
+- `PODCAST_STOP_REQUEST` is the same pattern for TTS↔podcast mutual exclusion: `services/tts` emits when a playback claims the audio resource, the podcast feature subscribes (services must not import features)
 
 ## Chrome Extension Messaging
 
@@ -130,6 +131,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - `vitest.config.js` coverage enforces thresholds (lines 55 / functions 50 / branches 45 / statements 52) — regressing coverage fails `npm run test:coverage`
 - **Stop button**: while streaming, the send button becomes Stop; `abortGeneration(tabId)` in `services/stream-handler.ts` disconnects the port AND finalizes directly — a port's own `onDisconnect` never fires for a `disconnect()` it initiated (only the SW end sees it; the SW keys its fetch abort off that). Every end of a stream (done / error / stop / SW gone) goes through the one idempotent `finalize()`
 - **Background streams**: switching tabs never clears the outgoing tab's `isGenerating` (write it only via `state.setGeneratingForTab`). After the chat area is rebuilt, `CHAT_RERENDERED` lets the stream handler re-attach the live answer bubble, or show / save the outcome of a stream that ended while the tab was hidden. Restored session state never restores in-flight flags (`isGenerating` / `isPodcastGenerating`)
+- **TTS is window-global** ("printer resource"): nothing stops playback except the user (message button / global `#ttsIndicator` chip) or the audio resource being claimed — a new playback (player's takeover point inside `initTTSPlayback`) or a podcast start (`PODCAST_STOP_REQUEST`). Tab switch / `handleLoadChat` / retry-edit only **detach** the button anchor; `CHAT_RERENDERED` re-attaches it by `[data-msg-id]` (assistant bubbles carry ids — live ones from `callAI`, restored ones from `appendMessageFromHistory`). A plain send with autoplay off does NOT stop TTS. See `docs/superpowers/specs/2026-09-26-global-tts-design.md`
 - **Page cache vs navigation**: `TabState.pageUrl` records where `pageContent` was extracted; `state.invalidatePageIfNavigated` (wired to `chrome.tabs.onUpdated`) drops the cache when the tab moves to another URL (hash ignored) and notifies `pageInvalidated`
 - **Talking to the content script**: use `sendToContentScript()` (`platform/messaging.ts`) — it injects `content.js` and retries when the tab has none (tabs opened before install/update). A failure means the page can't host one (chrome://, Web Store) → show `error.pageUnsupported`
 - **Annotation state is per tab**: `features/annotation.ts` keys state by `sender.tab.id` and renders the active tab's on `tabSwitched`

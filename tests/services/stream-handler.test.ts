@@ -172,10 +172,18 @@ describe('services/stream-handler', () => {
     });
   });
 
-  it('stops any ongoing TTS when a new call starts', async () => {
+  it('a plain call (autoplay off) does NOT stop the window-global TTS', async () => {
     ttsMock.isTTSPlaying.mockReturnValue(true);
     await callAI([], 1);
-    expect(ttsMock.stopTTS).toHaveBeenCalled();
+    // TTS is a printer resource: only an actually-starting playback takes it
+    // over — a plain send must not interrupt it.
+    expect(ttsMock.stopTTS).not.toHaveBeenCalled();
+  });
+
+  it('an autoplay call claims the audio resource (initTTSPlayback with the tab origin)', async () => {
+    ttsMock.isTTSAutoPlay.mockReturnValue(true);
+    await callAI([], 1);
+    expect(ttsMock.initTTSPlayback).toHaveBeenCalledWith({ tabId: 1 });
   });
 
   it('returns early if no tabState for the given tabId', async () => {

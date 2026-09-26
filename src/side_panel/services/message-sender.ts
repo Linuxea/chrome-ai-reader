@@ -14,7 +14,6 @@ import {
   appendErrorMessage, emitRetryFromWrapper,
   setButtonsDisabled, updateSendButtonDim,
 } from '../ui/dom-helpers';
-import { isTTSPlaying, stopTTS } from './tts/index.js';
 import { getDraftText, clearDraftText, consumeAttachments, hasAttachments, attachmentsTooLarge, MAX_IMAGE_PAYLOAD_BYTES, type AttachedTab } from './composer';
 import { ensurePageContent, extractTabContent } from './page-extractor';
 import { callAI, takePendingAbort } from './stream-handler';
@@ -275,7 +274,9 @@ async function resendUserMessage(opts: {
   const tabState = state.getStateForTab(startTabId!);
   if (!tabState || tabState.isGenerating) return;
 
-  if (isTTSPlaying()) stopTTS();
+  // TTS is a window-global resource: retry / edit does not stop it — only an
+  // actually-starting playback (autoplay) takes it over, at the player's
+  // takeover point.
   emit(EVENTS.REMOVE_SUGGEST_QUESTIONS);
 
   if (tabState.isPodcastGenerating) tabState.isPodcastGenerating = false;

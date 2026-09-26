@@ -1,0 +1,74 @@
+/* tts.css — 全局朗读指示器（TTS 为窗口级资源，跨标签播放时提供状态与停止入口） */
+.tts-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 0 8px 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.tts-indicator.hidden {
+  display: none;
+}
+
+.tts-indicator-icon {
+  display: flex;
+  align-items: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.tts-indicator.is-waiting .tts-indicator-icon svg {
+  display: none;
+}
+
+.tts-indicator-icon::before {
+  content: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: tts-indicator-spin 0.8s linear infinite;
+}
+
+.tts-indicator.is-waiting .tts-indicator-icon::before {
+  content: '';
+}
+
+@keyframes tts-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tts-indicator-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tts-indicator-stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tts-indicator-stop:hover {
+  background: var(--bg);
+  color: var(--primary);
+}

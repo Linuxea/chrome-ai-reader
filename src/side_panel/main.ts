@@ -6,7 +6,7 @@ import { on, EVENTS } from './events';
 import { initDOMHelpers, appendMessage } from './ui/dom-helpers';
 import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
-import { initTTS, isTTSPlaying, stopTTS, addTTSButton } from './services/tts/index.js';
+import { initTTS, detachTTS, addTTSButton } from './services/tts/index.js';
 import { initImages, clearImagePreviews, addImageDataUri, hasPendingImages } from './services/images.js';
 import { captureVisibleTab, captureFullPage } from './services/screenshot';
 import { readSettings } from '../platform/settings';
@@ -56,7 +56,7 @@ const sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
 const actionBtns = document.querySelectorAll('.action-btn') as NodeListOf<HTMLButtonElement>;
 const commandPopup = document.getElementById('commandPopup')!;
 
-const deps = { isTTSPlaying, stopTTS, removeSuggestQuestions, clearImagePreviews };
+const deps = { detachTTS, removeSuggestQuestions, clearImagePreviews };
 
 async function init(): Promise<void> {
   await Promise.all([loadLanguage(), initState()]);

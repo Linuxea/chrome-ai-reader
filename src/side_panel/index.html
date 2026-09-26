@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="quick-commands.css">
   <link rel="stylesheet" href="outline.css">
   <link rel="stylesheet" href="podcast.css">
+  <link rel="stylesheet" href="tts.css">
   <link rel="stylesheet" href="related-pages.css">
   <link rel="stylesheet" href="annotation.css">
   <!-- CSP forbids inline scripts in extension pages; see public/theme-boot.js -->
@@ -153,6 +154,17 @@
       <button class="podcast-mini-play-btn" type="button"></button>
       <button class="podcast-mini-close" type="button" data-i18n-title="podcast.close" title="关闭">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <!-- 全局朗读指示器（TTS 为窗口级资源，跨标签播放时提供状态与停止入口） -->
+    <div id="ttsIndicator" class="tts-indicator hidden">
+      <span class="tts-indicator-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+      </span>
+      <span class="tts-indicator-title" data-i18n="tts.reading">朗读中</span>
+      <button class="tts-indicator-stop" type="button" data-i18n-title="tts.stop" title="停止朗读">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>
       </button>
     </div>
 

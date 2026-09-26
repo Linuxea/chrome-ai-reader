@@ -31,6 +31,10 @@ import {
   initDownloader,
   stopTTSDownload,
   handleTTSDownloadClick,
+  detachDownloadAnchor,
+  reattachDownloadAnchor,
+  getDownloadOrigin,
+  isTTSDownloading,
 } from '../../../src/side_panel/services/tts/downloader.js';
 
 function encodeBase64(str) {
@@ -275,6 +279,55 @@ describe('TTS Downloader', () => {
 
       expect(downloadMock.downloadFile).not.toHaveBeenCalled();
       expect(btn.classList.contains('tts-loading')).toBe(false);
+    });
+  });
+
+  describe('origin + detach / reattach (tab switch)', () => {
+    function startDownload(msgId) {
+      const msgEl = document.createElement('div');
+      msgEl.textContent = 'A. B. C. D. E. F. G. H.';
+      if (msgId) msgEl.dataset.msgId = msgId;
+      const btn = document.createElement('button');
+      btn.className = 'tts-download-btn';
+      msgEl.appendChild(btn);
+      chatArea.appendChild(msgEl);
+      handleTTSDownloadClick(msgEl);
+      return { msgEl, btn };
+    }
+
+    it('records the message id the download belongs to', () => {
+      const { btn } = startDownload('m-3');
+      expect(isTTSDownloading()).toBe(true);
+      expect(getDownloadOrigin()).toEqual({ tabId: null, msgId: 'm-3' });
+      expect(btn.classList.contains('tts-loading')).toBe(true);
+    });
+
+    it('detach keeps the download running but drops the button anchor', () => {
+      const { btn } = startDownload('m-3');
+
+      detachDownloadAnchor();
+
+      expect(isTTSDownloading()).toBe(true);
+      expect(btn.classList.contains('tts-loading')).toBe(true); // untouched orphan
+    });
+
+    it('reattach restores the loading state on the rebuilt button', () => {
+      startDownload('m-3');
+      detachDownloadAnchor();
+
+      const fresh = document.createElement('button');
+      fresh.className = 'tts-download-btn';
+      reattachDownloadAnchor(fresh);
+
+      expect(fresh.classList.contains('tts-loading')).toBe(true);
+      expect(fresh.disabled).toBe(true);
+      expect(fresh.title).toBe('[status.ttsDownloading]');
+    });
+
+    it('origin is cleared on stop', () => {
+      startDownload('m-3');
+      stopTTSDownload();
+      expect(getDownloadOrigin()).toEqual({ tabId: null, msgId: null });
     });
   });
 });
