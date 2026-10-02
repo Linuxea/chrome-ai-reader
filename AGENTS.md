@@ -5,7 +5,8 @@
 ```bash
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
-npm run test   # vitest run (1205 tests across 99 files; proxy test files need `ws` installed — see Testing)
+npm run build:win  # build with DIST_DIR=/mnt/d/chrome/chrome-ai-reader (fixed Windows output dir)
+npm run test   # vitest run (1240 tests across 103 files; proxy test files need `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint (JS + TS via typescript-eslint) && lint:deps
@@ -24,7 +25,7 @@ Two-phase build — Chrome cannot use ES modules for content scripts or service 
 2. **Rollup IIFE** (`build-extension.js`) — bundles `src/content/index.ts` → `dist/content.js` and `src/background/service-worker.ts` → `dist/background.js` as self-contained IIFE scripts. Uses `rollup-plugin-esbuild` for TypeScript.
 3. **Static copy** — `public/` copied verbatim to `dist/` (manifest, icons).
 
-Load the **`dist/`** directory in `chrome://extensions/`, not the project root.
+Load the **`dist/`** directory in `chrome://extensions/`, not the project root. The output dir is overridable via the `DIST_DIR` env var (read by both `vite.config.js` and `scripts/iife-config.js`): `npm run build:win` builds to `/mnt/d/chrome/chrome-ai-reader` (Windows `D:\chrome\chrome-ai-reader`), so the unpacked extension keeps working when WSL is shut down.
 
 ## TypeScript
 
@@ -104,7 +105,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 1155 tests across 97 files
+- **Vitest** with jsdom environment, 1169 tests across 97 files
 - **Proxy tests need proxy deps**: `tests/proxy/*.test.js` import `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation

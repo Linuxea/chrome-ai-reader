@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently \"vite build --watch\" \"node scripts/watch-iife.js\"",
     "build": "vite build && node build-extension.js",
+    "build:win": "DIST_DIR=/mnt/d/chrome/chrome-ai-reader npm run build",
     "lint": "eslint src/ proxy/ scripts/ build-extension.js vite.config.js vitest.config.js eslint.config.js && npm run lint:deps",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "format": "prettier --write 'src/**/*.js' 'proxy/**/*.js'",

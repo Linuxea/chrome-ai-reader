@@ -7,10 +7,14 @@ import { resolve } from 'path';
 // for one-shot builds.
 const isWatch = process.argv.includes('--watch') || process.argv.includes('-w');
 
+// DIST_DIR overrides the output directory (absolute path, e.g. a Windows
+// drive mount so the unpacked extension survives WSL being shut down).
+const outDir = process.env.DIST_DIR || 'dist';
+
 export default defineConfig({
   base: '',  // Use relative paths — required for Chrome extension
   build: {
-    outDir: 'dist',
+    outDir,
     emptyOutDir: !isWatch,
     // Inline maps roughly double the shipped bundle; dev (watch) keeps them.
     sourcemap: isWatch ? 'inline' : false,

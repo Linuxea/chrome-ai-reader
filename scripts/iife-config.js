@@ -10,6 +10,10 @@ import { fileURLToPath } from 'url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+// DIST_DIR overrides the output directory (absolute path, e.g. a Windows
+// drive mount); defaults to dist/ inside the project. Shared with Vite.
+export const DIST_DIR = process.env.DIST_DIR || 'dist';
+
 export const IIFE_ENTRIES = [
   { input: 'src/content/index.ts', name: 'content' },
   { input: 'src/background/service-worker.ts', name: 'background' },
@@ -27,7 +31,7 @@ export function iifePlugins({ dev = false } = {}) {
 /** `dev`: inline source maps (watch mode); production ships without them. */
 export function iifeOutput(name, { dev = false } = {}) {
   return {
-    file: resolve(ROOT, `dist/${name}.js`),
+    file: resolve(ROOT, `${DIST_DIR}/${name}.js`),
     format: 'iife',
     // Dependencies with dynamic import() (e.g. @anthropic-ai/sdk) would
     // otherwise need code splitting, which IIFE output cannot do.
