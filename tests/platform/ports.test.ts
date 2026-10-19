@@ -20,7 +20,6 @@ import {
   openSuggestPort,
   openPodcastLLMPort,
   openPodcastAudioPort,
-  openEmbeddingPort,
   openAnnotationPort,
 } from '../../src/platform/ports';
 
@@ -43,7 +42,6 @@ describe('platform/ports', () => {
     ['openSuggestPort', openSuggestPort, 'suggest-questions'],
     ['openPodcastLLMPort', openPodcastLLMPort, 'podcast-llm'],
     ['openPodcastAudioPort', openPodcastAudioPort, 'podcast-audio'],
-    ['openEmbeddingPort', openEmbeddingPort, 'embedding'],
     ['openAnnotationPort', openAnnotationPort, 'annotation'],
   ] as const)('%s connects with name %s', (_label, fn, expectedName) => {
     fn();

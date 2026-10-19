@@ -57,6 +57,7 @@ const {
 
 vi.mock('../../src/platform/settings.js', () => ({
   migrateSecretsToLocal: vi.fn(() => Promise.resolve()),
+  cleanupRemovedSettings: vi.fn(() => Promise.resolve()),
   onSettingsChange: vi.fn(() => () => {}),
   DEFAULT_API_BASE: 'https://api.deepseek.com',
   DEFAULT_ANTHROPIC_API_BASE: 'https://api.anthropic.com',
@@ -69,23 +70,15 @@ vi.mock('../../src/background/sw-menus.js', () => ({
 vi.mock('../../src/background/sw-openai.js', () => ({
   callOpenAI: vi.fn(),
   callSuggestQuestions: vi.fn(),
-  callEmbedding: vi.fn(),
 }));
 vi.mock('../../src/background/sw-tts.js', () => ({ callTTS: vi.fn() }));
 vi.mock('../../src/background/sw-podcast.js', () => ({ callPodcast: vi.fn() }));
-vi.mock('../../src/background/sw-related-pages.js', () => ({
-  handlePageRecordsMessage: vi.fn((msg: Record<string, unknown>, sendResponse: (r?: unknown) => void) => {
-    sendResponse({ success: true });
-    return true;
-  }),
-}));
 
 // --- Import after mocks are set up ---
 import '../../src/background/service-worker.js';
-import { callOpenAI, callSuggestQuestions, callEmbedding } from '../../src/background/sw-openai.js';
+import { callOpenAI, callSuggestQuestions } from '../../src/background/sw-openai.js';
 import { callTTS } from '../../src/background/sw-tts.js';
 import { callPodcast } from '../../src/background/sw-podcast.js';
-import { handlePageRecordsMessage } from '../../src/background/sw-related-pages.js';
 
 // Senders as chrome reports them: our side panel, and our content script in a page.
 const EXT_SENDER = { id: 'test-ext', url: 'chrome-extension://test-ext/src/side_panel/index.html' };
@@ -240,18 +233,6 @@ describe('background/service-worker', () => {
       );
     });
 
-    it('routes embedding port to callEmbedding', async () => {
-      const port = createMockPortForRoute('embedding');
-      onConnectListener()!(port);
-      port._receiveMessage({ type: 'embed', text: 'embed me' });
-
-      await vi.waitFor(() => expect(callEmbedding).toHaveBeenCalled());
-      expect(callEmbedding).toHaveBeenCalledWith(
-        'embed me',
-        expect.objectContaining({ name: 'embedding' }),
-      );
-    });
-
     it('disconnects an extension-only port opened by a content script', () => {
       const port = createMockPortForRoute('ai-chat', CONTENT_SENDER);
       onConnectListener()!(port);
@@ -395,28 +376,6 @@ describe('background/service-worker', () => {
         vi.fn(),
       );
       expect(chromeSendMessage).not.toHaveBeenCalled();
-    });
-
-    it('routes pageRecords:store to handlePageRecordsMessage', () => {
-      const sendResponse = vi.fn();
-      const result = onMessageListener()!(
-        { action: 'pageRecords:store', record: {}, maxPages: 200 },
-        EXT_SENDER,
-        sendResponse,
-      );
-      expect(result).toBe(true);
-      expect(handlePageRecordsMessage).toHaveBeenCalled();
-    });
-
-    it('routes pageRecords:findRelated to handlePageRecordsMessage', () => {
-      const sendResponse = vi.fn();
-      const result = onMessageListener()!(
-        { action: 'pageRecords:findRelated', normalizedUrl: 'https://a.com', threshold: 0.7, limit: 5 },
-        EXT_SENDER,
-        sendResponse,
-      );
-      expect(result).toBe(true);
-      expect(handlePageRecordsMessage).toHaveBeenCalled();
     });
   });
 });

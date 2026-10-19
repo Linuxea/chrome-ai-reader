@@ -2,7 +2,6 @@ import { t } from '../../shared/i18n.js';
 import type { Result } from '../../shared/types';
 import { ok, err } from '../../shared/result.js';
 import * as state from '../state';
-import { emit, EVENTS } from '../events';
 import { showExtractingToast } from '../ui/toast';
 import { sendToContentScript } from '../../platform/messaging';
 import { splitParagraphs } from '../../shared/context-builder';
@@ -49,8 +48,7 @@ export async function ensurePageContent(expectTabId?: number | null): Promise<Re
  */
 async function readTab(tabId: number): Promise<Result<{ data: ExtractResult; url: string }>> {
   // Capture the URL now — it keys the cache (a later navigation invalidates
-  // it) and the related-pages record, and avoids a race if the user switches
-  // tabs meanwhile.
+  // it) and avoids a race if the user switches tabs meanwhile.
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   const url = tab?.url ?? '';
   const viaPdf = async (): Promise<Result<{ data: ExtractResult; url: string }>> => {
@@ -95,17 +93,6 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
     tabState.pageUrl = url;
     tabState.pageParagraphs = data.paragraphs?.length ? data.paragraphs : splitParagraphs(data.textContent);
     state.persistForTab(tabId);
-  }
-
-  // Notify subscribers (e.g. related-pages embedding) via the event bus instead
-  // of importing the feature layer upward. Trigger after a short delay to let
-  // the page settle and avoid wasting an embedding call when the user is just
-  // tab-skimming.
-  if (url) {
-    const { excerpt, title, textContent } = data;
-    setTimeout(() => {
-      emit(EVENTS.PAGE_EXTRACTED, { excerpt, url, title, content: textContent });
-    }, 1500);
   }
 
   return ok(data);

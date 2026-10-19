@@ -69,7 +69,7 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
 
   // After the chat area is rebuilt, ask the podcast feature to restore its
   // full card if the now-playing podcast originated from this tab. Decouples
-  // ui/** from the podcast feature (mirrors the PAGE_EXTRACTED pattern).
+  // ui/** from the podcast feature via the event bus.
   emit(EVENTS.PODCAST_REBUILD_REQUEST);
   // Let an in-flight answer for this tab re-attach its live bubble (and a
   // stream that ended while the tab was hidden show / save its outcome).

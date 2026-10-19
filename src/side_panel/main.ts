@@ -22,11 +22,9 @@ import { renderOutlineFromJSON, outlineToMarkdown } from './features/outline';
 import { initImageInput } from './features/image-input';
 import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initMiniPlayer } from './features/podcast/mini-player.js';
-import { initRelatedPages, renderRelatedPages } from './features/related-pages';
 import { initAnnotation } from './features/annotation';
 import { initCitations } from './features/citations';
 import { initTabContext } from './features/tab-context';
-import { initReadingSearch } from './features/reading-search';
 import { initNotes } from './features/notes';
 import { initPanelActions } from './features/panel-actions';
 import { initImmersive } from './features/immersive';
@@ -126,9 +124,7 @@ async function init(): Promise<void> {
   initImageInput({ userInput: els.userInput });
   initPodcast({ chatArea: els.chatArea });
   initMiniPlayer();
-  initRelatedPages({ chatArea: els.chatArea });
   initCitations({ chatArea: els.chatArea });
-  initReadingSearch(document.getElementById('relatedPagesPanel'));
   initImmersive({ button: document.getElementById('immersiveBtn') });
   initQuiz({ button: document.getElementById('quizBtn'), chatArea: els.chatArea });
   initNotes({
@@ -173,11 +169,6 @@ async function init(): Promise<void> {
       saveCurrentChat();
     }
   });
-  on(EVENTS.SHOW_RELATED_PAGES, () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.url) renderRelatedPages(tabs[0].url);
-    });
-  });
 
   initAIChat({
     chatArea: els.chatArea,
@@ -202,11 +193,6 @@ async function init(): Promise<void> {
   } else {
     renderOnboardingIfNeeded();
   }
-
-  // Show related pages for current tab on init
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]?.url) renderRelatedPages(tabs[0].url);
-  });
 }
 
 /**

@@ -12,7 +12,6 @@ import { updateQuotePreview } from '../ui/quote-preview';
 import { isCommandPopupOpen, hideCommandPopup, updateCommandPopup } from '../features/quick-commands.js';
 import { clearImagePreviews } from '../services/images.js';
 import { saveCurrentChat, getDisplayMessages, generateTitle, exportChatAsMarkdown, renderHistoryList } from '../features/chat-history.js';
-import { emit, EVENTS } from '../events';
 import { resetUIForTabSwitch, cleanupActiveFeatures } from './tab-switch-handler.js';
 import type { UIElements, GlobalEventDeps } from './types';
 
@@ -98,15 +97,13 @@ export function bindGlobalEvents(els: UIElements, deps: GlobalEventDeps): void {
     // Send vs Stop reflects the tab now shown.
     setButtonsDisabled(state.getIsGenerating());
     resetUIForTabSwitch(els, deps);
-    emit(EVENTS.SHOW_RELATED_PAGES);
   });
 
   // The active tab navigated to another page: its quote belongs to the old
-  // page, and the related-reading panel should reflect the new URL.
+  // page, so drop it.
   state.subscribe('pageInvalidated', (tabId) => {
     if (tabId !== state.getActiveTabId()) return;
     updateQuotePreview(els, '');
-    emit(EVENTS.SHOW_RELATED_PAGES);
   });
 
   chrome.runtime.onMessage.addListener((msg: { action?: string; forwarded?: boolean; tabId?: number; text?: string }) => {

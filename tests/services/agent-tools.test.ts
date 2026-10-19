@@ -12,7 +12,7 @@ vi.mock('../../src/platform/messaging.js', () => ({ sendMessage: vi.fn(), sendTo
 vi.mock('../../src/side_panel/services/page-extractor.js', () => ({ extractTabContent: vi.fn() }));
 
 import { runAgentTool, AGENT_TOOL_SPECS } from '../../src/side_panel/services/agent-tools';
-import { sendMessage, sendToContentScript } from '../../src/platform/messaging.js';
+import { sendToContentScript } from '../../src/platform/messaging.js';
 import { extractTabContent } from '../../src/side_panel/services/page-extractor.js';
 
 beforeEach(() => vi.clearAllMocks());
@@ -36,11 +36,6 @@ describe('services/agent-tools', () => {
     expect(await runAgentTool('get_selection', '{}', 1)).toBe('selected bit');
   });
 
-  it('search_reading_history explains a missing embedding setup', async () => {
-    vi.mocked(sendMessage).mockResolvedValueOnce({ success: false, errorKey: 'error.embeddingNotConfigured' });
-    expect(await runAgentTool('search_reading_history', '{"query":"rag"}', 1)).toMatch(/not configured/);
-  });
-
   it('read_tab returns the other tab\'s text', async () => {
     vi.mocked(extractTabContent).mockResolvedValueOnce({ ok: true, value: { title: 'Other', textContent: 'Body', excerpt: '', url: 'u' } });
     expect(await runAgentTool('read_tab', '{"tab_id":5}', 1)).toBe('Title: Other\n\nBody');
@@ -56,7 +51,7 @@ describe('services/agent-tools', () => {
   it('never throws: bad JSON, unknown tools and tool errors become messages', async () => {
     expect(await runAgentTool('search_page', '{oops', 1)).toMatch(/Invalid arguments/);
     expect(await runAgentTool('rm_rf', '{}', 1)).toMatch(/Unknown tool/);
-    vi.mocked(sendMessage).mockRejectedValueOnce(new Error('boom'));
-    expect(await runAgentTool('find_related_pages', '{}', 1)).toMatch(/Tool failed: boom/);
+    vi.mocked(extractTabContent).mockRejectedValueOnce(new Error('boom'));
+    expect(await runAgentTool('read_tab', '{"tab_id":5}', 1)).toMatch(/Tool failed: boom/);
   });
 });

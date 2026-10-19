@@ -19,7 +19,6 @@ describe('shared/protocol', () => {
         SUGGEST_QUESTIONS: 'suggest-questions',
         PODCAST_LLM: 'podcast-llm',
         PODCAST_AUDIO: 'podcast-audio',
-        EMBEDDING: 'embedding',
         ANNOTATION: 'annotation',
         TRANSLATE: 'translate',
       });
@@ -32,8 +31,8 @@ describe('shared/protocol', () => {
       });
     });
 
-    it('has 9 ports (guard against accidental additions/removals)', () => {
-      expect(Object.keys(PORT_NAMES).length).toBe(9);
+    it('has 8 ports (guard against accidental additions/removals)', () => {
+      expect(Object.keys(PORT_NAMES).length).toBe(8);
     });
 
     it('all port names are unique (no two keys mapping to the same string)', () => {

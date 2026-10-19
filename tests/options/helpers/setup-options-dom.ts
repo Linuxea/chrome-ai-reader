@@ -18,17 +18,16 @@
 const TEXT_INPUT_IDS = [
   'apiKey', 'apiBase', 'modelName', 'fastModelName', 'systemPrompt',
   'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'podcastResourceId', 'ttsSpeaker',
-  'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
 ] as const;
 
 /** IDs of all checkbox elements */
 const CHECKBOX_IDS = [
-  'suggestQuestions', 'ttsAutoPlay', 'embeddingEnabled', 'citations', 'agentMode', 'podcastDirect',
+  'suggestQuestions', 'ttsAutoPlay', 'citations', 'agentMode', 'podcastDirect',
 ] as const;
 
 /** IDs of all button elements */
 const BUTTON_IDS = [
-  'refreshModelsBtn', 'clearEmbeddingBtn',
+  'refreshModelsBtn',
   'addCommandBtn', 'exportBtn', 'importBtn',
   'saveBtn', 'themeToggleBtn',
 ] as const;
@@ -36,9 +35,6 @@ const BUTTON_IDS = [
 /** IDs of other element types */
 const OTHER_IDS = [
   'model-list',          // <datalist>
-  'embeddingThresholdValue', // <span>
-  'embeddingThreshold',  // <input type="range">
-  'embeddingMaxPages',   // <input type="number">
   'quickCommandsList',   // <div>
   'importFile',          // <input type="file">
   'status',              // <div>
@@ -68,9 +64,6 @@ export function setupOptionsDom(): void {
   // Other elements with specific types
   parts.push('<select id="provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select>');
   parts.push('<datalist id="model-list"></datalist>');
-  parts.push('<span id="embeddingThresholdValue">75%</span>');
-  parts.push('<input id="embeddingThreshold" type="range" value="75"/>');
-  parts.push('<input id="embeddingMaxPages" type="number" value="200"/>');
   parts.push('<div id="quickCommandsList"></div>');
   parts.push('<input id="importFile" type="file"/>');
   parts.push('<input id="exportIncludeSecrets" type="checkbox"/>');

@@ -10,9 +10,7 @@
 
 import * as state from '../state';
 import { scoreParagraphs, splitParagraphs } from '../../shared/context-builder';
-import { normalizeUrl } from '../../shared/url-normalize';
-import { sendMessage, sendToContentScript } from '../../platform/messaging';
-import type { PageRelation } from '../../shared/types';
+import { sendToContentScript } from '../../platform/messaging';
 import { extractTabContent } from './page-extractor';
 
 export interface AgentToolSpec {
@@ -41,16 +39,6 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
     parameters: obj({}),
   },
   {
-    name: 'find_related_pages',
-    description: 'List pages from the user\'s reading history that are semantically related to the current page (title, URL, excerpt).',
-    parameters: obj({}),
-  },
-  {
-    name: 'search_reading_history',
-    description: 'Semantic search over every page the user has read with this extension. Returns titles, URLs and excerpts.',
-    parameters: obj({ query: { type: 'string' } }, ['query']),
-  },
-  {
     name: 'list_open_tabs',
     description: 'List the tabs open in the user\'s current browser window (id, title, URL).',
     parameters: obj({}),
@@ -74,12 +62,6 @@ function paragraphsOf(tabId: number): string[] {
   const ts = state.getStateForTab(tabId);
   if (!ts) return [];
   return ts.pageParagraphs?.length ? ts.pageParagraphs : splitParagraphs(ts.pageContent || '');
-}
-
-function formatRelations(relations: PageRelation[]): string {
-  if (!relations.length) return 'No matching pages.';
-  return relations.map((r, i) =>
-    `${i + 1}. ${r.record.title || r.record.url}\n   ${r.record.url}\n   similarity ${r.similarity.toFixed(2)} — ${r.record.excerpt || ''}`).join('\n');
 }
 
 type Args = Record<string, unknown>;
@@ -106,20 +88,6 @@ const TOOLS: Record<string, Tool> = {
   async get_selection(_args, tabId) {
     const text = state.getStateForTab(tabId)?.selectedText ?? '';
     return text ? text : 'Nothing is selected.';
-  },
-
-  async find_related_pages(_args, tabId) {
-    const url = state.getStateForTab(tabId)?.pageUrl;
-    if (!url) return 'The current page has not been read yet.';
-    const res = await sendMessage({ action: 'pageRecords:findRelated', normalizedUrl: normalizeUrl(url), threshold: 0.5, limit: 8 }) as { success?: boolean; relations?: PageRelation[]; error?: string };
-    return res?.success ? formatRelations(res.relations ?? []) : `Related pages unavailable: ${res?.error ?? 'unknown error'}`;
-  },
-
-  async search_reading_history(args) {
-    const res = await sendMessage({ action: 'pageRecords:search', query: String(args.query ?? ''), limit: 8 }) as { success?: boolean; relations?: PageRelation[]; error?: string; errorKey?: string };
-    if (res?.success) return formatRelations(res.relations ?? []);
-    if (res?.errorKey === 'error.embeddingNotConfigured') return 'Reading-history search is not configured (the user has no embedding model set up).';
-    return `Search failed: ${res?.error ?? 'unknown error'}`;
   },
 
   async list_open_tabs() {

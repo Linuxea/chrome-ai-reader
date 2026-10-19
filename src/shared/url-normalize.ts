@@ -1,11 +1,10 @@
 /**
- * URL normalization for the "related pages" feature.
+ * URL normalization (hash / tracking params / order / host / trailing slash).
  *
  * Why this exists: the same page can be visited under different URL variants
- * (with tracking params, hash anchors, param-order differences). Without
- * normalization, `findRelatedPages` would (a) store the same page multiple
- * times and (b) fail to find the current page's own embedding when the URL
- * differs even slightly from the stored one — producing an empty panel.
+ * (with tracking params, hash anchors, param-order differences). Highlights
+ * and the annotation cache key their records by URL — without normalization
+ * a highlight made on one variant would not be found on another.
  *
  * Strategy:
  *   1. Strip hash (#...)
@@ -16,7 +15,7 @@
  *   5. Strip trailing slash from path (except root "/")
  *
  * Best-effort: invalid URLs are returned as-is (lowercased) so callers don't
- * crash. The feature treats normalizeUrl as a pure string→string transform.
+ * crash. Callers treat normalizeUrl as a pure string→string transform.
  */
 
 /** Tracking/marketing query params that should not affect page identity. */
@@ -47,7 +46,7 @@ function isTrackingParam(key: string): boolean {
 }
 
 /**
- * Normalize a URL for storage/matching in the related-pages feature.
+ * Normalize a URL for storage/matching (highlights, annotation cache).
  * Returns the original string (lowercased) if parsing fails — never throws.
  */
 export function normalizeUrl(rawUrl: string): string {

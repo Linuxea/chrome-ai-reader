@@ -7,6 +7,8 @@
  * One module owns the schema so versions never diverge between contexts:
  *
  *   v1  pageRecords   keyPath normalizedUrl         related-reading embeddings
+ *       (removed in v3 together with the related-reading feature; the
+ *        upgrade deletes the store so old records are wiped)
  *   v2  chats         keyPath id, index updatedAt   saved conversations
  *       highlights    keyPath id, index url         user highlights / notes
  *       annotations   keyPath key                   deep-annotation cache
@@ -14,14 +16,14 @@
  */
 
 export const DB_NAME = 'ai-reader';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
-export type StoreName = 'pageRecords' | 'chats' | 'highlights' | 'annotations' | 'translations';
+export type StoreName = 'chats' | 'highlights' | 'annotations' | 'translations';
 
 let _dbPromise: Promise<IDBDatabase> | null = null;
 
 function upgrade(db: IDBDatabase): void {
-  if (!db.objectStoreNames.contains('pageRecords')) db.createObjectStore('pageRecords', { keyPath: 'normalizedUrl' });
+  if (db.objectStoreNames.contains('pageRecords')) db.deleteObjectStore('pageRecords');
   if (!db.objectStoreNames.contains('chats')) {
     db.createObjectStore('chats', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
   }

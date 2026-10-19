@@ -53,9 +53,9 @@ describe('platform/settings', () => {
 
   it('reads secrets from local, falling back to sync for not-yet-migrated values', async () => {
     store.local.apiKey = 'sk-local';
-    store.sync.embeddingApiKey = 'emb-legacy';
-    const s = await readSettings(['apiKey', 'embeddingApiKey']);
-    expect(s).toEqual({ apiKey: 'sk-local', embeddingApiKey: 'emb-legacy' });
+    store.sync.ttsAccessKey = 'tts-legacy';
+    const s = await readSettings(['apiKey', 'ttsAccessKey']);
+    expect(s).toEqual({ apiKey: 'sk-local', ttsAccessKey: 'tts-legacy' });
   });
 
   it('applies defaults on read, but readStoredSettings shows only what is stored', async () => {

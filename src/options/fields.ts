@@ -10,15 +10,11 @@ export const textFields: Record<string, HTMLInputElement | HTMLTextAreaElement |
   ttsResourceId: document.getElementById('ttsResourceId') as HTMLInputElement,
   podcastResourceId: document.getElementById('podcastResourceId') as HTMLInputElement,
   ttsSpeaker: document.getElementById('ttsSpeaker') as HTMLInputElement,
-  embeddingApiKey: document.getElementById('embeddingApiKey') as HTMLInputElement,
-  embeddingApiBase: document.getElementById('embeddingApiBase') as HTMLInputElement,
-  embeddingModel: document.getElementById('embeddingModel') as HTMLInputElement,
 };
 
 export const checkboxFields: Record<string, HTMLInputElement> = {
   suggestQuestions: document.getElementById('suggestQuestions') as HTMLInputElement,
   ttsAutoPlay: document.getElementById('ttsAutoPlay') as HTMLInputElement,
-  embeddingEnabled: document.getElementById('embeddingEnabled') as HTMLInputElement,
   citations: document.getElementById('citations') as HTMLInputElement,
   agentMode: document.getElementById('agentMode') as HTMLInputElement,
   podcastDirect: document.getElementById('podcastDirect') as HTMLInputElement,
@@ -31,4 +27,4 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
  */
 export { SECRET_KEYS as SECRET_FIELDS } from '../platform/settings';
 
-export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language', 'embeddingThreshold', 'embeddingMaxPages'];
+export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language'];

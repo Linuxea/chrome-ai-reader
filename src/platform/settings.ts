@@ -38,19 +38,12 @@ export interface Settings {
   ttsAutoPlay: boolean;
   podcastResourceId: string;
   podcastDirect: boolean;
-  // Related reading
-  embeddingEnabled: boolean;
-  embeddingApiKey: string;
-  embeddingApiBase: string;
-  embeddingModel: string;
-  embeddingThreshold: number;
-  embeddingMaxPages: number;
 }
 
 export type SettingKey = keyof Settings;
 
 /** Keys stored in chrome.storage.local and never exported unless asked. */
-export const SECRET_KEYS: readonly SettingKey[] = ['apiKey', 'ttsAccessKey', 'embeddingApiKey'];
+export const SECRET_KEYS: readonly SettingKey[] = ['apiKey', 'ttsAccessKey'];
 
 export const DEFAULT_API_BASE = 'https://api.deepseek.com';
 export const DEFAULT_ANTHROPIC_API_BASE = 'https://api.anthropic.com';
@@ -67,9 +60,6 @@ export const SETTING_DEFAULTS: Partial<Settings> = {
   ttsAutoPlay: false,
   podcastResourceId: 'volc.service_type.10050',
   podcastDirect: false,
-  embeddingEnabled: true,
-  embeddingThreshold: 0.7,
-  embeddingMaxPages: 200,
 };
 
 export const isSecret = (key: string): boolean => (SECRET_KEYS as readonly string[]).includes(key);
@@ -138,6 +128,24 @@ export async function removeSettings(keys: readonly string[]): Promise<void> {
   await Promise.all([
     chrome.storage.sync.remove([...keys]),
     secret.length ? chrome.storage.local.remove(secret) : Promise.resolve(),
+  ]);
+}
+
+/**
+ * Settings retired with the related-reading (知识关联) feature, plus its
+ * legacy `pageRecords` blob. Cleared from both storage areas by the service
+ * worker at startup so nothing lingers on users' machines.
+ */
+const REMOVED_RELATED_READING_KEYS = [
+  'embeddingEnabled', 'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
+  'embeddingThreshold', 'embeddingMaxPages', 'pageRecords',
+];
+
+/** One-time cleanup for retired settings (idempotent; runs at SW startup). */
+export async function cleanupRemovedSettings(): Promise<void> {
+  await Promise.all([
+    chrome.storage.sync.remove(REMOVED_RELATED_READING_KEYS),
+    chrome.storage.local.remove(REMOVED_RELATED_READING_KEYS),
   ]);
 }
 

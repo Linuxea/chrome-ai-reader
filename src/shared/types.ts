@@ -131,28 +131,6 @@ export type Result<T, E = Error> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
-export interface PageRecord {
-  id: string;
-  /** Original URL as captured from the tab. */
-  url: string;
-  /**
-   * Normalized URL used for matching/dedup. Computed via `normalizeUrl()`
-   * (see `shared/url-normalize.ts`): hash stripped, tracking params removed,
-   * remaining params sorted, host lowercased. Stored so queries don't have
-   * to re-normalize on every read.
-   */
-  normalizedUrl: string;
-  title: string;
-  excerpt: string;
-  embedding: number[];
-  timestamp: number;
-}
-
-export interface PageRelation {
-  record: PageRecord;
-  similarity: number;
-}
-
 /**
  * Deep annotation (深度批阅) — AI-generated deep-perspective annotations
  * attached to sentences in the page. See

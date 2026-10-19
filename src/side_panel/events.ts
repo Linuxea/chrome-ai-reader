@@ -13,11 +13,6 @@ export const EVENTS = {
   ADD_TTS_BUTTON: 'addTTSButton',
   SAVE_CURRENT_CHAT: 'saveCurrentChat',
   RENDER_HISTORY_LIST: 'renderHistoryList',
-  SHOW_RELATED_PAGES: 'showRelatedPages',
-  /** Fired by services/page-extractor after a successful extraction. The
-   *  related-pages feature subscribes to it instead of being imported upward
-   *  by the service layer. Payload: excerpt + url + title (+ body text) of the extracted page. */
-  PAGE_EXTRACTED: 'pageExtracted',
   /** Fired by ui/tab-switch-handler after the chat area is rebuilt on a tab
    *  switch / re-render. The podcast feature subscribes to rebuild the full
    *  card if the now-playing podcast originated from the now-active tab. This
@@ -51,8 +46,6 @@ interface EventMap {
   [EVENTS.ADD_TTS_BUTTON]: (args: { msgEl: HTMLElement }) => void;
   [EVENTS.SAVE_CURRENT_CHAT]: () => void;
   [EVENTS.RENDER_HISTORY_LIST]: () => void;
-  [EVENTS.SHOW_RELATED_PAGES]: () => void;
-  [EVENTS.PAGE_EXTRACTED]: (args: { excerpt: string; url: string; title: string; content?: string }) => void;
   [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
   [EVENTS.CHAT_RERENDERED]: () => void;
   [EVENTS.PODCAST_STOP_REQUEST]: () => void;

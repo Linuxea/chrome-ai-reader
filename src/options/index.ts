@@ -6,7 +6,6 @@ import { initThemeSettings } from './theme-settings';
 import { initLlmSettings, fetchModels, loadLlmValues, collectLlmSaveData } from './llm-settings';
 import { initTtsSettings, loadTtsValues, collectTtsSaveData } from './tts-settings';
 import { initSuggestSettings, loadSuggestValues, collectSuggestSaveData } from './suggest-settings';
-import { initEmbeddingSettings, loadEmbeddingValues, collectEmbeddingSaveData } from './embedding-settings';
 import { initQuickCommandsEditor } from './quick-commands-editor';
 import { initImportExport } from './import-export';
 import { initUsagePanel } from './usage-panel';
@@ -15,7 +14,6 @@ initThemeSettings();
 initLlmSettings();
 initTtsSettings();
 initSuggestSettings();
-initEmbeddingSettings();
 initQuickCommandsEditor();
 initImportExport();
 initUsagePanel();
@@ -24,7 +22,6 @@ readStoredSettings(SYNC_FIELDS as SettingKey[]).then((data) => {
   loadLlmValues(data as Record<string, unknown>);
   loadTtsValues(data as Record<string, unknown>);
   loadSuggestValues(data as Record<string, unknown>);
-  loadEmbeddingValues(data as Record<string, unknown>);
   if (data.apiKey) fetchModels();
 });
 
@@ -36,12 +33,9 @@ saveBtn.addEventListener('click', () => {
 
   const tts = collectTtsSaveData();
   const suggest = collectSuggestSaveData();
-  const embedding = collectEmbeddingSaveData();
 
-  if (embedding.error) { showStatus(embedding.error, 'error'); return; }
-
-  const toRemove = [...(llm.remove || []), ...(tts.remove || []), ...(embedding.remove || [])];
-  const data = { ...(llm.set || {}), ...tts.set, ...suggest.set, ...embedding.set };
+  const toRemove = [...(llm.remove || []), ...(tts.remove || [])];
+  const data = { ...(llm.set || {}), ...tts.set, ...suggest.set };
 
   Promise.all([removeSettings(toRemove), writeSettings(data)]).then(() => {
     showStatus(t('status.settingsSaved'), 'success');

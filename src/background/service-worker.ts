@@ -1,11 +1,10 @@
-import { callOpenAI, callSuggestQuestions, callEmbedding } from './sw-openai';
+import { callOpenAI, callSuggestQuestions } from './sw-openai';
 import { callTTS } from './sw-tts';
 import { callPodcast } from './sw-podcast';
 import { annotateChunk } from './sw-annotation';
-import { handlePageRecordsMessage } from './sw-related-pages';
 import { PORT_NAMES } from '../shared/protocol';
 import type {
-  AIChatRequest, TTSRequest, SuggestRequest, PodcastAudioRequest, EmbeddingRequest, AnnotationRequest,
+  AIChatRequest, TTSRequest, SuggestRequest, PodcastAudioRequest, AnnotationRequest,
   SelectionChangedMessage, FetchModelsMessage,
 } from '../shared/protocol';
 import { registerPort, registerMessage, dispatchConnect, dispatchMessage } from './sw-router';
@@ -14,7 +13,7 @@ import {
   getCachedAnnotations, saveCachedAnnotations, respond,
 } from './sw-highlights';
 import type { AnnotationCacheEntry } from '../shared/highlights';
-import { migrateSecretsToLocal, onSettingsChange, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
+import { migrateSecretsToLocal, cleanupRemovedSettings, onSettingsChange, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
 import { setupContextMenus, onMenuClicked, onCommand } from './sw-menus';
 import { handleTranslate } from './sw-translate';
 import { listAnthropicModels } from './providers/anthropic';
@@ -23,6 +22,8 @@ import type { MessageContentPart } from '../shared/types';
 
 // Secrets saved by older versions lived in storage.sync; move them to local.
 migrateSecretsToLocal().catch((e: unknown) => console.error('secret migration failed:', e));
+// Related reading (知识关联) was removed: drop its settings and records.
+cleanupRemovedSettings().catch((e: unknown) => console.error('removed-settings cleanup failed:', e));
 
 // F8: context menu + shortcuts. Menus are rebuilt on install/startup and
 // when the UI language changes (their titles follow it).
@@ -73,11 +74,6 @@ registerPort(PORT_NAMES.PODCAST_AUDIO, 'extension', async (msg, port) => {
   if (req.type === 'generate') await callPodcast(req.nlpTexts, req.audioConfig, port);
 });
 
-registerPort(PORT_NAMES.EMBEDDING, 'extension', async (msg, port) => {
-  const req = msg as unknown as EmbeddingRequest;
-  if (req.type === 'embed') await callEmbedding(req.text, port);
-});
-
 // Opened by the content script (deep annotation runs in the page).
 registerPort(PORT_NAMES.ANNOTATION, 'content', async (msg, port) => {
   const req = msg as unknown as AnnotationRequest;
@@ -115,10 +111,6 @@ registerMessage('fetchModels', 'extension', (msg, _sender, sendResponse) => {
     .catch((e: Error) => { sendResponse({ success: false, error: e.message }); });
   return true;
 });
-
-registerMessage('pageRecords:store', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
-registerMessage('pageRecords:findRelated', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
-registerMessage('pageRecords:search', 'extension', (msg, _sender, sendResponse) => handlePageRecordsMessage(msg, sendResponse));
 
 // F6: highlights/notes and the annotation cache (IndexedDB lives here).
 registerMessage('highlights:add', 'content', (msg, sender, sendResponse) => respond(addHighlight({

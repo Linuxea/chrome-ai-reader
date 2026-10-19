@@ -73,8 +73,8 @@ describe('shared/i18n', () => {
 
     it('interpolates multiple parameters', () => {
       setLanguage('en');
-      const result = t('related.daysAgo', { n: 3 });
-      expect(result).toBe('3 days ago');
+      const result = t('tabs.limit', { max: 3 });
+      expect(result).toBe('You can attach up to 3 tabs');
     });
 
     it('returns the key itself when translation does not exist', () => {
@@ -90,7 +90,7 @@ describe('shared/i18n', () => {
 
     it('handles params with special regex characters in values', () => {
       setLanguage('zh');
-      const result = t('related.daysAgo', { n: 'test$title' });
+      const result = t('tabs.limit', { max: 'test$title' });
       expect(result).toContain('test$title');
     });
   });

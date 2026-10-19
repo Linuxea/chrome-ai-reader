@@ -17,7 +17,7 @@
  * see Phase 6 of the refactor plan. They are intentionally NOT wired yet.
  */
 
-import type { ChatMessage, PageRecord, PageRelation, ToolCall } from './types';
+import type { ChatMessage, ToolCall } from './types';
 
 // ---------------------------------------------------------------------------
 // Port names — the single registry of long-lived `chrome.runtime.connect` ports
@@ -30,7 +30,6 @@ export const PORT_NAMES = {
   SUGGEST_QUESTIONS: 'suggest-questions',
   PODCAST_LLM: 'podcast-llm',
   PODCAST_AUDIO: 'podcast-audio',
-  EMBEDDING: 'embedding',
   ANNOTATION: 'annotation',
   /** F7 immersive translation (content script ↔ worker). */
   TRANSLATE: 'translate',
@@ -150,31 +149,6 @@ export interface PodcastAudioRequest {
 }
 
 // ---------------------------------------------------------------------------
-// embedding port
-// ---------------------------------------------------------------------------
-
-export interface EmbeddingRequest {
-  type: 'embed';
-  text: string;
-}
-
-export interface EmbeddingMessage {
-  type: 'embedding';
-  embedding: number[];
-}
-
-export interface EmbeddingErrorMessage {
-  type: 'error';
-  /** Free-text error message (e.g. network failure detail). */
-  error?: string;
-  /** i18n key into the side panel's `error.*` namespace (preferred). */
-  errorKey?: string;
-}
-
-/** Union of all messages the background may post back on the embedding port. */
-export type EmbeddingResponse = EmbeddingMessage | EmbeddingErrorMessage;
-
-// ---------------------------------------------------------------------------
 // annotation port — content script ↔ background
 // ---------------------------------------------------------------------------
 
@@ -207,43 +181,6 @@ export interface FetchModelsResponse {
   success: boolean;
   models?: string[];
   error?: string;
-}
-
-// ---------------------------------------------------------------------------
-// pageRecords:* one-shot messages — related-pages store/find (handled by
-// sw-related-pages.ts; records live in IndexedDB, see shared/page-records-db.ts)
-// ---------------------------------------------------------------------------
-
-export interface PageRecordsStoreMessage {
-  action: 'pageRecords:store';
-  record: Omit<PageRecord, 'id' | 'timestamp'>;
-  maxPages: number;
-}
-
-export interface PageRecordsFindRelatedMessage {
-  action: 'pageRecords:findRelated';
-  normalizedUrl: string;
-  threshold: number;
-  limit: number;
-}
-
-/** Semantic search over reading history (worker embeds the query). */
-export interface PageRecordsSearchMessage {
-  action: 'pageRecords:search';
-  query: string;
-  limit?: number;
-}
-
-export interface PageRecordsStoreResponse {
-  success: boolean;
-  error?: string;
-}
-
-export interface PageRecordsFindRelatedResponse {
-  success: boolean;
-  relations?: PageRelation[];
-  error?: string;
-  errorKey?: string;
 }
 
 // ---------------------------------------------------------------------------

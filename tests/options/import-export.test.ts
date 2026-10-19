@@ -116,7 +116,7 @@ describe('options/import-export', () => {
     });
 
     it('leaves secrets out of the export by default', async () => {
-      store.sync = { apiKey: 'sk-test', ttsAccessKey: 'tts-secret', embeddingApiKey: 'emb-secret', ttsAppId: 'app', modelName: 'm' };
+      store.sync = { apiKey: 'sk-test', ttsAccessKey: 'tts-secret', ttsAppId: 'app', modelName: 'm' };
 
       exportBtn.click();
 
@@ -125,7 +125,6 @@ describe('options/import-export', () => {
       const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string);
       expect(parsed).not.toHaveProperty('apiKey');
       expect(parsed).not.toHaveProperty('ttsAccessKey');
-      expect(parsed).not.toHaveProperty('embeddingApiKey');
       expect(parsed.ttsAppId).toBe('app');
       expect(parsed.modelName).toBe('m');
     });

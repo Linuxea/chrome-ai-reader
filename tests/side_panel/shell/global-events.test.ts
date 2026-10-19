@@ -23,10 +23,6 @@ vi.mock('../../../src/side_panel/state.js', () => ({
   switchToTab: vi.fn(() => Promise.resolve()),
   subscribe: vi.fn(() => () => {}),
 }));
-vi.mock('../../../src/side_panel/events.js', () => ({
-  emit: vi.fn(),
-  EVENTS: { SHOW_RELATED_PAGES: 'showRelatedPages' },
-}));
 vi.mock('../../../src/side_panel/ui/dom-helpers.js', () => ({
   setButtonsDisabled: vi.fn(),
   updateSendButtonDim: vi.fn(),
@@ -52,7 +48,6 @@ vi.mock('../../../src/side_panel/shell/tab-switch-handler.js', () => ({
 
 import { updateQuotePreview, bindGlobalEvents, type UIElements, type GlobalEventDeps } from '../../../src/side_panel/shell/global-events';
 import * as stateMock from '../../../src/side_panel/state.js';
-import * as eventsMock from '../../../src/side_panel/events.js';
 import * as chatHistoryMock from '../../../src/side_panel/features/chat-history.js';
 import * as quickCommandsMock from '../../../src/side_panel/features/quick-commands.js';
 import * as domMock from '../../../src/side_panel/ui/dom-helpers.js';

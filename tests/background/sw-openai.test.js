@@ -23,7 +23,7 @@ vi.mock('../../src/background/sw-utils.js', () => ({
   safePostMessage: vi.fn(),
 }));
 
-import { callOpenAI, callSuggestQuestions, callEmbedding } from '../../src/background/sw-openai.js';
+import { callOpenAI, callSuggestQuestions } from '../../src/background/sw-openai.js';
 import { safePostMessage } from '../../src/background/sw-utils.js';
 
 function createMockPort() {
@@ -299,117 +299,6 @@ describe('background/sw-openai', () => {
       const callArgs = fetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
       expect(body.temperature).toBe(0.8);
-    });
-  });
-
-  describe('callEmbedding', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-      port = createMockPort();
-      // Embedding must now be configured INDEPENDENTLY — there is no fallback
-      // to apiKey/apiBase. Tests that want a fully-configured state must set
-      // all three embedding_* fields explicitly.
-      store.sync = {
-        apiKey: 'sk-chat-only',
-        apiBase: 'https://chat-only.example.com',
-        embeddingApiKey: 'sk-emb',
-        embeddingApiBase: 'https://emb.example.com/v1',
-        embeddingModel: 'text-embedding-3-small',
-      };
-    });
-
-    it('sends embedding request and returns vector with independent config', async () => {
-      const mockEmbedding = [0.1, 0.2, 0.3];
-      globalThis.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ data: [{ embedding: mockEmbedding }] }),
-        })
-      );
-
-      await callEmbedding('test text', port);
-
-      // Must hit the embedding endpoint (not the chat apiBase), with the
-      // embedding key (not the chat key), and the embedding model.
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'https://emb.example.com/v1/embeddings',
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({ Authorization: 'Bearer sk-emb' }),
-          body: expect.stringContaining('text-embedding-3-small'),
-        })
-      );
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'embedding', embedding: mockEmbedding });
-    });
-
-    it('returns error.embeddingNotConfigured when embeddingApiKey is missing', async () => {
-      delete store.sync.embeddingApiKey;
-      globalThis.fetch = vi.fn();
-
-      await callEmbedding('test', port);
-
-      expect(globalThis.fetch).not.toHaveBeenCalled();
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });
-    });
-
-    it('returns error.embeddingNotConfigured when embeddingApiBase is missing', async () => {
-      delete store.sync.embeddingApiBase;
-      globalThis.fetch = vi.fn();
-
-      await callEmbedding('test', port);
-
-      expect(globalThis.fetch).not.toHaveBeenCalled();
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });
-    });
-
-    it('returns error.embeddingNotConfigured when embeddingModel is missing', async () => {
-      delete store.sync.embeddingModel;
-      globalThis.fetch = vi.fn();
-
-      await callEmbedding('test', port);
-
-      expect(globalThis.fetch).not.toHaveBeenCalled();
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });
-    });
-
-    it('does NOT fall back to chat apiKey/apiBase when embedding fields are missing', async () => {
-      // Strip embedding config entirely — chat config must not be used.
-      store.sync = { apiKey: 'sk-chat-only', apiBase: 'https://chat-only.example.com' };
-      globalThis.fetch = vi.fn();
-
-      await callEmbedding('test', port);
-
-      expect(globalThis.fetch).not.toHaveBeenCalled();
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.embeddingNotConfigured' });
-    });
-
-    it('sends error on API failure', async () => {
-      globalThis.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: false,
-          status: 401,
-          json: () => Promise.resolve({ error: { message: 'Unauthorized' } }),
-        })
-      );
-
-      await callEmbedding('test', port);
-      // The wrapper forwards the API error message and an errorKey hint.
-      expect(safePostMessage).toHaveBeenCalledWith(
-        port,
-        expect.objectContaining({ type: 'error', error: 'Unauthorized' })
-      );
-    });
-
-    it('sends error on empty embedding', async () => {
-      globalThis.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ data: [{ embedding: [] }] }),
-        })
-      );
-
-      await callEmbedding('test', port);
-      expect(safePostMessage).toHaveBeenCalledWith(port, { type: 'error', errorKey: 'error.emptyEmbedding' });
     });
   });
 });
