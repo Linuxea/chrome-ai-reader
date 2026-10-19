@@ -2,7 +2,7 @@ import { loadLanguage } from '../shared/i18n.js';
 import { t } from '../shared/i18n.js';
 import { initState } from './state';
 import * as state from './state';
-import { on, EVENTS } from './events';
+import { on, emit, EVENTS } from './events';
 import { initDOMHelpers, appendMessage } from './ui/dom-helpers';
 import { initTheme } from './ui/theme';
 import { initModelStatus } from './ui/model-status';
@@ -193,6 +193,11 @@ async function init(): Promise<void> {
   } else {
     renderOnboardingIfNeeded();
   }
+  // With an empty history the branch above does not run, and resetUIForTabSwitch
+  // is the one emitting QUIZ_REBUILD_REQUEST — fire it here so a quiz saved for
+  // this tab still re-mounts at panel startup. (With history it re-mounts
+  // twice; mounting is idempotent.)
+  emit(EVENTS.QUIZ_REBUILD_REQUEST);
 }
 
 /**

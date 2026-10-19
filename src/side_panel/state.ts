@@ -1,4 +1,5 @@
 import type { TabState, ChatMessage } from '../shared/types';
+import type { QuizSession } from '../shared/quiz';
 import { stripImagesForPersistence } from '../shared/strip-images';
 import { ensureMessageIds } from '../shared/ids';
 
@@ -116,7 +117,14 @@ function persistActiveNow(): void {
 function restoreTabState(stored: TabState | undefined): TabState {
   if (!stored) return createFreshTabState();
   ensureMessageIds(stored.conversationHistory ?? []);
-  return { ...stored, isGenerating: false, isPodcastGenerating: false };
+  return {
+    ...stored,
+    isGenerating: false,
+    isPodcastGenerating: false,
+    // A quiz stream dies with the panel that started it — never restore the
+    // in-flight flag (same trap as isGenerating above).
+    quizSession: stored.quizSession ? { ...stored.quizSession, generating: false } : undefined,
+  };
 }
 
 export async function switchToTab(newTabId: number): Promise<void> {
@@ -294,6 +302,20 @@ export function setImageIndex(v: number): void { if (!_activeState) return; _act
 
 export function getIsPodcastGenerating(): boolean { return _activeState?.isPodcastGenerating ?? false; }
 export function setIsPodcastGenerating(v: boolean): void { if (!_activeState) return; _activeState.isPodcastGenerating = v; schedulePersist(); }
+
+// --- Quiz session (F12) -------------------------------------------------------
+// Commits are answer / streamed-question boundaries — persist immediately so a
+// mid-quiz tab switch never loses progress. The tab may not be the active one
+// (a quiz stream finishing in the background keeps committing).
+
+export function getQuizSession(): QuizSession | null { return _activeState?.quizSession ?? null; }
+
+export function setQuizSessionForTab(tabId: number, v: QuizSession | null): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts) return;
+  ts.quizSession = v ?? undefined;
+  persistForTab(tabId);
+}
 
 // --- Conversation history ---------------------------------------------------
 // History mutations are message boundaries — they persist immediately rather

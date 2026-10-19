@@ -21,6 +21,11 @@ export function cleanupActiveFeatures(els: UIElements, deps: GlobalEventDeps): v
   // survives and the full card is rebuilt on return to the origin tab.
   const existingPodcast = els.chatArea.querySelector('.podcast-card');
   if (existingPodcast) existingPodcast.remove();
+  // The quiz card is rebuilt from its persisted TabState session on the next
+  // QUIZ_REBUILD_REQUEST (fired right after the chat area is rebuilt) — just
+  // drop the stale DOM here.
+  const existingQuiz = els.chatArea.querySelector('.quiz-card');
+  if (existingQuiz) existingQuiz.remove();
 }
 
 export function handleLoadChat(els: UIElements, deps: GlobalEventDeps, chatData: {
@@ -71,6 +76,8 @@ export function resetUIForTabSwitch(els: UIElements, deps: GlobalEventDeps): voi
   // full card if the now-playing podcast originated from this tab. Decouples
   // ui/** from the podcast feature via the event bus.
   emit(EVENTS.PODCAST_REBUILD_REQUEST);
+  // Re-mount the active tab's quiz card from its persisted session, if any.
+  emit(EVENTS.QUIZ_REBUILD_REQUEST);
   // Let an in-flight answer for this tab re-attach its live bubble (and a
   // stream that ended while the tab was hidden show / save its outcome).
   emit(EVENTS.CHAT_RERENDERED);

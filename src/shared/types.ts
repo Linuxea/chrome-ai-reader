@@ -98,6 +98,8 @@ export interface BranchSet {
   active: number;
 }
 
+import type { QuizSession } from './quiz';
+
 export interface TabState {
   pageContent: string;
   pageTitle: string;
@@ -106,6 +108,8 @@ export interface TabState {
   pageUrl?: string;
   /** The article split into paragraphs ([#N] in prompts, citation targets). */
   pageParagraphs?: string[];
+  /** F12: the interactive quiz session for this tab (survives tab switches). */
+  quizSession?: QuizSession;
   /**
    * F10 branches: alternative continuations after a message (key: the id of
    * the message before the fork, or ROOT_BRANCH). `tails[active]` is null —

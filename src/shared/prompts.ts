@@ -29,6 +29,9 @@ export type PromptKey =
   | 'immersive.system'
   | 'quiz.system'
   | 'quiz.user'
+  | 'quiz.followup'
+  | 'quiz.variant.system'
+  | 'quiz.variant.user'
   | 'explain.full'
   | 'explain.quote'
   | 'draft.supplement'
@@ -86,6 +89,31 @@ const ZH: PromptTable = {
     '只返回 JSON：{"questions":[{"question":"…","options":["…","…","…","…"],"answer":0,"explanation":"…","paragraph":3}],"flashcards":[{"front":"…","back":"…"}]}。answer 是正确选项的下标（从 0 开始）。',
   ].join('\n'),
   'quiz.user': '【文章标题】{title}\n\n{content}',
+
+  // F12: draft text pre-filled into the chat input by the quiz card's "follow up" button.
+  'quiz.followup': [
+    '我做错了一道阅读理解题，想请你讲解：',
+    '',
+    '【题目】{question}',
+    '【我的选择】{chosen}',
+    '【正确答案】{correct}',
+    '【参考解析】{explanation}',
+    '',
+    '请针对我的误解分析我错在哪里，讲清楚正确答案为什么对，必要时补充背景知识。',
+  ].join('\n'),
+
+  // F12: one alternative question drilling the same point as a wrongly-answered one.
+  'quiz.variant.system': [
+    '你是出题老师。基于用户给的原题，出一道考查同一考点、但切入角度或表述不同的单项选择题，干扰项要合理。',
+    '只返回 JSON：{"question":{"question":"…","options":["…","…","…","…"],"answer":0,"explanation":"…","paragraph":N}}。answer 是正确选项的下标（从 0 开始），paragraph 与原题相同。',
+  ].join('\n'),
+  'quiz.variant.user': [
+    '【原题】{question}',
+    '【选项】',
+    '{options}',
+    '【正确答案】{answer}',
+    '【解析】{explanation}',
+  ].join('\n'),
 
   'explain.full': '请用通俗易懂的语言解释这篇文章的核心概念和论点，必要时补充背景知识。',
   'explain.quote': '请用通俗易懂的语言解释用户引用的这段内容：它在说什么、涉及哪些概念，必要时结合文章上下文和背景知识。',
@@ -314,6 +342,29 @@ const EN: Partial<PromptTable> = {
     'Return JSON only: {"questions":[{"question":"…","options":["…","…","…","…"],"answer":0,"explanation":"…","paragraph":3}],"flashcards":[{"front":"…","back":"…"}]}. answer is the 0-based index of the correct option.',
   ].join('\n'),
   'quiz.user': 'Title: {title}\n\n{content}',
+
+  'quiz.followup': [
+    'I got a reading-comprehension question wrong and would like your help:',
+    '',
+    '[Question] {question}',
+    '[My answer] {chosen}',
+    '[Correct answer] {correct}',
+    '[Given explanation] {explanation}',
+    '',
+    'Please explain exactly where my reasoning went wrong, why the correct answer is right, and add background where it helps.',
+  ].join('\n'),
+
+  'quiz.variant.system': [
+    'You are a quiz writer. Based on the original question the user gives you, write ONE multiple-choice question that tests the same point from a different angle or wording, with plausible distractors.',
+    'Return only JSON: {"question":{"question":"…","options":["…","…","…","…"],"answer":0,"explanation":"…","paragraph":N}}. answer is the 0-based index of the correct option; paragraph equals the original.',
+  ].join('\n'),
+  'quiz.variant.user': [
+    '[Original question] {question}',
+    '[Options]',
+    '{options}',
+    '[Correct answer] {answer}',
+    '[Explanation] {explanation}',
+  ].join('\n'),
 
   'explain.full': 'Explain the core concepts and arguments of this article in plain language, adding background where it helps.',
   'explain.quote': 'Explain the passage the user quoted in plain language: what it says and which concepts it involves, using the article\'s context and background knowledge where it helps.',

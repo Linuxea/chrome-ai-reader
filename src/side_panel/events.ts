@@ -18,6 +18,11 @@ export const EVENTS = {
    *  card if the now-playing podcast originated from the now-active tab. This
    *  keeps ui/** from importing the podcast feature directly. */
   PODCAST_REBUILD_REQUEST: 'podcastRebuildRequest',
+  /** Fired by ui/tab-switch-handler (and main.ts at panel startup) after the
+   * chat area was (re)built. The quiz feature subscribes to re-mount the
+   * active tab's quiz card from its persisted session — same decoupling as
+   * PODCAST_REBUILD_REQUEST. */
+  QUIZ_REBUILD_REQUEST: 'quizRebuildRequest',
   /** Fired by ui/tab-switch-handler after the chat area was rebuilt from
    *  history. The stream handler re-attaches an in-flight answer bubble for
    *  the now-active tab (and saves an answer that finished in the background). */
@@ -47,6 +52,7 @@ interface EventMap {
   [EVENTS.SAVE_CURRENT_CHAT]: () => void;
   [EVENTS.RENDER_HISTORY_LIST]: () => void;
   [EVENTS.PODCAST_REBUILD_REQUEST]: () => void;
+  [EVENTS.QUIZ_REBUILD_REQUEST]: () => void;
   [EVENTS.CHAT_RERENDERED]: () => void;
   [EVENTS.PODCAST_STOP_REQUEST]: () => void;
   [EVENTS.CITATION_CLICK]: (args: { index: number }) => void;
