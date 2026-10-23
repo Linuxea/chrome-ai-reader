@@ -836,6 +836,11 @@ body.drag-over::after {
   gap: 6px;
   padding: 6px 10px 0;
 }
+/* Every hideable element needs its own `.X.hidden` rule — there is no global
+   `.hidden` utility. These two were missing, so the picker never visually
+   closed (and an empty box floated above the input on load). */
+.tab-chip-bar.hidden { display: none; }
+.tab-picker.hidden { display: none; }
 .tab-chip {
   display: inline-flex;
   align-items: center;
