@@ -83,6 +83,7 @@ import {
   stopTTSPlayback,
   initTTSPlayback,
   ttsAppendChunk,
+  ttsEnqueue,
   ttsFlushRemaining,
   ttsFinishInput,
   setFullStopFn,
@@ -411,6 +412,51 @@ describe('TTS Player', () => {
       ttsFlushRemaining(); // answer ended
       expect(() => ttsFinishInput()).not.toThrow();
       stopTTSPlayback();
+    });
+  });
+
+  describe('playback start cushion (first-play jump fix)', () => {
+    const fireUpdateEnd = (sb) => sb.listeners['updateend']?.forEach(fn => fn());
+
+    function openSources() {
+      initTTSPlayback();
+      const audio = audioInstances[audioInstances.length - 1];
+      const ms = msInstances[msInstances.length - 1];
+      ms._simulateSourceOpen();
+      const sb = ms.sourceBuffers[0];
+      return { audio, sb };
+    }
+
+    it('does not start on a sliver of buffer; starts once a cushion has accumulated', () => {
+      const { audio, sb } = openSources();
+      const playSpy = vi.spyOn(audio, 'play');
+
+      sb.buffered = { length: 1, start: () => 0, end: () => 0.4 };
+      fireUpdateEnd(sb);
+      expect(playSpy).not.toHaveBeenCalled();
+
+      sb.buffered = { length: 1, start: () => 0, end: () => 3.1 };
+      fireUpdateEnd(sb);
+      expect(playSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts regardless of the cushion once the stream is sealed (short message)', async () => {
+      const { audio, sb } = openSources();
+      const playSpy = vi.spyOn(audio, 'play');
+
+      ttsEnqueue('tiny');
+      ttsFinishInput();
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled());
+      const port = chrome.runtime.connect.mock.results[0].value;
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
+
+      sb.buffered = { length: 1, start: () => 0, end: () => 0.3 }; // under the cushion
+      port._simulateMessage({ type: 'chunk', data: btoa('abc') });
+      fireUpdateEnd(sb);
+      expect(playSpy).not.toHaveBeenCalled();
+
+      port._simulateMessage({ type: 'done' }); // last segment done → stream sealed → must start
+      await vi.waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1));
     });
 
     it('ttsFinishInput without a playback does not throw', () => {

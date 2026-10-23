@@ -146,6 +146,24 @@ cache, same retry policy, same segmentation.
 while the SW actually posts `{type:'chunk'|'done'|'error'}`. Fix the
 types to match the wire. No behavior change.
 
+### 7. First-play jump prevention (post-review fix)
+
+Symptom: on a cold first play, playback jumped from mid-segment-1 to
+segment 2 at the moment segment 2 finished synthesizing; cached replays
+were fine. Cause: the playhead sat ON the append frontier (play started
+on the first sliver of audio), and the frontier was sealed/appended
+right under it — Chrome's mp3/MSE timeline (byte/bitrate-derived, no
+container timestamps) re-estimates on such appends and can snap forward.
+Fixes (player.ts + engine.ts):
+
+- playback starts only with a 2.5s buffered cushion (`START_CUSHION_S`),
+  or immediately once the stream is sealed for messages shorter than
+  that (no zombie loading)
+- `SourceBuffer.mode = 'sequence'` — force contiguous append placement
+- every byte block is sliced to ≤32KB (`MAX_APPEND_BYTES`) before
+  `onHeadChunk`, so cached whole-segment blobs append at the same cadence
+  as live SSE chunks (never one giant appendBuffer)
+
 ## Cost math
 
 At ~¥0.0003/char: an 800-char answer ≈ ¥0.24 per synthesis. With the

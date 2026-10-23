@@ -106,6 +106,21 @@ describe('TTSSynthEngine', () => {
     expect(await chunksText(chunks)).toBe('cached-audio');
   });
 
+  it('slices oversized audio buffers into append-sized pieces (uniform append cadence)', async () => {
+    const big = 'A'.repeat(150 * 1024);
+    cacheMock.getCachedSegmentAudio.mockResolvedValue(new Blob([big]));
+    const ports = freshPorts();
+    const { engine, chunks, events } = makeEngine();
+    engine.enqueue('big');
+    engine.endInput();
+
+    await vi.waitFor(() => expect(events.drained).toBe(true));
+    expect(ports.length).toBe(0);
+    expect(chunks.length).toBe(5); // 150KB / 32KB → 5 pieces, never one giant append
+    expect(chunks.every(c => c.byteLength <= 32 * 1024)).toBe(true);
+    expect(await chunksText(chunks)).toBe(big);
+  });
+
   it('backpressure: no dispatch while buffered ahead exceeds the lookahead', async () => {
     const ports = freshPorts();
     let ahead = 40_000; // > 30s default lookahead

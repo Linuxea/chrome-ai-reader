@@ -57,6 +57,13 @@ interface Segment {
 }
 
 const RETRY_DELAY_MS = 300;
+/**
+ * Appends are sliced to this size so every appendBuffer call looks like a
+ * live SSE chunk — a cached segment's whole-blob append (hundreds of KB at
+ * once) makes Chrome's mp3 timeline re-estimate while the playhead sits near
+ * the append frontier, which audibly skips forward (first-play jump).
+ */
+const MAX_APPEND_BYTES = 32 * 1024;
 
 export class TTSSynthEngine {
   private readonly opts: Required<Pick<TTSEngineOptions, 'maxInflight' | 'lookaheadMs' | 'getBufferedAheadMs'>> & TTSEngineOptions;
@@ -176,13 +183,16 @@ export class TTSSynthEngine {
   // --- bytes / ordering -------------------------------------------------------
 
   private receiveBytes(s: Segment, chunk: ArrayBuffer): void {
-    s.bytes.push(chunk);
-    s.byteLen += chunk.byteLength;
-    if (this.segs.indexOf(s) === this.headIdx) {
-      // The head streams live; every later byte of it does too (the head only
-      // changes once this segment completes). Non-head segments accumulate.
-      s.streamedLive = true;
-      this.opts.onHeadChunk(chunk);
+    for (let off = 0; off < chunk.byteLength; off += MAX_APPEND_BYTES) {
+      const piece = chunk.slice(off, Math.min(off + MAX_APPEND_BYTES, chunk.byteLength));
+      s.bytes.push(piece);
+      s.byteLen += piece.byteLength;
+      if (this.segs.indexOf(s) === this.headIdx) {
+        // The head streams live; every later byte of it does too (the head only
+        // changes once this segment completes). Non-head segments accumulate.
+        s.streamedLive = true;
+        this.opts.onHeadChunk(piece);
+      }
     }
   }
 

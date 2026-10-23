@@ -23,6 +23,13 @@ let _playbackRate = 1;
 const TRIM_BEHIND_MS = 60_000;
 /** …but always keep the last 10s behind the playhead (seek safety). */
 const TRIM_KEEP_S = 10;
+/**
+ * Don't start playback on the first sliver of audio: keep the playhead this
+ * far behind the append frontier. Appending/sealing while the playhead sits
+ * ON the frontier makes Chrome's mp3 timeline snap forward (first-play jump
+ * to the next segment). Shorter messages start once the stream is sealed.
+ */
+const START_CUSHION_S = 2.5;
 
 /** The TTS button of the message being read — its state tracks this playback. */
 let _playBtn: Element | null = null;
@@ -204,15 +211,19 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
 
   /** Engine drained: everything appended and input ended → finish the stream. */
   const finishStream = () => {
-    if (!started && ttsChunkQueue.length === 0 && !ttsBufferAppending) {
-      // Nothing was ever synthesized (e.g. an answer that is all code block):
-      // don't leave a zombie "loading" state — stop cleanly.
-      _fullStopFn?.();
-      return;
-    }
     const finish = () => {
       if (ttsSourceBuffer && !ttsBufferAppending) {
         safeEndOfStream(ttsMediaSource);
+      }
+      // The buffer can no longer grow: a short message that never reached
+      // the cushion must still start (sealed = start regardless of cushion).
+      sealed = true;
+      tryStart();
+      if (!started && ttsChunkQueue.length === 0 && !ttsBufferAppending) {
+        // Nothing was ever synthesized (e.g. an answer that is all code block):
+        // don't leave a zombie "loading" state — stop cleanly.
+        _fullStopFn?.();
+        return;
       }
     };
     if (ttsBufferAppending) {
@@ -222,6 +233,24 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
       finish();
     }
   };
+
+  /** Start once enough audio is buffered (or the sealed stream is all we'll get). */
+  const tryStart = () => {
+    if (started || !ttsAudioEl || !ttsSourceBuffer) return;
+    const b = ttsSourceBuffer.buffered;
+    if (!b || b.length === 0) return;
+    const end = typeof b.end === 'function' ? b.end(b.length - 1) : 0;
+    if (!sealed && end - (ttsAudioEl.currentTime || 0) < START_CUSHION_S) return;
+    started = true;
+    ttsAudioEl.play().then(() => {
+      _audioStarted = true;
+      updateBtnState(['tts-loading'], ['tts-playing']);
+      notifyTTSState();
+    }).catch(() => {});
+  };
+
+  let started = false;
+  let sealed = false;
 
   ttsEngine = new TTSSynthEngine({
     voice: getTTSVoice(),
@@ -249,24 +278,17 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
     notifyProgress();
   });
 
-  let started = false;
-
   ms.addEventListener('sourceopen', () => {
     if (ttsMediaSource !== ms) return;
     if (ms.sourceBuffers.length > 0) return;
 
     ttsSourceBuffer = ms.addSourceBuffer('audio/mpeg');
+    // mp3 carries no timestamps — force contiguous placement of every append.
+    try { ttsSourceBuffer.mode = 'sequence'; } catch { /* already updating — default is sequence for raw mp3 */ }
     ttsSourceBuffer.addEventListener('updateend', () => {
       ttsBufferAppending = false;
       if (!ttsSourceBuffer) return;
-      if (!started && ttsAudioEl && ttsSourceBuffer.buffered.length > 0) {
-        started = true;
-        ttsAudioEl.play().then(() => {
-        _audioStarted = true;
-        updateBtnState(['tts-loading'], ['tts-playing']);
-        notifyTTSState();
-        }).catch(() => {});
-      }
+      tryStart();
       ttsAppendNext();
       // Buffered-ahead grew (or drained): re-evaluate backpressure + progress.
       ttsEngine?.notifyProgress();
