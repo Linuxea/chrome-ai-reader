@@ -6,7 +6,7 @@
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
 npm run build:win  # build with DIST_DIR=/mnt/d/chrome/chrome-ai-reader (fixed Windows output dir)
-npm run test   # vitest run (1240 tests across 103 files; proxy test files need `ws` installed — see Testing)
+npm run test   # vitest run (1215 tests across 99 files; proxy test files need `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint (JS + TS via typescript-eslint) && lint:deps
@@ -105,7 +105,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 1169 tests across 97 files
+- **Vitest** with jsdom environment, 1215 tests across 99 files
 - **Proxy tests need proxy deps**: `tests/proxy/*.test.js` import `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
 - Platform layer tests (`tests/platform/`) mock `chrome.*` via `vi.stubGlobal` — the single seam for Chrome API isolation
@@ -127,11 +127,13 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 - `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`). Binds to `127.0.0.1:3456` only (`HOST`/`PORT` env override) and rejects browser requests whose `Origin` is not `chrome-extension://…` (extra origins via `PROXY_ALLOWED_ORIGINS`); the SW calls it at `http://127.0.0.1:3456`
 - **Settings export**: `options/fields.ts` `SECRET_FIELDS` (= `platform/settings.ts` `SECRET_KEYS`) are left out of exports unless the user ticks "include secrets", and an import never clears a secret the file lacks
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
-- TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure
+- TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure — the SW (`sw-tts.ts`) translates them to simple `{type:'chunk'|'done'|'error'}` port messages
 - `vitest.config.js` coverage enforces thresholds (lines 55 / functions 50 / branches 45 / statements 52) — regressing coverage fails `npm run test:coverage`
 - **Stop button**: while streaming, the send button becomes Stop; `abortGeneration(tabId)` in `services/stream-handler.ts` disconnects the port AND finalizes directly — a port's own `onDisconnect` never fires for a `disconnect()` it initiated (only the SW end sees it; the SW keys its fetch abort off that). Every end of a stream (done / error / stop / SW gone) goes through the one idempotent `finalize()`
 - **Background streams**: switching tabs never clears the outgoing tab's `isGenerating` (write it only via `state.setGeneratingForTab`). After the chat area is rebuilt, `CHAT_RERENDERED` lets the stream handler re-attach the live answer bubble, or show / save the outcome of a stream that ended while the tab was hidden. Restored session state never restores in-flight flags (`isGenerating` / `isPodcastGenerating`)
 - **TTS is window-global** ("printer resource"): nothing stops playback except the user (message button / global `#ttsIndicator` chip) or the audio resource being claimed — a new playback (player's takeover point inside `initTTSPlayback`) or a podcast start (`PODCAST_STOP_REQUEST`). Tab switch / `handleLoadChat` / retry-edit only **detach** the button anchor; `CHAT_RERENDERED` re-attaches it by `[data-msg-id]` (assistant bubbles carry ids — live ones from `callAI`, restored ones from `appendMessageFromHistory`). A plain send with autoplay off does NOT stop TTS. See `docs/superpowers/specs/2026-09-26-global-tts-design.md`
+- **TTS synthesis is pipelined** (`services/tts/engine.ts`, shared by player and downloader): up to 2 concurrent segment requests, chunks appended strictly in segment order (head streams live, the rest buffer), 30s-lookahead backpressure, retry-once per segment (only before any byte was streamed — TTS output is not reproducible). Segmentation is ONE deterministic greedy prefix rule (`services/tts/utils.ts` `nextCutEnd`): the streaming (autoplay) and batch (button/download) paths MUST produce identical cuts, because cache keys are per segment
+- **TTS audio cache** (`shared/tts-cache.ts`, IndexedDB store `ttsAudio`, db v4): key = sha-256(resourceId|speaker|format|sampleRate|segment text); value = the segment's complete mp3 Blob; LRU-evicted at 150MB (`_meta__` record keeps the byte total). Play / autoplay / download all share it — replays and download-then-play are free and instant. The options page shows usage and can clear it. Voice defaults live in `shared/tts-params.ts` (used by both the SW and the panel-side key builder)
 - **Page cache vs navigation**: `TabState.pageUrl` records where `pageContent` was extracted; `state.invalidatePageIfNavigated` (wired to `chrome.tabs.onUpdated`) drops the cache when the tab moves to another URL (hash ignored) and notifies `pageInvalidated`
 - **Talking to the content script**: use `sendToContentScript()` (`platform/messaging.ts`) — it injects `content.js` and retries when the tab has none (tabs opened before install/update). A failure means the page can't host one (chrome://, Web Store) → show `error.pageUnsupported`
 - **Annotation state is per tab**: `features/annotation.ts` keys state by `sender.tab.id` and renders the active tab's on `tabSwitched`

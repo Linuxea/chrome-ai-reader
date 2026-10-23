@@ -22,7 +22,12 @@ vi.mock('../../../src/side_panel/ui/tts-buttons.js', () => ({
   createTTSButtons: vi.fn(),
 }));
 vi.mock('../../../src/side_panel/services/tts/utils.js', () => ({
+  stripMarkdown: vi.fn((text: string) => text),
   splitToSegments: vi.fn((text: string) => text.split('. ').filter(Boolean)),
+}));
+vi.mock('../../../src/platform/settings.js', () => ({
+  readSettings: vi.fn(async () => ({})),
+  writeSettings: vi.fn(async () => {}),
 }));
 vi.mock('../../../src/side_panel/services/tts/player.js', () => ({
   initPlayer: vi.fn(),
@@ -34,6 +39,7 @@ vi.mock('../../../src/side_panel/services/tts/player.js', () => ({
   initTTSPlayback: vi.fn(),
   ttsAppendChunk: vi.fn(),
   ttsEnqueue: vi.fn(),
+  ttsFinishInput: vi.fn(),
   ttsFlushRemaining: vi.fn(),
   stopTTSPlayback: vi.fn(),
   getTTSButton: vi.fn(() => null),
@@ -42,6 +48,10 @@ vi.mock('../../../src/side_panel/services/tts/player.js', () => ({
   getTTSOrigin: vi.fn(() => ({ tabId: null, msgId: null })),
   detachTTSAnchor: vi.fn(),
   subscribeTTSState: vi.fn(() => () => {}),
+  subscribeTTSProgress: vi.fn(() => () => {}),
+  TTS_SPEED_STEPS: [1, 1.25, 1.5, 2],
+  setTTSPlaybackRate: vi.fn(),
+  getTTSPlaybackRate: vi.fn(() => 1),
 }));
 vi.mock('../../../src/side_panel/services/tts/downloader.js', () => ({
   initDownloader: vi.fn(),

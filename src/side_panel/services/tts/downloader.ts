@@ -1,15 +1,11 @@
 import { t } from '../../../shared/i18n.js';
 import { downloadFile } from '../../../shared/download';
-import { splitToSegments } from './utils';
-import { openTTSDownloadPort } from '../../../platform/ports';
+import { stripMarkdown, splitToSegments } from './utils';
+import { TTSSynthEngine, getTTSVoice } from './engine';
 import * as state from '../../state';
 
-
-let ttsDownloadPort: chrome.runtime.Port | null = null;
-let ttsDownloadChunks: string[] = [];
-let ttsDownloadSegments: string[] = [];
-let ttsDownloadSegmentIndex = 0;
-let ttsDownloadSending = false;
+let ttsDownloadEngine: TTSSynthEngine | null = null;
+let ttsDownloadChunks: ArrayBuffer[] = [];
 let ttsDownloading = false;
 /** The download button of the message being downloaded. */
 let _downloadBtn: HTMLButtonElement | null = null;
@@ -54,16 +50,11 @@ export function initDownloader(_chatArea: HTMLElement): void {}
 export function stopTTSDownload(): void {
   ttsDownloading = false;
   ttsDownloadChunks = [];
-  ttsDownloadSegments = [];
-  ttsDownloadSegmentIndex = 0;
-  ttsDownloadSending = false;
   _originTabId = null;
   _originMsgId = null;
 
-  if (ttsDownloadPort) {
-    try { ttsDownloadPort.disconnect(); } catch { /* cleanup */ }
-    ttsDownloadPort = null;
-  }
+  ttsDownloadEngine?.abort();
+  ttsDownloadEngine = null;
 
   const btn = _downloadBtn;
   _downloadBtn = null;
@@ -74,63 +65,13 @@ export function stopTTSDownload(): void {
   }
 }
 
-function ttsDownloadFlush(): void {
-  if (ttsDownloadSending || ttsDownloadSegmentIndex >= ttsDownloadSegments.length || !ttsDownloading) return;
-
-  ttsDownloadSending = true;
-  const segment = ttsDownloadSegments[ttsDownloadSegmentIndex];
-  ttsDownloadSegmentIndex++;
-
-  ttsDownloadPort = openTTSDownloadPort();
-
-  ttsDownloadPort.onDisconnect.addListener(() => {
-    if (ttsDownloading) stopTTSDownload();
-  });
-
-  ttsDownloadPort.onMessage.addListener((msg: { type: string; data?: string; error?: string }) => {
-    if (msg.type === 'chunk') {
-      if (!msg.data) return;
-      ttsDownloadChunks.push(msg.data);
-    } else if (msg.type === 'done') {
-      ttsDownloadSending = false;
-      try { ttsDownloadPort?.disconnect(); } catch { /* cleanup */ }
-      ttsDownloadPort = null;
-
-      if (ttsDownloadSegmentIndex < ttsDownloadSegments.length) {
-        ttsDownloadFlush();
-      } else {
-        finishTTSDownload();
-      }
-    } else if (msg.type === 'error') {
-      console.error('[TTS Download] error:', msg.error);
-      stopTTSDownload();
-    }
-  });
-
-  ttsDownloadPort.postMessage({ type: 'tts', text: segment });
-}
-
 function finishTTSDownload(): void {
   if (ttsDownloadChunks.length === 0) {
     stopTTSDownload();
     return;
   }
 
-  const totalLength = ttsDownloadChunks.reduce((sum, chunk) => {
-    const binary = atob(chunk);
-    return sum + binary.length;
-  }, 0);
-
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of ttsDownloadChunks) {
-    const binary = atob(chunk);
-    for (let i = 0; i < binary.length; i++) {
-      result[offset++] = binary.charCodeAt(i);
-    }
-  }
-
-  const blob = new Blob([result], { type: 'audio/mpeg' });
+  const blob = new Blob(ttsDownloadChunks, { type: 'audio/mpeg' });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   downloadFile(blob, `voice-${timestamp}.mp3`, 'audio/mpeg');
 
@@ -150,8 +91,6 @@ function finishTTSDownload(): void {
 
   ttsDownloading = false;
   ttsDownloadChunks = [];
-  ttsDownloadSegments = [];
-  ttsDownloadSegmentIndex = 0;
   _originTabId = null;
   _originMsgId = null;
 }
@@ -160,8 +99,12 @@ export function handleTTSDownloadClick(msgEl: HTMLElement): void {
   if (ttsDownloading) return;
 
   const contentEl = msgEl.querySelector('.thinking-response-content');
-  const text = contentEl ? contentEl.textContent : msgEl.textContent;
-  if (!text || !text.trim()) return;
+  const source = msgEl.dataset.markdown || (contentEl ? contentEl.textContent : msgEl.textContent) || '';
+  const cleaned = stripMarkdown(source);
+  if (!cleaned.trim()) return;
+
+  const segments = splitToSegments(cleaned);
+  if (segments.length === 0) return;
 
   // Remember where this download came from so a tab-switch rebuild can
   // re-attach the button state (see reattachDownloadAnchor).
@@ -179,14 +122,18 @@ export function handleTTSDownloadClick(msgEl: HTMLElement): void {
 
   ttsDownloading = true;
   ttsDownloadChunks = [];
-  ttsDownloadSegmentIndex = 0;
-  ttsDownloadSending = false;
-  ttsDownloadSegments = splitToSegments(text.trim());
 
-  if (ttsDownloadSegments.length === 0) {
-    stopTTSDownload();
-    return;
-  }
-
-  ttsDownloadFlush();
+  ttsDownloadEngine = new TTSSynthEngine({
+    voice: getTTSVoice(),
+    // No playback clock — synthesize at full speed (bounded by maxInflight).
+    getBufferedAheadMs: () => 0,
+    onHeadChunk: (bytes) => { ttsDownloadChunks.push(bytes); },
+    onDrained: finishTTSDownload,
+    onError: (msg) => {
+      console.error('[TTS Download] error:', msg);
+      stopTTSDownload();
+    },
+  });
+  for (const seg of segments) ttsDownloadEngine.enqueue(seg);
+  ttsDownloadEngine.endInput();
 }

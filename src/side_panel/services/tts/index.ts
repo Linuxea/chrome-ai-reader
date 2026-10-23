@@ -1,10 +1,11 @@
 import { CSS } from '../../../shared/css-selectors';
 import { onSyncChange } from '../../../platform/storage';
+import { readSettings, writeSettings } from '../../../platform/settings';
 import { on, emit, EVENTS } from '../../events';
 import * as state from '../../state';
 import { createTTSButtons } from '../../ui/tts-buttons';
-import { initTTSIndicator, renderTTSIndicator } from '../../ui/tts-indicator';
-import { splitToSegments } from './utils';
+import { initTTSIndicator, renderTTSIndicator, renderTTSProgress, renderTTSRate } from '../../ui/tts-indicator';
+import { stripMarkdown, splitToSegments } from './utils';
 import {
   initPlayer, setFullStopFn, setTTSAutoPlay,
   isTTSPlaying as _isTTSPlaying,
@@ -12,9 +13,10 @@ import {
   isTTSAudioStarted as _isTTSAudioStarted,
   initTTSPlayback as _initTTSPlayback,
   ttsAppendChunk as _ttsAppendChunk,
-  ttsEnqueue, ttsFlushRemaining, stopTTSPlayback,
-  getTTSButton, setTTSButton, subscribeTTSState,
+  ttsEnqueue, ttsFinishInput, ttsFlushRemaining, stopTTSPlayback,
+  getTTSButton, setTTSButton, subscribeTTSState, subscribeTTSProgress,
   getTTSOrigin, setTTSOrigin, detachTTSAnchor,
+  TTS_SPEED_STEPS, setTTSPlaybackRate, getTTSPlaybackRate,
 } from './player';
 import {
   initDownloader, stopTTSDownload, handleTTSDownloadClick,
@@ -38,19 +40,37 @@ export function initTTS({ chatArea }: { chatArea: HTMLElement }): void {
     setTTSAutoPlay(newValue === true);
   });
 
+  // Persisted playback speed: applied to the running playback (if any) and
+  // every future one by the player; the indicator shows the active step.
+  readSettings(['ttsSpeed']).then((s) => {
+    const rate = typeof s.ttsSpeed === 'number' && s.ttsSpeed > 0 ? s.ttsSpeed : 1;
+    setTTSPlaybackRate(rate);
+    renderTTSRate(rate);
+  }).catch(() => {});
+
   // The chat area was rebuilt (tab switch / re-render / branch switch): bring
   // the window-global playback's button state back onto the fresh bubble.
   on(EVENTS.CHAT_RERENDERED, reattachTTSAfterRerender);
 
   // Global cross-page indicator: TTS keeps reading on other tabs; this chip
   // is the always-available stop control (mirrors the podcast mini-player).
-  initTTSIndicator({ onStop: stopTTS });
+  initTTSIndicator({ onStop: stopTTS, onCycleRate: cyclePlaybackRate });
   subscribeTTSState(renderTTSIndicator);
+  subscribeTTSProgress(({ position, end }) => renderTTSProgress(position, end));
   renderTTSIndicator({ playing: _isTTSPlaying(), audioStarted: _isTTSAudioStarted() });
 }
 
 export function isTTSPlaying(): boolean { return _isTTSPlaying(); }
 export function isTTSAutoPlay(): boolean { return _isTTSAutoPlay(); }
+
+function cyclePlaybackRate(): void {
+  const steps: readonly number[] = TTS_SPEED_STEPS;
+  const idx = steps.indexOf(getTTSPlaybackRate());
+  const next = steps[(idx + 1) % steps.length] ?? 1;
+  setTTSPlaybackRate(next);
+  renderTTSRate(next);
+  void writeSettings({ ttsSpeed: next }).catch(() => {});
+}
 
 /**
  * Tab switch / chat load: TTS is a window-global "printer resource" — the
@@ -97,9 +117,12 @@ function handleTTSButtonClick(msgEl: HTMLElement): void {
     return;
   }
 
+  // Prefer the markdown source — identical to what autoplay streamed, so the
+  // segment boundaries (and with them the cache keys) match across paths.
   const contentEl = msgEl.querySelector('.thinking-response-content');
-  const text = contentEl ? contentEl.textContent : msgEl.textContent;
-  if (!text || !text.trim()) return;
+  const source = msgEl.dataset.markdown || (contentEl ? contentEl.textContent : msgEl.textContent) || '';
+  const cleaned = stripMarkdown(source);
+  if (!cleaned.trim()) return;
 
   // Claim the single audio resource: a running podcast stops (event).
   emit(EVENTS.PODCAST_STOP_REQUEST);
@@ -107,8 +130,9 @@ function handleTTSButtonClick(msgEl: HTMLElement): void {
     tabId: state.getActiveTabId(),
     msgId: msgEl.dataset.msgId ?? null,
   });
-  const segments = splitToSegments(text.trim());
+  const segments = splitToSegments(cleaned);
   segments.forEach(seg => ttsEnqueue(seg));
+  ttsFinishInput();
 }
 
 export function addTTSButton(msgEl: HTMLElement): void {

@@ -60,6 +60,13 @@ class MockMediaSource {
   }
 }
 globalThis.MediaSource = MockMediaSource;
+const msInstances = [];
+MockMediaSource.prototype.constructor = MockMediaSource;
+// track instances so tests can simulate sourceopen
+const OrigMockMediaSource = MockMediaSource;
+globalThis.MediaSource = class extends OrigMockMediaSource {
+  constructor() { super(); msInstances.push(this); }
+};
 
 // Mock chrome
 const { createMockPort } = await import('../../helpers/chrome-mock.js');
@@ -77,6 +84,7 @@ import {
   initTTSPlayback,
   ttsAppendChunk,
   ttsFlushRemaining,
+  ttsFinishInput,
   setFullStopFn,
   getTTSButton,
   setTTSButton,
@@ -84,12 +92,18 @@ import {
   getTTSOrigin,
   detachTTSAnchor,
   subscribeTTSState,
+  subscribeTTSProgress,
+  currentProgress,
+  setTTSPlaybackRate,
+  getTTSPlaybackRate,
 } from '../../../src/side_panel/services/tts/player.js';
 
 describe('TTS Player', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     audioInstances.length = 0;
+    msInstances.length = 0;
+    setTTSPlaybackRate(1);
     const chatArea = document.createElement('div');
     initPlayer(chatArea);
     stopTTSPlayback(); // Reset all internal state
@@ -324,6 +338,84 @@ describe('TTS Player', () => {
       unsubscribe();
       initTTSPlayback();
       expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('playback rate', () => {
+    it('defaults to 1 and applies to new audio elements', () => {
+      setTTSPlaybackRate(1.5);
+      initTTSPlayback();
+      const audio = audioInstances[audioInstances.length - 1];
+      expect(audio.playbackRate).toBe(1.5);
+      expect(getTTSPlaybackRate()).toBe(1.5);
+    });
+
+    it('applies to a running playback immediately', () => {
+      initTTSPlayback();
+      const audio = audioInstances[audioInstances.length - 1];
+      setTTSPlaybackRate(2);
+      expect(audio.playbackRate).toBe(2);
+    });
+  });
+
+  describe('progress (indicator m:ss / m:ss)', () => {
+    it('is null without buffered audio', () => {
+      initTTSPlayback();
+      expect(currentProgress()).toBeNull();
+    });
+
+    it('reports position against the buffered end and notifies subscribers on timeupdate', () => {
+      const seen = [];
+      const unsubscribe = subscribeTTSProgress(p => seen.push({ ...p }));
+      try {
+        initTTSPlayback();
+        const audio = audioInstances[audioInstances.length - 1];
+        const ms = msInstances[msInstances.length - 1];
+        ms._simulateSourceOpen();
+        const sb = ms.sourceBuffers[0];
+        sb.buffered = { length: 1, start: () => 0, end: () => 42 };
+
+        audio.currentTime = 5;
+        audio.listeners['timeupdate']?.forEach(fn => fn());
+
+        expect(seen.at(-1)).toEqual({ position: 5, end: 42 });
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('does not notify when there is nothing buffered yet', () => {
+      const cb = vi.fn();
+      const unsubscribe = subscribeTTSProgress(cb);
+      try {
+        initTTSPlayback();
+        const audio = audioInstances[audioInstances.length - 1];
+        audio.listeners['timeupdate']?.forEach(fn => fn());
+        expect(cb).not.toHaveBeenCalled();
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+
+  describe('engine wiring (autoplay)', () => {
+    it('dispatches a synthesized segment once enough text has streamed in', async () => {
+      initTTSPlayback();
+      setTTSAutoPlay(true);
+
+      ttsAppendChunk('一。二。三。四。五。六。七。八。九。十。'.repeat(7)); // > FIRST_SEGMENT_CHARS
+      await vi.waitFor(() => {
+        expect(chrome.runtime.connect).toHaveBeenCalled();
+      });
+
+      ttsFlushRemaining(); // answer ended
+      expect(() => ttsFinishInput()).not.toThrow();
+      stopTTSPlayback();
+    });
+
+    it('ttsFinishInput without a playback does not throw', () => {
+      stopTTSPlayback();
+      expect(() => ttsFinishInput()).not.toThrow();
     });
   });
 });

@@ -48,11 +48,43 @@
 }
 
 .tts-indicator-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tts-indicator-progress {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  color: var(--text);
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tts-indicator-progress.hidden {
+  display: none;
+}
+
+.tts-indicator-rate {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 5px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tts-indicator-rate:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .tts-indicator-stop {

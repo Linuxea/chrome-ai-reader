@@ -1,19 +1,20 @@
 import { safePostMessage } from './sw-utils';
 import { readSettings } from '../platform/settings';
+import { DEFAULT_TTS_RESOURCE_ID, DEFAULT_TTS_SPEAKER, TTS_AUDIO_PARAMS } from '../shared/tts-params';
 
 export async function callTTS(text: string, port: chrome.runtime.Port): Promise<void> {
   const config = await readSettings(['ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'ttsSpeaker']);
   if (!config.ttsAppId || !config.ttsAccessKey) { safePostMessage(port, { type: 'error', errorKey: 'error.noTtsConfig' }); return; }
 
-  const resourceId = config.ttsResourceId || 'seed-tts-2.0';
-  const speaker = config.ttsSpeaker || 'zh_female_vv_uranus_bigtts';
+  const resourceId = config.ttsResourceId || DEFAULT_TTS_RESOURCE_ID;
+  const speaker = config.ttsSpeaker || DEFAULT_TTS_SPEAKER;
   const controller = new AbortController();
   port.onDisconnect.addListener(() => controller.abort());
 
   try {
     const response = await fetch('https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-App-Id': config.ttsAppId, 'X-Api-Access-Key': config.ttsAccessKey, 'X-Api-Resource-Id': resourceId },
-      body: JSON.stringify({ user: { uid: 'chrome-ext' }, req_params: { text, speaker, audio_params: { format: 'mp3', sample_rate: 24000 }, additions: '{"disable_markdown_filter":true}' } }),
+      body: JSON.stringify({ user: { uid: 'chrome-ext' }, req_params: { text, speaker, audio_params: { format: TTS_AUDIO_PARAMS.format, sample_rate: TTS_AUDIO_PARAMS.sampleRate }, additions: '{"disable_markdown_filter":true}' } }),
       signal: controller.signal,
     });
 

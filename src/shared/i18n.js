@@ -181,6 +181,11 @@ const TRANSLATIONS = {
 
     'tts.reading': '朗读中',
     'tts.stop': '停止朗读',
+    'tts.speed': '播放速度',
+    'settings.tts.cache': '语音缓存',
+    'settings.tts.cache.clear': '清除语音缓存',
+    'settings.tts.cache.hint': '已合成的语音会按段落缓存：同一消息重播、下载不再重复计费。缓存上限 150MB，超出自动淘汰最久未用的段落。',
+    'status.ttsCacheCleared': '语音缓存已清除',
 
     'chat.today': '今天',
     'chat.yesterday': '昨天',
@@ -490,6 +495,11 @@ const TRANSLATIONS = {
 
     'tts.reading': 'Reading aloud',
     'tts.stop': 'Stop reading',
+    'tts.speed': 'Playback speed',
+    'settings.tts.cache': 'Voice cache',
+    'settings.tts.cache.clear': 'Clear voice cache',
+    'settings.tts.cache.hint': 'Synthesized audio is cached per segment: replaying or downloading the same message costs nothing. Capped at 150MB; least recently used segments are evicted first.',
+    'status.ttsCacheCleared': 'Voice cache cleared',
 
     'chat.today': 'Today',
     'chat.yesterday': 'Yesterday',

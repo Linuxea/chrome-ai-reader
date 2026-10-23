@@ -102,7 +102,11 @@ export interface SuggestRequest {
 }
 
 // ---------------------------------------------------------------------------
-// tts / tts-download ports (352 = audio chunk, 152 = finish, 153 = failure)
+// tts / tts-download ports
+//
+// The SW translates the upstream Volcengine SSE events (352 audio chunk /
+// 152 session finish / 153 failure — see background/sw-tts.ts) into these
+// simple wire messages; one port per synthesized segment.
 // ---------------------------------------------------------------------------
 
 export interface TTSRequest {
@@ -111,9 +115,9 @@ export interface TTSRequest {
 }
 
 export type TTSMessage =
-  | { type: '352'; text: string; sequence: number; base64: string }
-  | { type: '152'; text: string }
-  | { type: '153'; text: string };
+  | { type: 'chunk'; data: string } // base64 mp3 bytes
+  | { type: 'done' } // segment synthesis finished
+  | { type: 'error'; error?: string; errorKey?: string };
 
 // ---------------------------------------------------------------------------
 // podcast-llm port — JSON-mode script + title/description generation

@@ -151,6 +151,12 @@
             <input type="checkbox" id="podcastDirect">
           </label>
           <p class="hint" data-i18n="settings.podcast.direct.hint">开启后由扩展直接连接火山引擎播客接口（通过 declarativeNetRequest 注入鉴权请求头），不用再运行 proxy/。直连失败时会自动回退到本地代理。</p>
+          <div class="form-group tts-cache-group">
+            <label data-i18n="settings.tts.cache">语音缓存</label>
+            <p class="hint"><span id="ttsCacheSize">–</span></p>
+            <button type="button" id="ttsClearCacheBtn" data-i18n="settings.tts.cache.clear">清除语音缓存</button>
+            <p class="hint" data-i18n="settings.tts.cache.hint">已合成的语音会按段落缓存：同一消息重播、下载不再重复计费。缓存上限 150MB，超出自动淘汰最久未用的段落。</p>
+          </div>
         </div>
       </details>
 

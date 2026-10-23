@@ -8,7 +8,16 @@ vi.mock('../../../src/shared/download.js', () => ({
   downloadFile: vi.fn(),
 }));
 
+// Deterministic cache seam: per-test controllable, no IndexedDB in jsdom.
+vi.mock('../../../src/shared/tts-cache.js', () => ({
+  ttsCacheKey: vi.fn(async (_voice, text) => `key:${text}`),
+  getCachedSegmentAudio: vi.fn(async () => null),
+  putSegmentAudio: vi.fn(async () => {}),
+}));
+
 import * as downloadMock from '../../../src/shared/download.js';
+import * as cacheMock from '../../../src/shared/tts-cache.js';
+import { splitToSegments } from '../../../src/side_panel/services/tts/utils.js';
 
 // Mock chrome.runtime.connect with programmable port
 const { createMockPort } = await import('../../helpers/chrome-mock.js');
@@ -19,10 +28,7 @@ let currentPort = null;
 vi.hoisted(() => {
   globalThis.chrome = {
     runtime: {
-      connect: vi.fn(() => {
-        // This will be overridden in beforeEach
-        return null;
-      }),
+      connect: vi.fn(() => null),
     },
   };
 });
@@ -41,15 +47,25 @@ function encodeBase64(str) {
   return btoa(str);
 }
 
+/** Text that segments into exactly two segments under the deterministic rule. */
+const TWO_SEGMENT_TEXT = '这是一句够长的话呀。'.repeat(12); // 132 chars → 66 + 66
+
+async function waitForPort() {
+  await vi.waitFor(() => {
+    if (!currentPort || currentPort.postMessage.mock.calls.length === 0) throw new Error('port not ready');
+  });
+  return currentPort;
+}
+
 describe('TTS Downloader', () => {
   let chatArea;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Restore chrome.runtime.connect to return a fresh mock port
-    currentPort = createMockPort('tts-download');
+    cacheMock.getCachedSegmentAudio.mockResolvedValue(null);
+    currentPort = createMockPort('tts');
     chrome.runtime.connect = vi.fn(() => {
-      currentPort = createMockPort('tts-download');
+      currentPort = createMockPort('tts');
       return currentPort;
     });
 
@@ -111,6 +127,16 @@ describe('TTS Downloader', () => {
       expect(chrome.runtime.connect).not.toHaveBeenCalled();
     });
 
+    it('returns early for text that strips to nothing (code block only)', () => {
+      const msgEl = document.createElement('div');
+      msgEl.textContent = '```\nconst x = 1;\n```';
+      chatArea.appendChild(msgEl);
+
+      handleTTSDownloadClick(msgEl);
+      expect(chrome.runtime.connect).not.toHaveBeenCalled();
+      expect(isTTSDownloading()).toBe(false);
+    });
+
     it('sets button to loading state', () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Content with enough text. Second sentence. Third. Fourth. Fifth.';
@@ -130,37 +156,62 @@ describe('TTS Downloader', () => {
       expect(otherBtn.classList.contains('tts-loading')).toBe(false);
     });
 
-    it('connects to tts-download port and posts message', () => {
+    it('prefers the markdown source, falling back to rendered text', async () => {
       const msgEl = document.createElement('div');
-      msgEl.textContent = 'Content. More. Even more. And more. Last one here.';
-      chatArea.appendChild(msgEl);
-
-      handleTTSDownloadClick(msgEl);
-      expect(chrome.runtime.connect).toHaveBeenCalledWith({ name: 'tts-download' });
-      expect(currentPort.postMessage).toHaveBeenCalledWith({
-        type: 'tts',
-        text: expect.any(String),
-      });
-    });
-
-    it('prefers thinking-response-content text over msgEl text', () => {
-      const msgEl = document.createElement('div');
+      msgEl.dataset.markdown = '**Bold** prose that is long enough to be spoken aloud properly.';
       const contentEl = document.createElement('div');
       contentEl.className = 'thinking-response-content';
-      contentEl.textContent = 'Inner content. Second. Third. Fourth. Fifth.';
+      contentEl.textContent = 'rendered fallback';
       msgEl.appendChild(contentEl);
       chatArea.appendChild(msgEl);
 
       handleTTSDownloadClick(msgEl);
-      expect(currentPort.postMessage).toHaveBeenCalledWith({
-        type: 'tts',
-        text: 'Inner content. Second. Third. Fourth. Fifth.',
+      await vi.waitFor(() => {
+        expect(chrome.runtime.connect).toHaveBeenCalled();
       });
+      const port = chrome.runtime.connect.mock.results[0].value;
+      await vi.waitFor(() => {
+        // markdown stripped: markers gone, source text used — not the rendered one
+        expect(port.postMessage).toHaveBeenCalledWith({
+          type: 'tts',
+          text: expect.stringContaining('Bold prose that is long enough'),
+        });
+        expect(port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ text: 'rendered fallback' }));
+      });
+    });
+
+    it('posts one request per segment to the tts port', async () => {
+      const msgEl = document.createElement('div');
+      msgEl.textContent = TWO_SEGMENT_TEXT;
+      chatArea.appendChild(msgEl);
+      expect(splitToSegments(TWO_SEGMENT_TEXT).length).toBe(2);
+
+      handleTTSDownloadClick(msgEl);
+      await vi.waitFor(() => {
+        expect(chrome.runtime.connect.mock.calls.length).toBe(2); // pipelined, not serial
+      });
+      expect(chrome.runtime.connect).toHaveBeenCalledWith({ name: 'tts' });
+    });
+
+    it('skips the port entirely on a warm cache', async () => {
+      cacheMock.getCachedSegmentAudio.mockImplementation(async (key) => {
+        expect(typeof key).toBe('string');
+        return new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mpeg' });
+      });
+      const msgEl = document.createElement('div');
+      msgEl.textContent = 'Cached content here. Second sentence. Third. Fourth. Fifth. Sixth.';
+      chatArea.appendChild(msgEl);
+
+      handleTTSDownloadClick(msgEl);
+      await vi.waitFor(() => {
+        expect(downloadMock.downloadFile).toHaveBeenCalled();
+      });
+      expect(chrome.runtime.connect).not.toHaveBeenCalled();
     });
 
     it('returns early if already downloading', () => {
       const msgEl = document.createElement('div');
-      msgEl.textContent = 'A. B. C. D. E. F. G. H. I. J.';
+      msgEl.textContent = TWO_SEGMENT_TEXT;
       chatArea.appendChild(msgEl);
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
@@ -174,26 +225,27 @@ describe('TTS Downloader', () => {
   });
 
   describe('download completion', () => {
-    it('calls downloadFile with combined audio data on done', () => {
+    it('calls downloadFile with combined audio data on done', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
 
       handleTTSDownloadClick(msgEl);
-      const port = currentPort;
+      const port = await waitForPort();
 
-      const audioData = encodeBase64('fake audio chunk');
-      port._simulateMessage({ type: 'chunk', data: audioData });
+      port._simulateMessage({ type: 'chunk', data: encodeBase64('fake audio chunk') });
       port._simulateMessage({ type: 'done' });
 
-      expect(downloadMock.downloadFile).toHaveBeenCalledWith(
-        expect.any(Blob),
-        expect.stringMatching(/^voice-.*\.mp3$/),
-        'audio/mpeg',
-      );
+      await vi.waitFor(() => {
+        expect(downloadMock.downloadFile).toHaveBeenCalledWith(
+          expect.any(Blob),
+          expect.stringMatching(/^voice-.*\.mp3$/),
+          'audio/mpeg',
+        );
+      });
     });
 
-    it('resets button state after successful download', () => {
+    it('resets button state after successful download', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
@@ -204,81 +256,95 @@ describe('TTS Downloader', () => {
       msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
-      currentPort._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
-      currentPort._simulateMessage({ type: 'done' });
+      const port = await waitForPort();
+      port._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
+      port._simulateMessage({ type: 'done' });
 
-      expect(btn.title).toBe('[action.downloaded]');
+      await vi.waitFor(() => {
+        expect(btn.title).toBe('[action.downloaded]');
+      });
     });
 
-    it('stops download on error message', () => {
+    it('stops download on error after audio already streamed (no retry, output is not resumable)', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      chatArea.appendChild(btn);
+      msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
-      currentPort._simulateMessage({ type: 'error', error: 'Failed' });
+      const port = await waitForPort();
+      port._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
+      port._simulateMessage({ type: 'error', error: 'Failed' });
 
       expect(btn.classList.contains('tts-loading')).toBe(false);
       expect(btn.disabled).toBe(false);
     });
 
-    it('stops download on port disconnect', () => {
+    it('stops download on port disconnect after audio streamed', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      chatArea.appendChild(btn);
+      msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
-      currentPort._simulateDisconnect();
+      const port = await waitForPort();
+      port._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
+      port._simulateDisconnect();
 
       expect(btn.classList.contains('tts-loading')).toBe(false);
       expect(btn.disabled).toBe(false);
     });
 
-    it('handles multiple segments sequentially', () => {
+    it('delivers multiple segments as one file, in order, pipelined', async () => {
       const msgEl = document.createElement('div');
-      msgEl.textContent = 'A. B. C. D. E. F. G. H. I. J.';
+      msgEl.textContent = TWO_SEGMENT_TEXT;
       chatArea.appendChild(msgEl);
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      chatArea.appendChild(btn);
+      msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
 
-      // First segment port
-      const port1 = currentPort;
-      port1._simulateMessage({ type: 'chunk', data: encodeBase64('chunk1') });
-      port1._simulateMessage({ type: 'done' });
+      // Ports resolve OUT OF ORDER — the engine must still deliver in order.
+      const ports = chrome.runtime.connect.mock.results.map(r => r.value);
+      ports[1]._simulateMessage({ type: 'chunk', data: encodeBase64('second-seg') });
+      ports[1]._simulateMessage({ type: 'done' });
+      ports[0]._simulateMessage({ type: 'chunk', data: encodeBase64('first-seg') });
+      ports[0]._simulateMessage({ type: 'done' });
 
-      // Should have started second segment — new port
-      expect(chrome.runtime.connect.mock.calls.length).toBe(2);
+      await vi.waitFor(() => {
+        expect(downloadMock.downloadFile).toHaveBeenCalled();
+      });
+      const blob = downloadMock.downloadFile.mock.calls[0][0];
+      const text = await blob.text();
+      expect(text).toBe('first-segsecond-seg');
 
-      // Second segment port
-      const port2 = currentPort;
-      port2._simulateMessage({ type: 'chunk', data: encodeBase64('chunk2') });
-      port2._simulateMessage({ type: 'done' });
-
-      expect(downloadMock.downloadFile).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(cacheMock.putSegmentAudio).toHaveBeenCalledTimes(2);
+      });
     });
 
-    it('stops without download when no chunks received', () => {
+    it('stops without download when no chunks received', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
       const btn = document.createElement('button');
       btn.className = 'tts-download-btn';
-      chatArea.appendChild(btn);
+      msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
-      currentPort._simulateMessage({ type: 'done' });
+      const port = await waitForPort();
+      port._simulateMessage({ type: 'done' });
 
+      await vi.waitFor(() => {
+        expect(btn.classList.contains('tts-loading')).toBe(false);
+      });
       expect(downloadMock.downloadFile).not.toHaveBeenCalled();
-      expect(btn.classList.contains('tts-loading')).toBe(false);
     });
   });
 

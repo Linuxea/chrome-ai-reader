@@ -1,10 +1,11 @@
-import { stripMarkdown, SENTENCE_ENDS } from './utils';
-import { safePortDisconnect, safeEndOfStream } from '../../../shared/chrome-helpers';
-import { openTTSPort } from '../../../platform/ports';
+import { createSegmentStream } from './utils';
+import { safeEndOfStream } from '../../../shared/chrome-helpers';
+import { TTSSynthEngine, getTTSVoice } from './engine';
 
 let _fullStopFn: (() => void) | null = null;
 
-let ttsPort: chrome.runtime.Port | null = null;
+let ttsEngine: TTSSynthEngine | null = null;
+let ttsSegmentStream: ReturnType<typeof createSegmentStream> | null = null;
 let ttsPlaying = false;
 let ttsMediaSource: MediaSource | null = null;
 let ttsSourceBuffer: SourceBuffer | null = null;
@@ -12,12 +13,16 @@ let ttsAudioEl: HTMLAudioElement | null = null;
 let ttsChunkQueue: ArrayBuffer[] = [];
 let ttsBufferAppending = false;
 
-let ttsSentenceQueue: string[] = [];
-let ttsTextBuffer = '';
-let ttsSending = false;
-let ttsSentenceCount = 0;
-
 let ttsAutoPlayEnabled = false;
+
+/** Playback-rate cycle offered by the global indicator (persisted as ttsSpeed). */
+export const TTS_SPEED_STEPS = [1, 1.25, 1.5, 2] as const;
+let _playbackRate = 1;
+
+/** Trim played-out buffer once the playhead is this far ahead of it. */
+const TRIM_BEHIND_MS = 60_000;
+/** …but always keep the last 10s behind the playhead (seek safety). */
+const TRIM_KEEP_S = 10;
 
 /** The TTS button of the message being read — its state tracks this playback. */
 let _playBtn: Element | null = null;
@@ -68,6 +73,37 @@ function notifyTTSState(): void {
   _stateListeners.forEach(cb => cb(snapshot));
 }
 
+// --- Playback progress (indicator m:ss / m:ss) --------------------------------
+
+export interface TTSProgress {
+  /** Playhead seconds. */
+  position: number;
+  /** End of buffered audio seconds (MSE streams have no finite duration). */
+  end: number;
+}
+
+type ProgressListener = (progress: TTSProgress) => void;
+const _progressListeners = new Set<ProgressListener>();
+
+export function subscribeTTSProgress(cb: ProgressListener): () => void {
+  _progressListeners.add(cb);
+  return () => { _progressListeners.delete(cb); };
+}
+
+function notifyProgress(): void {
+  if (_progressListeners.size === 0) return;
+  const p = currentProgress();
+  if (p) _progressListeners.forEach(cb => cb(p));
+}
+
+export function currentProgress(): TTSProgress | null {
+  const b = ttsSourceBuffer?.buffered;
+  if (!ttsAudioEl || !b || typeof b.end !== 'function' || b.length === 0) return null;
+  const end = b.end(b.length - 1);
+  if (!Number.isFinite(end)) return null;
+  return { position: ttsAudioEl.currentTime || 0, end };
+}
+
 export function isTTSAudioStarted(): boolean { return _audioStarted; }
 
 /**
@@ -104,13 +140,20 @@ export function setTTSAutoPlay(val: boolean): void {
 export function isTTSAutoPlay(): boolean { return ttsAutoPlayEnabled; }
 export function isTTSPlaying(): boolean { return ttsPlaying; }
 
+/** Apply now (if playing) and to every future playback (persisted by the caller). */
+export function setTTSPlaybackRate(rate: number): void {
+  _playbackRate = rate;
+  if (ttsAudioEl) ttsAudioEl.playbackRate = rate;
+}
+
+export function getTTSPlaybackRate(): number { return _playbackRate; }
+
 export function stopTTSPlayback(): void {
   const wasPlaying = ttsPlaying;
   ttsPlaying = false;
-  ttsSentenceQueue = [];
-  ttsTextBuffer = '';
-  ttsSentenceCount = 0;
-  ttsSending = false;
+  ttsEngine?.abort();
+  ttsEngine = null;
+  ttsSegmentStream = null;
   ttsChunkQueue = [];
   ttsBufferAppending = false;
   _originTabId = null;
@@ -126,8 +169,6 @@ export function stopTTSPlayback(): void {
     ttsMediaSource = null;
     ttsSourceBuffer = null;
   }
-  safePortDisconnect(ttsPort);
-  ttsPort = null;
   if (wasPlaying) notifyTTSState();
 }
 
@@ -139,10 +180,6 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
 
   ttsPlaying = true;
   _audioStarted = false;
-  ttsSentenceQueue = [];
-  ttsTextBuffer = '';
-  ttsSentenceCount = 0;
-  ttsSending = false;
   ttsChunkQueue = [];
   ttsBufferAppending = false;
   _originTabId = null;
@@ -158,10 +195,59 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
     }
   };
 
+  const bufferedAheadMs = (): number | null => {
+    const b = ttsSourceBuffer?.buffered;
+    if (!ttsAudioEl || !b || typeof b.end !== 'function' || b.length === 0) return null;
+    const ahead = b.end(b.length - 1) - ttsAudioEl.currentTime;
+    return Number.isFinite(ahead) ? ahead * 1000 : null;
+  };
+
+  /** Engine drained: everything appended and input ended → finish the stream. */
+  const finishStream = () => {
+    if (!started && ttsChunkQueue.length === 0 && !ttsBufferAppending) {
+      // Nothing was ever synthesized (e.g. an answer that is all code block):
+      // don't leave a zombie "loading" state — stop cleanly.
+      _fullStopFn?.();
+      return;
+    }
+    const finish = () => {
+      if (ttsSourceBuffer && !ttsBufferAppending) {
+        safeEndOfStream(ttsMediaSource);
+      }
+    };
+    if (ttsBufferAppending) {
+      const handler = () => { finish(); ttsSourceBuffer?.removeEventListener('updateend', handler); };
+      ttsSourceBuffer?.addEventListener('updateend', handler);
+    } else {
+      finish();
+    }
+  };
+
+  ttsEngine = new TTSSynthEngine({
+    voice: getTTSVoice(),
+    getBufferedAheadMs: bufferedAheadMs,
+    onHeadChunk: (bytes) => {
+      ttsChunkQueue.push(bytes);
+      ttsAppendNext();
+    },
+    onDrained: finishStream,
+    onError: (msg) => {
+      console.error('[TTS] error:', msg);
+      if (_fullStopFn) _fullStopFn();
+    },
+  });
+  ttsSegmentStream = createSegmentStream();
+
   const ms = new MediaSource();
   ttsMediaSource = ms;
   ttsAudioEl = new Audio();
   ttsAudioEl.src = URL.createObjectURL(ms);
+  ttsAudioEl.playbackRate = _playbackRate;
+  ttsAudioEl.addEventListener('timeupdate', () => {
+    trimSourceBuffer();
+    ttsEngine?.notifyProgress();
+    notifyProgress();
+  });
 
   let started = false;
 
@@ -182,9 +268,13 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
         }).catch(() => {});
       }
       ttsAppendNext();
+      // Buffered-ahead grew (or drained): re-evaluate backpressure + progress.
+      ttsEngine?.notifyProgress();
+      notifyProgress();
     });
 
-    ttsFlush();
+    ttsAppendNext(); // feed anything that arrived before the buffer existed
+    ttsEngine?.notifyProgress();
   });
 
   ttsAudioEl.addEventListener('ended', () => {
@@ -192,67 +282,35 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
   });
 }
 
+/** Enqueue one finalized (already stripped) segment. */
 export function ttsEnqueue(text: string): void {
-  const cleaned = stripMarkdown(text);
-  if (!cleaned) return;
-  ttsSentenceQueue.push(cleaned);
-  ttsFlush();
+  if (!ttsPlaying || !ttsEngine) return;
+  ttsEngine.enqueue(text);
 }
 
-function ttsFlush(): void {
-  if (ttsSending || ttsSentenceQueue.length === 0 || !ttsPlaying) return;
-  if (!ttsSourceBuffer) return;
+/**
+ * Autoplay: feed a streaming answer delta. The segment stream strips and cuts
+ * with the same prefix rule as the batch path, so cache keys stay identical.
+ */
+export function ttsAppendChunk(content: string): void {
+  if (!ttsPlaying || !ttsAutoPlayEnabled) return;
+  if (!ttsSegmentStream) return;
+  for (const seg of ttsSegmentStream.push(content)) ttsEnqueue(seg);
+}
 
-  ttsSending = true;
-  const sentence = ttsSentenceQueue.shift()!;
+/** Signal that no more text will arrive (button/download path). */
+export function ttsFinishInput(): void {
+  ttsEngine?.endInput();
+}
 
-  safePortDisconnect(ttsPort);
+/** Answer finished (autoplay): flush the tail segment and finish input. */
+export function ttsFlushRemaining(): void {
+  if (!ttsPlaying) return;
 
-  ttsPort = openTTSPort();
-
-  ttsPort.onDisconnect.addListener(() => {
-    if (ttsPlaying && _fullStopFn) _fullStopFn();
-  });
-
-  ttsPort.onMessage.addListener((msg: { type: string; data?: string; error?: string }) => {
-    if (msg.type === 'chunk') {
-      if (!msg.data) return;
-      const binaryStr = atob(msg.data);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-      ttsChunkQueue.push(bytes.buffer);
-      ttsAppendNext();
-
-    } else if (msg.type === 'done') {
-      ttsSending = false;
-      safePortDisconnect(ttsPort);
-      ttsPort = null;
-
-      if (ttsSentenceQueue.length > 0) {
-        ttsFlush();
-      } else {
-        const finish = () => {
-          if (ttsSourceBuffer && !ttsBufferAppending) {
-            safeEndOfStream(ttsMediaSource);
-          }
-        };
-        if (ttsBufferAppending) {
-          const handler = () => { finish(); ttsSourceBuffer?.removeEventListener('updateend', handler); };
-          ttsSourceBuffer?.addEventListener('updateend', handler);
-        } else {
-          finish();
-        }
-      }
-
-    } else if (msg.type === 'error') {
-      console.error('[TTS] error:', msg.error);
-      if (_fullStopFn) _fullStopFn();
-    }
-  });
-
-  ttsPort.postMessage({ type: 'tts', text: sentence });
+  const tail = ttsSegmentStream?.end() ?? null;
+  ttsSegmentStream = null;
+  if (tail) ttsEnqueue(tail);
+  ttsFinishInput();
 }
 
 function ttsAppendNext(): void {
@@ -267,59 +325,18 @@ function ttsAppendNext(): void {
   }
 }
 
-export function ttsAppendChunk(content: string): void {
-  if (!ttsPlaying || !ttsAutoPlayEnabled) return;
-
-  ttsTextBuffer += content;
-
-  for (let i = 0; i < content.length; i++) {
-    if (SENTENCE_ENDS.includes(content[i])) {
-      ttsSentenceCount++;
-    }
-  }
-
-  while (ttsSentenceCount >= 2) {
-    let found = 0;
-    let cutPos = -1;
-    for (let i = 0; i < ttsTextBuffer.length; i++) {
-      if (SENTENCE_ENDS.includes(ttsTextBuffer[i])) {
-        found++;
-        if (found >= 2) {
-          cutPos = i + 1;
-          break;
-        }
-      }
-    }
-
-    if (cutPos === -1) break;
-
-    const segment = ttsTextBuffer.slice(0, cutPos);
-    ttsTextBuffer = ttsTextBuffer.slice(cutPos);
-    ttsSentenceCount -= 2;
-    ttsEnqueue(segment);
-  }
-}
-
-export function ttsFlushRemaining(): void {
-  if (!ttsPlaying) return;
-
-  if (ttsTextBuffer.trim()) {
-    ttsEnqueue(ttsTextBuffer.trim());
-    ttsTextBuffer = '';
-    ttsSentenceCount = 0;
-  }
-
-  if (ttsSentenceQueue.length === 0 && !ttsSending) {
-    const finish = () => {
-      if (ttsSourceBuffer && !ttsBufferAppending) {
-        safeEndOfStream(ttsMediaSource);
-      }
-    };
-    if (ttsBufferAppending) {
-      const handler = () => { finish(); ttsSourceBuffer?.removeEventListener('updateend', handler); };
-      ttsSourceBuffer?.addEventListener('updateend', handler);
-    } else {
-      finish();
-    }
+/** Keep hour-long reads flat in memory: drop played-out buffer behind the playhead. */
+function trimSourceBuffer(): void {
+  const sb = ttsSourceBuffer;
+  const el = ttsAudioEl;
+  if (!sb || !el || sb.updating) return;
+  const b = sb.buffered;
+  if (!b || typeof b.start !== 'function' || b.length === 0) return;
+  if (typeof sb.remove !== 'function') return;
+  const start = b.start(0);
+  if (el.currentTime - start > TRIM_BEHIND_MS / 1000) {
+    try {
+      sb.remove(start, Math.max(start, el.currentTime - TRIM_KEEP_S));
+    } catch { /* raced with an append — next timeupdate retries */ }
   }
 }

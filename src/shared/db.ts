@@ -13,12 +13,14 @@
  *       highlights    keyPath id, index url         user highlights / notes
  *       annotations   keyPath key                   deep-annotation cache
  *       translations  keyPath key                   immersive-translation cache
+ *   v4  ttsAudio      keyPath key, index lastUsedAt
+ *                                          per-segment TTS audio cache (LRU)
  */
 
 export const DB_NAME = 'ai-reader';
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
-export type StoreName = 'chats' | 'highlights' | 'annotations' | 'translations';
+export type StoreName = 'chats' | 'highlights' | 'annotations' | 'translations' | 'ttsAudio';
 
 let _dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -32,6 +34,9 @@ function upgrade(db: IDBDatabase): void {
   }
   if (!db.objectStoreNames.contains('annotations')) db.createObjectStore('annotations', { keyPath: 'key' });
   if (!db.objectStoreNames.contains('translations')) db.createObjectStore('translations', { keyPath: 'key' });
+  if (!db.objectStoreNames.contains('ttsAudio')) {
+    db.createObjectStore('ttsAudio', { keyPath: 'key' }).createIndex('lastUsedAt', 'lastUsedAt');
+  }
 }
 
 export function openDB(): Promise<IDBDatabase> {

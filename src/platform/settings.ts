@@ -36,6 +36,8 @@ export interface Settings {
   ttsResourceId: string;
   ttsSpeaker: string;
   ttsAutoPlay: boolean;
+  /** TTS playback rate (one of TTS_SPEED_STEPS), persisted across sessions. */
+  ttsSpeed: number;
   podcastResourceId: string;
   podcastDirect: boolean;
 }
@@ -58,6 +60,7 @@ export const SETTING_DEFAULTS: Partial<Settings> = {
   ttsResourceId: 'seed-tts-2.0',
   ttsSpeaker: 'zh_female_vv_uranus_bigtts',
   ttsAutoPlay: false,
+  ttsSpeed: 1,
   podcastResourceId: 'volc.service_type.10050',
   podcastDirect: false,
 };
