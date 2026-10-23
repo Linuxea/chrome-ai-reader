@@ -265,7 +265,7 @@ describe('TTS Downloader', () => {
       });
     });
 
-    it('stops download on error after audio already streamed (no retry, output is not resumable)', async () => {
+    it('stops download after the retry also fails (error path)', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
@@ -274,15 +274,20 @@ describe('TTS Downloader', () => {
       msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
-      const port = await waitForPort();
-      port._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
-      port._simulateMessage({ type: 'error', error: 'Failed' });
+      const port1 = await waitForPort();
+      port1._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
+      port1._simulateMessage({ type: 'error', error: 'Failed' });
+
+      // one retry (~300ms backoff), then the second failure stops the download
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 2000 });
+      const port2 = chrome.runtime.connect.mock.results[1].value;
+      port2._simulateMessage({ type: 'error', error: 'Failed again' });
 
       expect(btn.classList.contains('tts-loading')).toBe(false);
       expect(btn.disabled).toBe(false);
     });
 
-    it('stops download on port disconnect after audio streamed', async () => {
+    it('stops download after a retried disconnect also fails', async () => {
       const msgEl = document.createElement('div');
       msgEl.textContent = 'Test. More. Text. Here. Done.';
       chatArea.appendChild(msgEl);
@@ -291,9 +296,13 @@ describe('TTS Downloader', () => {
       msgEl.appendChild(btn);
 
       handleTTSDownloadClick(msgEl);
-      const port = await waitForPort();
-      port._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
-      port._simulateDisconnect();
+      const port1 = await waitForPort();
+      port1._simulateMessage({ type: 'chunk', data: encodeBase64('audio') });
+      port1._simulateDisconnect();
+
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 2000 });
+      const port2 = chrome.runtime.connect.mock.results[1].value;
+      port2._simulateDisconnect();
 
       expect(btn.classList.contains('tts-loading')).toBe(false);
       expect(btn.disabled).toBe(false);

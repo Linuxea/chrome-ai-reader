@@ -146,23 +146,36 @@ cache, same retry policy, same segmentation.
 while the SW actually posts `{type:'chunk'|'done'|'error'}`. Fix the
 types to match the wire. No behavior change.
 
-### 7. First-play jump prevention (post-review fix)
+### 7. First-play jump — final fix: WebAudio sink (supersedes the MSE mitigations)
 
 Symptom: on a cold first play, playback jumped from mid-segment-1 to
 segment 2 at the moment segment 2 finished synthesizing; cached replays
-were fine. Cause: the playhead sat ON the append frontier (play started
-on the first sliver of audio), and the frontier was sealed/appended
-right under it — Chrome's mp3/MSE timeline (byte/bitrate-derived, no
-container timestamps) re-estimates on such appends and can snap forward.
-Fixes (player.ts + engine.ts):
+were fine. Root cause: every TTS segment is a SEPARATELY-ENCODED complete
+mp3, and appending several of them into ONE MediaSource timeline makes
+Chrome's mp3 parser repair the timeline when a later file's boundaries
+land at/behind the playhead (first play: segment 2's burst-append arrives
+mid-segment-1; cached replay: everything is appended before the playhead
+moves, so the repair is inaudible). Mitigations (2.5s start cushion,
+`mode='sequence'`, ≤32KB sliced appends) only reduced the trigger window —
+the jump still reproduced.
 
-- playback starts only with a 2.5s buffered cushion (`START_CUSHION_S`),
-  or immediately once the stream is sealed for messages shorter than
-  that (no zombie loading)
-- `SourceBuffer.mode = 'sequence'` — force contiguous append placement
-- every byte block is sliced to ≤32KB (`MAX_APPEND_BYTES`) before
-  `onHeadChunk`, so cached whole-segment blobs append at the same cadence
-  as live SSE chunks (never one giant appendBuffer)
+The fix removes the shared timeline entirely: the player is now a WebAudio
+sink. Each segment's mp3 is decoded independently (`decodeAudioData`) and
+scheduled sample-accurately back-to-back with `AudioBufferSourceNode`s —
+there is nothing to repair, so the jump is structurally impossible. The
+engine's output contract changed accordingly: `onSegmentAudio(bytes)`
+delivers each completed segment's full mp3 strictly in order (the ordered
+byte-stream `onHeadChunk` contract is gone, along with the head/live
+streaming and append-slicing logic — delivery only happens at completion,
+which also makes retry-once unconditionally safe).
+
+Player notes: `AudioContext` is created lazily on first segment delivery;
+rate changes stop live sources and reschedule the unplayed remainder
+mid-buffer (same-rate calls are no-ops); `maybeFinished` requires
+`_decoding === 0` — a drained input whose final decode is still pending
+must not be treated as finished; played-out `AudioBuffer`s are freed (the
+mp3 stays in the disk cache); progress = buffer-time position vs. the
+scheduled end, driven by a 250ms tick.
 
 ## Cost math
 

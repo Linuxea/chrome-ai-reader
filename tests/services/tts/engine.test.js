@@ -31,21 +31,21 @@ function freshPorts() {
 }
 
 function makeEngine(overrides = {}) {
-  const chunks = [];
+  const delivered = [];
   const events = { drained: false, error: null };
   const engine = new TTSSynthEngine({
     voice,
     getBufferedAheadMs: () => 0,
-    onHeadChunk: (b) => chunks.push(b),
+    onSegmentAudio: (bytes) => delivered.push(bytes),
     onDrained: () => { events.drained = true; },
     onError: (m) => { events.error = m; },
     ...overrides,
   });
-  return { engine, chunks, events };
+  return { engine, delivered, events };
 }
 
-async function chunksText(chunks) {
-  return new Blob(chunks).text();
+async function deliveredText(delivered) {
+  return Promise.all(delivered.map((bytes) => new Blob([bytes]).text()));
 }
 
 describe('TTSSynthEngine', () => {
@@ -54,28 +54,28 @@ describe('TTSSynthEngine', () => {
     cacheMock.getCachedSegmentAudio.mockResolvedValue(null);
   });
 
-  it('pipelines two segments concurrently and delivers bytes strictly in order', async () => {
+  it('pipelines two segments concurrently but delivers strictly in order', async () => {
     const ports = freshPorts();
-    const { engine, chunks, events } = makeEngine();
+    const { engine, delivered, events } = makeEngine();
     engine.enqueue('seg one');
     engine.enqueue('seg two');
     engine.endInput();
 
     await vi.waitFor(() => expect(ports.length).toBe(2)); // concurrent, not serial
 
-    // Second segment finishes FIRST (out of order) — must not emit yet
-    ports[1]._simulateMessage({ type: 'chunk', data: b64('B1') });
+    // Second segment finishes FIRST (out of order) — must not be delivered yet
+    ports[1]._simulateMessage({ type: 'chunk', data: b64('B') });
     ports[1]._simulateMessage({ type: 'done' });
-    expect(chunks.length).toBe(0);
+    expect(delivered.length).toBe(0);
     expect(events.drained).toBe(false);
 
-    // Head streams live
+    // Segment one completes → both deliver, in index order
     ports[0]._simulateMessage({ type: 'chunk', data: b64('A1') });
-    expect(chunks.length).toBe(1);
+    ports[0]._simulateMessage({ type: 'chunk', data: b64('A2') });
     ports[0]._simulateMessage({ type: 'done' });
 
     await vi.waitFor(() => expect(events.drained).toBe(true));
-    expect(await chunksText(chunks)).toBe('A1B1');
+    expect(await deliveredText(delivered)).toEqual(['A1A2', 'B']); // one segment = one complete mp3
   });
 
   it('writes each synthesized segment to the cache exactly once (duplicate done ignored)', async () => {
@@ -97,34 +97,19 @@ describe('TTSSynthEngine', () => {
   it('serves a cache hit without opening any port', async () => {
     cacheMock.getCachedSegmentAudio.mockResolvedValue(new Blob(['cached-audio']));
     const ports = freshPorts();
-    const { engine, chunks, events } = makeEngine();
+    const { engine, delivered, events } = makeEngine();
     engine.enqueue('warm');
     engine.endInput();
 
     await vi.waitFor(() => expect(events.drained).toBe(true));
     expect(ports.length).toBe(0);
-    expect(await chunksText(chunks)).toBe('cached-audio');
+    expect((await deliveredText(delivered))[0]).toBe('cached-audio');
   });
 
-  it('slices oversized audio buffers into append-sized pieces (uniform append cadence)', async () => {
-    const big = 'A'.repeat(150 * 1024);
-    cacheMock.getCachedSegmentAudio.mockResolvedValue(new Blob([big]));
-    const ports = freshPorts();
-    const { engine, chunks, events } = makeEngine();
-    engine.enqueue('big');
-    engine.endInput();
-
-    await vi.waitFor(() => expect(events.drained).toBe(true));
-    expect(ports.length).toBe(0);
-    expect(chunks.length).toBe(5); // 150KB / 32KB → 5 pieces, never one giant append
-    expect(chunks.every(c => c.byteLength <= 32 * 1024)).toBe(true);
-    expect(await chunksText(chunks)).toBe(big);
-  });
-
-  it('backpressure: no dispatch while buffered ahead exceeds the lookahead', async () => {
+  it('backpressure: no dispatch while playable audio exceeds the lookahead', async () => {
     const ports = freshPorts();
     let ahead = 40_000; // > 30s default lookahead
-    const { engine, chunks, events } = makeEngine({ getBufferedAheadMs: () => ahead });
+    const { engine, delivered } = makeEngine({ getBufferedAheadMs: () => ahead });
 
     engine.enqueue('one');
     engine.enqueue('two');
@@ -140,11 +125,11 @@ describe('TTSSynthEngine', () => {
     ports[0]._simulateMessage({ type: 'done' });
     ports[1]._simulateMessage({ type: 'chunk', data: b64('b') });
     ports[1]._simulateMessage({ type: 'done' });
-    await vi.waitFor(() => expect(events.drained).toBe(true));
-    expect(await chunksText(chunks)).toBe('ab');
+    await vi.waitFor(() => expect(delivered.length).toBe(2));
+    expect((await deliveredText(delivered)).join('')).toBe('ab');
   });
 
-  it('retries a failed segment once (nothing streamed yet), then succeeds', async () => {
+  it('retries a failed segment once, then succeeds', async () => {
     const ports = freshPorts();
     const { engine, events } = makeEngine();
     engine.enqueue('flaky');
@@ -160,19 +145,6 @@ describe('TTSSynthEngine', () => {
     ports[1]._simulateMessage({ type: 'done' });
     await vi.waitFor(() => expect(events.drained).toBe(true));
     expect(events.error).toBeNull();
-  });
-
-  it('fails immediately (no retry) once bytes already streamed — output is not resumable', async () => {
-    const ports = freshPorts();
-    const { engine, events } = makeEngine();
-    engine.enqueue('partial');
-    engine.endInput();
-    await vi.waitFor(() => expect(ports.length).toBe(1));
-
-    ports[0]._simulateMessage({ type: 'chunk', data: b64('partial-bytes') });
-    ports[0]._simulateMessage({ type: 'error', error: 'mid-stream failure' });
-
-    expect(events.error).toBe('mid-stream failure');
   });
 
   it('second failure after retry aborts the engine with onError', async () => {
@@ -191,7 +163,7 @@ describe('TTSSynthEngine', () => {
 
   it('abort closes live ports and suppresses every later callback', async () => {
     const ports = freshPorts();
-    const { engine, chunks, events } = makeEngine();
+    const { engine, delivered, events } = makeEngine();
     engine.enqueue('one');
     await vi.waitFor(() => expect(ports.length).toBe(1));
 
@@ -201,7 +173,7 @@ describe('TTSSynthEngine', () => {
     ports[0]._simulateMessage({ type: 'chunk', data: b64('late') });
     ports[0]._simulateMessage({ type: 'error', error: 'late' });
     await sleep(30);
-    expect(chunks.length).toBe(0);
+    expect(delivered.length).toBe(0);
     expect(events.error).toBeNull();
     expect(events.drained).toBe(false);
   });

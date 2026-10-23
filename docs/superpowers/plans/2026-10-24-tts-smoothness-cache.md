@@ -60,13 +60,18 @@
     `tts-indicator.test.js` (rate/progress). ✅
 11. **Docs** — spec (above), this plan, AGENTS.md gotchas (engine pipeline,
     segmentation determinism, cache store). ✅
-12. **First-play jump hotfix** — reported after first dogfood: cold playback
-    skipped to segment 2 when segment 2 finished synthesizing. Player now
-    starts only with a 2.5s buffered cushion (sealed streams start
-    regardless — short messages must not zombie), `SourceBuffer.mode =
-    'sequence'`, and the engine slices byte blocks to ≤32KB so cached blobs
-    never append as one giant buffer. Tests: cushion gating, sealed-start,
-    slice cadence. See spec §7. ✅
+12. **First-play jump hotfix #1 (MSE mitigations — superseded)** — reported
+    after first dogfood: cold playback skipped to segment 2 when segment 2
+    finished synthesizing. Added a 2.5s start cushion, `mode='sequence'`,
+    ≤32KB sliced appends. Masked, did not cure. ✅ (superseded by step 13)
+13. **First-play jump fix #2 (WebAudio sink)** — the jump recurred; root
+    cause is concatenating separately-encoded mp3s into one MSE timeline.
+    The player is now a WebAudio sink: per-segment `decodeAudioData` +
+    sample-accurate `AudioBufferSourceNode` scheduling, rate-change
+    reschedule, `_decoding` guard in `maybeFinished`, played-buffer pruning.
+    Engine output contract simplified to `onSegmentAudio(bytes)` (ordered
+    full-segment delivery; retry-once unconditionally safe; empty segments
+    skipped). See spec §7. ✅
 
 ## Verification
 

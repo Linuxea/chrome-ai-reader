@@ -1,78 +1,37 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
-// Mock URL.createObjectURL
-globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
-
-// Mock Audio
-const audioInstances = [];
-class MockAudio {
-  constructor() {
-    this.src = '';
-    this.listeners = {};
-    audioInstances.push(this);
-  }
-  play() { return Promise.resolve(); }
-  pause() {}
-  addEventListener(event, fn) {
-    if (!this.listeners[event]) this.listeners[event] = [];
-    this.listeners[event].push(fn);
-  }
-  removeEventListener(event, fn) {
-    if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter(f => f !== fn);
-    }
-  }
-}
-globalThis.Audio = MockAudio;
-
-// Mock MediaSource
-class MockMediaSource {
-  constructor() {
-    this.readyState = 'open';
-    this.sourceBuffers = [];
-    this.listeners = {};
-  }
-  addSourceBuffer() {
-    const sb = {
-      buffered: { length: 0 },
-      listeners: {},
-      appendBuffer: vi.fn(),
-      addEventListener(event, fn) {
-        if (!this.listeners[event]) this.listeners[event] = [];
-        this.listeners[event].push(fn);
-      },
-      removeEventListener(event, fn) {
-        if (this.listeners[event]) {
-          this.listeners[event] = this.listeners[event].filter(f => f !== fn);
-        }
-      },
-    };
-    this.sourceBuffers.push(sb);
-    return sb;
-  }
-  endOfStream() { this.readyState = 'closed'; }
-  addEventListener(event, fn) {
-    if (!this.listeners[event]) this.listeners[event] = [];
-    this.listeners[event].push(fn);
-  }
-  _simulateSourceOpen() {
-    this.listeners['sourceopen']?.forEach(fn => fn());
-  }
-}
-globalThis.MediaSource = MockMediaSource;
-const msInstances = [];
-MockMediaSource.prototype.constructor = MockMediaSource;
-// track instances so tests can simulate sourceopen
-const OrigMockMediaSource = MockMediaSource;
-globalThis.MediaSource = class extends OrigMockMediaSource {
-  constructor() { super(); msInstances.push(this); }
-};
-
-// Mock chrome
+// Mock chrome.runtime.connect with programmable port
 const { createMockPort } = await import('../../helpers/chrome-mock.js');
 globalThis.chrome = {
   runtime: { connect: vi.fn(() => createMockPort('tts')) },
 };
+
+// Mock AudioContext + BufferSource (the WebAudio sink)
+const ctxInstances = [];
+const sources = [];
+class MockAudioContext {
+  constructor() {
+    this.currentTime = 0;
+    this.state = 'running';
+    this.resume = vi.fn(() => Promise.resolve());
+    this.close = vi.fn(() => Promise.resolve());
+    ctxInstances.push(this);
+  }
+  // deterministic duration: 8 KB of mp3 == 1 s of audio
+  async decodeAudioData(buf) { return { duration: buf.byteLength / 8000 }; }
+  createBufferSource() {
+    const src = {
+      buffer: null,
+      playbackRate: { value: 1 },
+      start: vi.fn(),
+      stop: vi.fn(),
+      onended: null,
+    };
+    sources.push(src);
+    return src;
+  }
+}
+globalThis.AudioContext = MockAudioContext;
 
 import {
   initPlayer,
@@ -93,21 +52,24 @@ import {
   getTTSOrigin,
   detachTTSAnchor,
   subscribeTTSState,
-  subscribeTTSProgress,
-  currentProgress,
   setTTSPlaybackRate,
   getTTSPlaybackRate,
+  currentProgress,
 } from '../../../src/side_panel/services/tts/player.js';
+
+const b64 = (s) => btoa(s);
 
 describe('TTS Player', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    audioInstances.length = 0;
-    msInstances.length = 0;
+    ctxInstances.length = 0;
+    sources.length = 0;
+    stopTTSPlayback(); // Reset all internal state — BEFORE the rate reset (a
+    // running playback + rate touch would reschedule sources into this test)
     setTTSPlaybackRate(1);
     const chatArea = document.createElement('div');
     initPlayer(chatArea);
-    stopTTSPlayback(); // Reset all internal state
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   describe('initPlayer', () => {
@@ -118,17 +80,10 @@ describe('TTS Player', () => {
   });
 
   describe('setTTSAutoPlay / isTTSAutoPlay', () => {
-    it('defaults to false', () => {
+    it('defaults to false and can be toggled', () => {
       expect(isTTSAutoPlay()).toBe(false);
-    });
-
-    it('can be enabled', () => {
       setTTSAutoPlay(true);
       expect(isTTSAutoPlay()).toBe(true);
-    });
-
-    it('can be disabled', () => {
-      setTTSAutoPlay(true);
       setTTSAutoPlay(false);
       expect(isTTSAutoPlay()).toBe(false);
     });
@@ -155,14 +110,15 @@ describe('TTS Player', () => {
   });
 
   describe('initTTSPlayback', () => {
-    it('sets playing state to true', () => {
+    it('sets playing state (waiting for the first segment)', () => {
       initTTSPlayback();
       expect(isTTSPlaying()).toBe(true);
+      expect(isTTSAudioStarted()).toBe(false);
     });
 
-    it('creates an Audio element', () => {
+    it('creates no AudioContext until a segment actually arrives', () => {
       initTTSPlayback();
-      expect(audioInstances.length).toBeGreaterThan(0);
+      expect(ctxInstances.length).toBe(0);
     });
 
     it('shows loading on the clicked message\'s button (not the first one in the chat)', () => {
@@ -182,11 +138,100 @@ describe('TTS Player', () => {
     });
   });
 
-  describe('ttsAppendChunk', () => {
+  /** Enqueue segments, finish input, and drive every engine port to done. */
+  async function deliverSegments(texts, byteSeconds = 1) {
+    for (const text of texts) ttsEnqueue(text);
+    ttsFinishInput();
+    await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(texts.length));
+    const ports = chrome.runtime.connect.mock.results.slice(-texts.length).map((r) => r.value);
+    ports.forEach((port, i) => {
+      port._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000 * (byteSeconds[i] ?? byteSeconds))) });
+      port._simulateMessage({ type: 'done' });
+    });
+    await vi.waitFor(() => {
+      expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(texts.length);
+    });
+    return ports;
+  }
+
+  describe('WebAudio scheduling', () => {
+    it('decodes each segment independently and schedules it back-to-back', async () => {
+      initTTSPlayback();
+      await deliverSegments(['seg one', 'seg two'], [1, 2]);
+
+      expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(2);
+      expect(isTTSAudioStarted()).toBe(true);
+      // total scheduled audio: 1s + 2s
+      expect(currentProgress()).toEqual({ position: 0, end: 3 });
+    });
+
+    it('finishes playback (full stop) once everything played out', async () => {
+      const fullStop = vi.fn();
+      setFullStopFn(fullStop);
+      initTTSPlayback();
+      await deliverSegments(['only'], [1]);
+      expect(fullStop).not.toHaveBeenCalled();
+
+      const ctx = ctxInstances[0];
+      ctx.currentTime = 10; // playhead past the end
+      for (const s of [...sources]) s.onended?.();
+      await vi.waitFor(() => expect(fullStop).toHaveBeenCalled());
+    });
+
+    it('rate change stops live sources and reschedules the unplayed remainder', async () => {
+      initTTSPlayback();
+      await deliverSegments(['one', 'two'], [1, 1]);
+
+      const ctx = ctxInstances[0];
+      ctx.currentTime = 0.5; // ~0.44s into segment 1 (anchor at 0.06)
+      setTTSPlaybackRate(2);
+
+      expect(sources.length).toBe(4); // 2 original + 2 rescheduled
+      const [seg1Again, seg2Again] = sources.slice(2);
+      expect(seg1Again.playbackRate.value).toBe(2);
+      expect(seg1Again.start.mock.calls[0][1]).toBeCloseTo(0.44, 1); // resumed mid-buffer
+      expect(seg2Again.playbackRate.value).toBe(2);
+      expect(seg2Again.start.mock.calls[0][1]).toBe(0); // not started yet
+      expect(getTTSPlaybackRate()).toBe(2);
+    });
+
+    it('a decode failure skips the segment instead of killing playback', async () => {
+      initTTSPlayback();
+      ttsEnqueue('bad');
+      ttsFinishInput();
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled());
+      const port = chrome.runtime.connect.mock.results.at(-1).value;
+      const realDecode = MockAudioContext.prototype.decodeAudioData;
+      MockAudioContext.prototype.decodeAudioData = vi.fn(async () => { throw new Error('corrupt'); });
+      port._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000)) });
+      port._simulateMessage({ type: 'done' });
+      await vi.waitFor(() => expect(console.error).toHaveBeenCalled());
+      MockAudioContext.prototype.decodeAudioData = realDecode;
+      expect(isTTSPlaying()).toBe(true); // playback survives
+    });
+  });
+
+  describe('progress (indicator m:ss / m:ss)', () => {
+    it('is null before anything is scheduled', () => {
+      initTTSPlayback();
+      expect(currentProgress()).toBeNull();
+    });
+
+    it('clamps the position to the scheduled end', async () => {
+      initTTSPlayback();
+      await deliverSegments(['one'], [2]);
+      const ctx = ctxInstances[0];
+      ctx.currentTime = 100; // far past the end
+      expect(currentProgress()).toEqual({ position: 2, end: 2 });
+    });
+  });
+
+  describe('ttsAppendChunk / ttsFlushRemaining', () => {
     it('does not throw when not playing', () => {
       stopTTSPlayback();
       setTTSAutoPlay(true);
       expect(() => ttsAppendChunk('Hello.')).not.toThrow();
+      expect(() => ttsFlushRemaining()).not.toThrow();
     });
 
     it('does not throw when autoPlay is disabled', () => {
@@ -196,49 +241,16 @@ describe('TTS Player', () => {
     });
   });
 
-  describe('ttsFlushRemaining', () => {
-    it('does not throw when not playing', () => {
-      stopTTSPlayback();
-      expect(() => ttsFlushRemaining()).not.toThrow();
-    });
-  });
-
-  describe('ttsEnqueue (via ttsAppendChunk with autoPlay)', () => {
-    it('strips markdown before enqueueing', () => {
-      initTTSPlayback();
-      setTTSAutoPlay(true);
-
-      // Simulate sourceopen to set up sourceBuffer
-      // Get the MediaSource instance (it's internal, but we can trigger it via the audio)
-      // The MediaSource was created in initTTSPlayback, but we can't easily access it
-      // Just verify no crash
-      expect(() => ttsAppendChunk('**Bold** text. Normal sentence.')).not.toThrow();
-    });
-  });
-
   describe('setFullStopFn', () => {
-    it('stores the callback and calls it on audio ended', () => {
+    it('stores the callback and calls it on playback end', async () => {
       const fn = vi.fn();
       setFullStopFn(fn);
       initTTSPlayback();
-      const audio = audioInstances[audioInstances.length - 1];
-      audio.listeners['ended']?.forEach(listener => listener());
-      expect(fn).toHaveBeenCalled();
-    });
-  });
-
-  describe('full stop callback on port disconnect', () => {
-    it('calls fullStopFn when tts port disconnects during playback', () => {
-      const fn = vi.fn();
-      setFullStopFn(fn);
-      initTTSPlayback();
-      setTTSAutoPlay(true);
-
-      // Enqueue some text to create a port
-      ttsAppendChunk('First sentence. Second sentence. Third sentence. Fourth. Fifth.');
-      // The port would be created internally, but we'd need sourceopen first
-      // Just verify the callback is set
-      expect(fn).toBeDefined();
+      await deliverSegments(['one'], [1]);
+      const ctx = ctxInstances[0];
+      ctx.currentTime = 10;
+      sources.forEach((s) => s.onended?.());
+      await vi.waitFor(() => expect(fn).toHaveBeenCalled());
     });
   });
 
@@ -307,13 +319,15 @@ describe('TTS Player', () => {
   });
 
   describe('subscribeTTSState (global indicator)', () => {
-    it('notifies start (waiting), audio start, and stop', () => {
+    it('notifies start (waiting), audio start, and stop', async () => {
       const seen = [];
       const unsubscribe = subscribeTTSState(s => seen.push({ ...s }));
       try {
         initTTSPlayback();
         expect(seen.at(-1)).toEqual({ playing: true, audioStarted: false });
-        expect(isTTSAudioStarted()).toBe(false);
+
+        await deliverSegments(['one'], [1]);
+        expect(seen.some(s => s.playing && s.audioStarted)).toBe(true);
 
         stopTTSPlayback();
         expect(seen.at(-1)).toEqual({ playing: false, audioStarted: false });
@@ -342,63 +356,6 @@ describe('TTS Player', () => {
     });
   });
 
-  describe('playback rate', () => {
-    it('defaults to 1 and applies to new audio elements', () => {
-      setTTSPlaybackRate(1.5);
-      initTTSPlayback();
-      const audio = audioInstances[audioInstances.length - 1];
-      expect(audio.playbackRate).toBe(1.5);
-      expect(getTTSPlaybackRate()).toBe(1.5);
-    });
-
-    it('applies to a running playback immediately', () => {
-      initTTSPlayback();
-      const audio = audioInstances[audioInstances.length - 1];
-      setTTSPlaybackRate(2);
-      expect(audio.playbackRate).toBe(2);
-    });
-  });
-
-  describe('progress (indicator m:ss / m:ss)', () => {
-    it('is null without buffered audio', () => {
-      initTTSPlayback();
-      expect(currentProgress()).toBeNull();
-    });
-
-    it('reports position against the buffered end and notifies subscribers on timeupdate', () => {
-      const seen = [];
-      const unsubscribe = subscribeTTSProgress(p => seen.push({ ...p }));
-      try {
-        initTTSPlayback();
-        const audio = audioInstances[audioInstances.length - 1];
-        const ms = msInstances[msInstances.length - 1];
-        ms._simulateSourceOpen();
-        const sb = ms.sourceBuffers[0];
-        sb.buffered = { length: 1, start: () => 0, end: () => 42 };
-
-        audio.currentTime = 5;
-        audio.listeners['timeupdate']?.forEach(fn => fn());
-
-        expect(seen.at(-1)).toEqual({ position: 5, end: 42 });
-      } finally {
-        unsubscribe();
-      }
-    });
-
-    it('does not notify when there is nothing buffered yet', () => {
-      const cb = vi.fn();
-      const unsubscribe = subscribeTTSProgress(cb);
-      try {
-        initTTSPlayback();
-        const audio = audioInstances[audioInstances.length - 1];
-        audio.listeners['timeupdate']?.forEach(fn => fn());
-        expect(cb).not.toHaveBeenCalled();
-      } finally {
-        unsubscribe();
-      }
-    });
-  });
-
   describe('engine wiring (autoplay)', () => {
     it('dispatches a synthesized segment once enough text has streamed in', async () => {
       initTTSPlayback();
@@ -412,51 +369,6 @@ describe('TTS Player', () => {
       ttsFlushRemaining(); // answer ended
       expect(() => ttsFinishInput()).not.toThrow();
       stopTTSPlayback();
-    });
-  });
-
-  describe('playback start cushion (first-play jump fix)', () => {
-    const fireUpdateEnd = (sb) => sb.listeners['updateend']?.forEach(fn => fn());
-
-    function openSources() {
-      initTTSPlayback();
-      const audio = audioInstances[audioInstances.length - 1];
-      const ms = msInstances[msInstances.length - 1];
-      ms._simulateSourceOpen();
-      const sb = ms.sourceBuffers[0];
-      return { audio, sb };
-    }
-
-    it('does not start on a sliver of buffer; starts once a cushion has accumulated', () => {
-      const { audio, sb } = openSources();
-      const playSpy = vi.spyOn(audio, 'play');
-
-      sb.buffered = { length: 1, start: () => 0, end: () => 0.4 };
-      fireUpdateEnd(sb);
-      expect(playSpy).not.toHaveBeenCalled();
-
-      sb.buffered = { length: 1, start: () => 0, end: () => 3.1 };
-      fireUpdateEnd(sb);
-      expect(playSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('starts regardless of the cushion once the stream is sealed (short message)', async () => {
-      const { audio, sb } = openSources();
-      const playSpy = vi.spyOn(audio, 'play');
-
-      ttsEnqueue('tiny');
-      ttsFinishInput();
-      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled());
-      const port = chrome.runtime.connect.mock.results[0].value;
-      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
-
-      sb.buffered = { length: 1, start: () => 0, end: () => 0.3 }; // under the cushion
-      port._simulateMessage({ type: 'chunk', data: btoa('abc') });
-      fireUpdateEnd(sb);
-      expect(playSpy).not.toHaveBeenCalled();
-
-      port._simulateMessage({ type: 'done' }); // last segment done → stream sealed → must start
-      await vi.waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1));
     });
 
     it('ttsFinishInput without a playback does not throw', () => {

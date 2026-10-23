@@ -127,7 +127,7 @@ export function handleTTSDownloadClick(msgEl: HTMLElement): void {
     voice: getTTSVoice(),
     // No playback clock — synthesize at full speed (bounded by maxInflight).
     getBufferedAheadMs: () => 0,
-    onHeadChunk: (bytes) => { ttsDownloadChunks.push(bytes); },
+    onSegmentAudio: (bytes) => { ttsDownloadChunks.push(bytes); },
     onDrained: finishTTSDownload,
     onError: (msg) => {
       console.error('[TTS Download] error:', msg);
