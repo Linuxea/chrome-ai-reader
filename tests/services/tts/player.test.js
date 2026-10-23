@@ -13,6 +13,7 @@ class MockAudioContext {
   constructor() {
     this.currentTime = 0;
     this.state = 'running';
+    this.destination = { __destination: true };
     this.resume = vi.fn(() => Promise.resolve());
     this.close = vi.fn(() => Promise.resolve());
     ctxInstances.push(this);
@@ -23,6 +24,7 @@ class MockAudioContext {
     const src = {
       buffer: null,
       playbackRate: { value: 1 },
+      connect: vi.fn(),
       start: vi.fn(),
       stop: vi.fn(),
       onended: null,
@@ -155,6 +157,15 @@ describe('TTS Player', () => {
   }
 
   describe('WebAudio scheduling', () => {
+    it('connects every source to the context destination (unconnected = silence)', async () => {
+      initTTSPlayback();
+      await deliverSegments(['seg one', 'seg two'], [1, 2]);
+      const ctx = ctxInstances[0];
+      for (const src of sources) {
+        expect(src.connect).toHaveBeenCalledWith(ctx.destination);
+      }
+    });
+
     it('decodes each segment independently and schedules it back-to-back', async () => {
       initTTSPlayback();
       await deliverSegments(['seg one', 'seg two'], [1, 2]);

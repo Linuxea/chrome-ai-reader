@@ -236,9 +236,11 @@ function ensureCtx(): AudioContext {
 function scheduleSource(seg: SegEntry, offset: number, startBuf: number): void {
   const ctx = _ctx!;
   const anchor = _anchor!;
+  if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
   const src = ctx.createBufferSource();
   src.buffer = seg.buffer;
   src.playbackRate.value = anchor.rate;
+  src.connect(ctx.destination); // an unconnected BufferSource outputs silence
   const when = anchor.ctxTime + (startBuf - anchor.bufTime) / anchor.rate;
   src.start(Math.max(when, ctx.currentTime), offset);
   src.onended = () => {
