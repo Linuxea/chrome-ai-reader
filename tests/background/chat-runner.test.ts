@@ -33,7 +33,7 @@ vi.mock('../../src/platform/settings', () => ({
   readStoredSettings: async (keys: string[]) => Object.fromEntries(keys.filter((k) => settings[k] !== undefined).map((k) => [k, settings[k]])),
 }));
 
-import { streamToPort, completeChat, IDLE_TIMEOUT_MS } from '../../src/background/chat-runner';
+import { streamToPort, completeChat, IDLE_TIMEOUT_MS, TOOL_RESULTS_TIMEOUT_MS } from '../../src/background/chat-runner';
 import { recordUsage } from '../../src/background/usage';
 
 function mockPort() {
@@ -107,6 +107,65 @@ describe('chat-runner streamToPort', () => {
       { role: 'tool', tool_call_id: 'c1', name: 'search_page', content: 'paragraph 3' },
     ]);
     expect(posted.at(-1)).toEqual({ type: 'done', finishReason: 'stop', usage: { inputTokens: 3, outputTokens: 3 }, model: 'main-model' });
+  });
+
+  it('agent mode: marks the step limit on done so the panel can word its note', async () => {
+    const port = mockPort();
+    // AGENT_MAX_STEPS rounds that all ask for tools → the loop gives up.
+    for (let i = 0; i < 6; i++) {
+      scripts.push([{ type: 'tool_call', call: { id: `c${i}`, name: 'search_page', arguments: '{}' } }, { type: 'finish', reason: 'tool_calls' }]);
+    }
+    const run = streamToPort(port, { messages: [{ role: 'user', content: 'q' }], purpose: 'agent', tools: [{ name: 'search_page', description: 'd', parameters: {} }] });
+    for (let i = 0; i < 5; i++) {
+      await vi.waitFor(() => expect(posted.filter((m) => m.type === 'tool_calls')).toHaveLength(i + 1));
+      port.send({ type: 'tool_results', results: [{ tool_call_id: `c${i}`, name: 'search_page', content: 'r' }] });
+    }
+    await run;
+    expect(posted.at(-1)).toMatchObject({ type: 'done', finishReason: 'length', limit: 'steps' });
+    // Exactly AGENT_MAX_STEPS model requests were made — the loop stopped.
+    expect(requests).toHaveLength(6);
+  });
+
+  it('agent mode: gives up when the panel never returns tool results', async () => {
+    vi.useFakeTimers();
+    try {
+      scripts.push([{ type: 'tool_call', call: { id: 'c1', name: 'f', arguments: '{}' } }, { type: 'finish', reason: 'tool_calls' }]);
+      const port = mockPort();
+      const run = streamToPort(port, { messages: [], purpose: 'agent', tools: [{ name: 'f', description: '', parameters: {} }] });
+      await vi.advanceTimersByTimeAsync(TOOL_RESULTS_TIMEOUT_MS + 10);
+      await run;
+      expect(posted.at(-1)).toEqual({ type: 'error', errorKey: 'error.streamTimeout' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('agent mode: shortens tool results from rounds older than the last two', async () => {
+    const port = mockPort();
+    const tools = [{ name: 'f', description: '', parameters: {} }];
+    // Three rounds of tools, then a final answer.
+    for (let i = 0; i < 3; i++) {
+      scripts.push([{ type: 'tool_call', call: { id: `c${i}`, name: 'f', arguments: '{}' } }, { type: 'finish', reason: 'tool_calls' }]);
+    }
+    scripts.push([{ type: 'finish', reason: 'stop' }]);
+    const run = streamToPort(port, { messages: [{ role: 'user', content: 'q' }], purpose: 'agent', tools });
+    for (let i = 0; i < 3; i++) {
+      await vi.waitFor(() => expect(posted.filter((m) => m.type === 'tool_calls')).toHaveLength(i + 1));
+      port.send({
+        type: 'tool_results',
+        results: [{ tool_call_id: `c${i}`, name: 'f', content: `round-${i}-`.repeat(120) }],
+      });
+    }
+    await run;
+
+    const last = requests.at(-1)!.req.messages;
+    const toolMsgs = last.filter((m) => m.role === 'tool');
+    expect(toolMsgs).toHaveLength(3);
+    // Round 0 fell out of the keep window → trimmed; rounds 1-2 verbatim.
+    expect(String(toolMsgs[0].content)).toMatch(/\[earlier tool result omitted\]$/);
+    expect(String(toolMsgs[0].content).length).toBeLessThan(600);
+    expect(String(toolMsgs[1].content)).toBe(`round-1-`.repeat(120));
+    expect(String(toolMsgs[2].content)).toBe(`round-2-`.repeat(120));
   });
 
   it('never runs tools outside agent mode', async () => {

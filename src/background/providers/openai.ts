@@ -149,11 +149,17 @@ export const openaiProvider: ChatProvider = {
       if (reasoning) yield { type: 'thinking', text: reasoning };
       if (d?.content) yield { type: 'text', text: d.content };
       for (const tc of d?.tool_calls ?? []) {
-        const cur = toolCalls.get(tc.index) ?? { id: '', name: '', arguments: '' };
+        // Some OpenAI-compatible servers omit `index` (single call) — key the
+        // accumulator by 0 then, so the call still lands in the map.
+        const idx = tc.index ?? 0;
+        const cur = toolCalls.get(idx) ?? { id: '', name: '', arguments: '' };
         if (tc.id) cur.id = tc.id;
         if (tc.function?.name) cur.name += tc.function.name;
         if (tc.function?.arguments) cur.arguments += tc.function.arguments;
-        toolCalls.set(tc.index, cur);
+        // And some never send an id at all — without one the next round's
+        // `tool_call_id` would be empty and strict providers reject the turn.
+        if (!cur.id) cur.id = `call_${idx}`;
+        toolCalls.set(idx, cur);
       }
       if (choice.finish_reason) finish = mapFinish(choice.finish_reason);
     };

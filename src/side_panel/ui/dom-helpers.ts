@@ -3,6 +3,7 @@ import { t } from '../../shared/i18n.js';
 import { CSS } from '../../shared/css-selectors';
 import { renderMarkdown } from './markdown';
 import { linkifyCitations } from './citations';
+import { createAgentTraceBlock } from './agent-trace';
 import { emit, EVENTS } from '../events';
 import * as autoScroll from './auto-scroll';
 import type { ChatMessage, MessageContentPart } from '../../shared/types';
@@ -493,6 +494,9 @@ export function appendMessageFromHistory(msg: ChatMessage, options?: AppendOptio
       // Re-attach anchor for the window-global TTS state after a tab switch /
       // re-render (services/tts resolves by msgId) — mirrors user bubbles.
       if (msg.id) div.dataset.msgId = msg.id;
+      // F11: rebuild the collapsed "verification steps" block from the
+      // structured trace persisted with the answer.
+      if (msg.agentTrace?.length) div.insertBefore(createAgentTraceBlock(msg.agentTrace), div.firstChild);
     }
   }
 

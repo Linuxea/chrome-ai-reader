@@ -501,6 +501,23 @@ describe('dom-helpers', () => {
       // the window-global TTS playback resolves its button by this selector
       expect(div.matches('[data-msg-id="a-7"]')).toBe(true);
     });
+
+    it('rebuilds the collapsed verification-steps block from a persisted agentTrace', () => {
+      const msg = {
+        id: 'a-9',
+        role: 'assistant',
+        content: '答案',
+        agentTrace: [{ name: 'search_page', args: 'query=x', result: 'found', round: 1 }],
+      };
+      const div = appendMessageFromHistory(msg);
+
+      const trace = div.querySelector('.agent-trace');
+      expect(trace).not.toBeNull();
+      expect(trace.classList.contains('collapsed')).toBe(true); // quiet by default
+      expect(trace.querySelectorAll('.agent-step.done')).toHaveLength(1);
+      // answers without a trace stay untouched
+      expect(appendMessageFromHistory({ role: 'assistant', content: 'plain' }).querySelector('.agent-trace')).toBeNull();
+    });
   });
 });
 

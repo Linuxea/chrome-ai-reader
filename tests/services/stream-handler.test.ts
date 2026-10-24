@@ -71,6 +71,11 @@ vi.mock('../../src/side_panel/ui/dom-helpers.js', () => ({
   appendMessageFromHistory: vi.fn(() => document.createElement('div')),
   emitRetryFromWrapper: vi.fn(),
   findUserWrapperBefore: vi.fn(() => null),
+  createNoteElement: vi.fn((text: string) => {
+    const el = document.createElement('div');
+    el.textContent = text;
+    return el;
+  }),
 }));
 
 vi.mock('../../src/side_panel/services/tts/index.js', () => ({
@@ -164,6 +169,126 @@ describe('services/stream-handler', () => {
         type: 'tool_results', results: [{ tool_call_id: 'c1', name: 'search_page', content: 'tool output' }],
       }));
       expect(runAgentTool).toHaveBeenCalledWith('search_page', '{"query":"x"}', 1);
+    });
+
+    it('runs one round\'s calls in parallel and posts the results in call order', async () => {
+      vi.mocked(runAgentTool)
+        .mockImplementationOnce(async () => {
+          await new Promise((r) => setTimeout(r, 30));
+          return 'slow';
+        })
+        .mockImplementationOnce(async () => 'fast');
+      await callAI([], 1, { agent: true });
+
+      port._simulateMessage({
+        type: 'tool_calls',
+        calls: [
+          { id: 'c1', name: 'search_page', arguments: '{}' },
+          { id: 'c2', name: 'read_paragraphs', arguments: '{}' },
+        ],
+      });
+      // The fast call finishes first, but results keep the model's call order.
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith({
+        type: 'tool_results',
+        results: [
+          { tool_call_id: 'c1', name: 'search_page', content: 'slow' },
+          { tool_call_id: 'c2', name: 'read_paragraphs', content: 'fast' },
+        ],
+      }));
+    });
+
+    it('separates loop rounds with a header line from round 2 on', async () => {
+      document.body.innerHTML = '';
+      await callAI([], 1, { agent: true });
+      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'search_page', arguments: '{}' }] });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c2', name: 'search_page', arguments: '{}' }] });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledTimes(3)); // chat + 2× results
+
+      const rounds = document.querySelectorAll('.agent-round');
+      expect(rounds).toHaveLength(1); // no header for the first round
+      expect(rounds[0].textContent).toBe('[agent.round]');
+      expect(document.querySelectorAll('.agent-step')).toHaveLength(2);
+    });
+
+    it('persists the executed tools as an agentTrace on the answer', async () => {
+      await callAI([], 1, { agent: true });
+      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'search_page', arguments: '{"query":"x"}' }] });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'chunk', content: 'answer' });
+      port._simulateMessage({ type: 'done' });
+
+      expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
+        role: 'assistant',
+        content: 'answer',
+        agentTrace: [{ name: 'search_page', args: 'query=x', result: 'tool output', round: 1 }],
+      });
+    });
+
+    it('keeps the persisted trace in call order when parallel tools finish out of order', async () => {
+      vi.mocked(runAgentTool)
+        .mockImplementationOnce(async () => {
+          await new Promise((r) => setTimeout(r, 30));
+          return 'slow';
+        })
+        .mockImplementationOnce(async () => 'fast');
+      await callAI([], 1, { agent: true });
+      port._simulateMessage({
+        type: 'tool_calls',
+        calls: [
+          { id: 'c1', name: 'search_page', arguments: '{"query":"a"}' },
+          { id: 'c2', name: 'search_page', arguments: '{"query":"b"}' },
+        ],
+      });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'chunk', content: 'answer' });
+      port._simulateMessage({ type: 'done' });
+
+      const saved = tabState.conversationHistory.find((m) => m.role === 'assistant') as { agentTrace?: { args: string }[] };
+      // Completion order was b-then-a; the persisted trail keeps call order,
+      // matching what the live step list showed.
+      expect(saved.agentTrace?.map((s) => s.args)).toEqual(['query=a', 'query=b']);
+    });
+
+    it('persists the read_tab title in the trace, not the bare tab id', async () => {
+      const tabsGet = vi.fn((_id: number, cb: (t: { title?: string }) => void) => cb({ title: '读完的文章' }));
+      globalThis.chrome = {
+        runtime: { connect: vi.fn(() => port) },
+        tabs: { get: tabsGet },
+      } as unknown as typeof chrome;
+      vi.mocked(runAgentTool).mockResolvedValueOnce('tab content');
+
+      await callAI([], 1, { agent: true });
+      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'read_tab', arguments: '{"tab_id":5}' }] });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'chunk', content: 'a' });
+      port._simulateMessage({ type: 'done' });
+
+      expect(tabsGet).toHaveBeenCalledWith(5, expect.any(Function));
+      const saved = tabState.conversationHistory.find((m) => m.role === 'assistant') as { agentTrace?: { args: string }[] };
+      expect(saved.agentTrace?.[0].args).toBe('读完的文章');
+    });
+
+    it('leaves no agentTrace on plain answers', async () => {
+      await callAI([], 1);
+      port._simulateMessage({ type: 'chunk', content: 'plain' });
+      port._simulateMessage({ type: 'done' });
+      expect(tabState.conversationHistory).toContainEqual({
+        id: expect.any(String),
+        role: 'assistant',
+        content: 'plain',
+      });
+    });
+
+    it('shows the step-limit note (not the token-limit one) when done carries limit: "steps"', async () => {
+      document.body.innerHTML = '';
+      await callAI([], 1);
+      port._simulateMessage({ type: 'chunk', content: 'partial' });
+      port._simulateMessage({ type: 'done', finishReason: 'length', limit: 'steps' });
+
+      expect(document.body.textContent).toContain('[agent.stepLimit]');
+      expect(document.body.textContent).not.toContain('[ai.truncatedByLimit]');
     });
 
     it('a plain chat does not offer tools', async () => {

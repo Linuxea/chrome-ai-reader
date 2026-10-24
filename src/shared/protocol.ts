@@ -74,17 +74,18 @@ export interface TokenUsage {
 export type StreamMessage =
   | { type: 'thinking'; content: string }
   | { type: 'chunk'; content: string }
-  /** `finishReason: 'length'` = the answer was cut off by the output limit. */
-  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string }
+  /**
+   * `finishReason: 'length'` = the answer was cut off by the output limit;
+   * `limit: 'steps'` qualifies it as the agent tool-round limit (not tokens)
+   * so the panel can word the note correctly.
+   */
+  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }
   | { type: 'error'; error?: string; errorKey?: string }
   /**
    * Agent mode: the model asked for tools. The panel runs them and answers
    * on the same port with a ToolResultsMessage; the worker then continues.
-   * `assistant` is the model's turn to append to history before the results.
    */
-  | { type: 'tool_calls'; calls: ToolCall[]; assistant: ChatMessage }
-  /** Agent mode: a tool is running / finished (for the panel's step list). */
-  | { type: 'tool_status'; id: string; name: string; state: 'running' | 'done' | 'error' };
+  | { type: 'tool_calls'; calls: ToolCall[] };
 
 /** Panel → worker on the ai-chat port, answering a `tool_calls` message. */
 export interface ToolResultsMessage {

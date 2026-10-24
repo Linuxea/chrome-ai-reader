@@ -15,8 +15,12 @@ import {
 } from './tts/index.js';
 import { createAnswerView } from '../ui/answer-view';
 import { AGENT_TOOL_SPECS, runAgentTool } from './agent-tools';
+import {
+  agentToolLabel, describeArgs, excerptResult,
+  createAgentStepLine, attachStepResult, createAgentRoundHeader,
+} from '../ui/agent-trace';
 import { genId } from '../../shared/ids';
-import type { ChatMessage, ToolCall } from '../../shared/types';
+import type { AgentTraceStep, ChatMessage, ToolCall } from '../../shared/types';
 import type { StreamMessage, FinishReason, TokenUsage } from '../../shared/protocol';
 import { appendMessage as appendHistory, rollbackTrailingUserMessage } from './chat/history-ops';
 import { openAIChatPort } from '../../platform/ports';
@@ -98,7 +102,7 @@ export function takePendingAbort(tabId: number): boolean {
 }
 
 type Outcome =
-  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string }
+  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }
   | { kind: 'error'; errorText: string; errorKey?: string }
   | { kind: 'aborted' }
   /** The service worker's end went away (worker restart / crash). */
@@ -134,6 +138,9 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
   const typingEl = addTypingIndicator(msgEl);
   const view = createAnswerView(msgEl, () => isCurrentTab());
   let finished = false;
+  // F11: the tools this answer used — persisted with it as the evidence trail.
+  const agentTrace: AgentTraceStep[] = [];
+  let agentRound = 0;
 
   const port = openAIChatPort();
 
@@ -173,7 +180,7 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
       removeTypingIndicator(typingEl);
       void runToolCalls(msg.calls);
     } else if (msg.type === 'done') {
-      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model });
+      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, limit: msg.limit });
     } else if (msg.type === 'error') {
       finalize({
         kind: 'error',
@@ -183,26 +190,63 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
     }
   });
 
-  /** Agent mode: show each step, run the tools here, send the results back. */
+  /**
+   * Agent mode: show each step, run the tools here, send the results back.
+   * Lines are created up-front so display order is stable while executions
+   * run in parallel and light up independently. Trace entries are collected
+   * by call position and pushed in order after the round, so the persisted
+   * trail matches the live display even when tools finish out of order.
+   */
   async function runToolCalls(calls: ToolCall[]): Promise<void> {
+    agentRound++;
     let steps = msgEl.querySelector<HTMLElement>('.agent-steps');
     if (!steps) {
       steps = document.createElement('div');
       steps.className = 'agent-steps';
       msgEl.insertBefore(steps, msgEl.firstChild);
     }
-    const results: { tool_call_id: string; name: string; content: string }[] = [];
-    for (const call of calls) {
-      const line = document.createElement('div');
-      line.className = 'agent-step';
-      line.textContent = t('agent.step', { tool: t(`agent.tool.${call.name}`), args: describeArgs(call.arguments) });
-      steps.appendChild(line);
+    if (agentRound > 1) steps.appendChild(createAgentRoundHeader(agentRound));
+
+    type Result = { tool_call_id: string; name: string; content: string };
+    const results: (Result | undefined)[] = new Array(calls.length);
+    const entries: (AgentTraceStep | undefined)[] = new Array(calls.length);
+    await Promise.all(calls.map(async (call, i) => {
+      const line = createAgentStepLine(call.name, describeArgs(call.arguments));
+      steps!.appendChild(line);
+      // read_tab: resolve the tab's title in parallel with the tool run — it
+      // feeds both the live line and the persisted trace entry.
+      const titlePromise = call.name === 'read_tab' ? readTabTitle(call.arguments) : null;
+      if (titlePromise) void titlePromise.then((title) => {
+        if (title && !finished) line.textContent = t('agent.step', { tool: agentToolLabel(call.name), args: title });
+      });
       const content = await runAgentTool(call.name, call.arguments, tabId!);
+      const tabTitle = titlePromise ? await titlePromise : null;
       if (finished) return;
+      const argsText = tabTitle ?? describeArgs(call.arguments);
       line.classList.add('done');
-      results.push({ tool_call_id: call.id, name: call.name, content });
-    }
-    try { port.postMessage({ type: 'tool_results', results }); } catch { /* stream ended */ }
+      attachStepResult(line, content);
+      results[i] = { tool_call_id: call.id, name: call.name, content };
+      entries[i] = { name: call.name, args: argsText, result: excerptResult(content), round: agentRound };
+    }));
+    if (finished) return;
+    agentTrace.push(...entries.filter((e): e is AgentTraceStep => e !== undefined));
+    try { port.postMessage({ type: 'tool_results', results: results.filter((r): r is Result => r !== undefined) }); } catch { /* stream ended */ }
+  }
+
+  /** Look up a tab's title for the step display; null when unavailable. */
+  function readTabTitle(argsJson: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      let id: number;
+      try { id = Number((JSON.parse(argsJson || '{}') as { tab_id?: unknown }).tab_id); } catch { resolve(null); return; }
+      if (!Number.isInteger(id)) { resolve(null); return; }
+      if (typeof chrome.tabs?.get !== 'function') { resolve(null); return; }
+      try {
+        chrome.tabs.get(id, (tab) => {
+          if (chrome.runtime.lastError || !tab?.title) resolve(null);
+          else resolve(tab.title);
+        });
+      } catch { resolve(null); }
+    });
   }
 
   // Fires only when the service worker's end goes away — never for our own
@@ -231,7 +275,14 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
     const keepsAnswer = outcome.kind === 'done' || (view.text !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
-      appendHistory(tabState!, { id: assistantId, role: 'assistant', content: view.text }, tabId!);
+      appendHistory(tabState!, {
+        id: assistantId,
+        role: 'assistant',
+        content: view.text,
+        // F11: persist the evidence trail with the answer (only when the
+        // model actually used tools) so reloads can rebuild the trace block.
+        ...(agentTrace.length ? { agentTrace } : {}),
+      }, tabId!);
       state.setGeneratingForTab(tabId!, false);
       finishAnswer(outcome.kind === 'done');
       if (outcome.kind === 'done' && isCurrentTab()) annotateAnswer(outcome);
@@ -273,9 +324,13 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
   }
 
   /** Truncation / refusal notes and the token-usage footer under a finished answer. */
-  function annotateAnswer(outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string }): void {
+  function annotateAnswer(outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }): void {
     if (!msgEl.isConnected) return;
-    if (outcome.finishReason === 'length') msgEl.after(noteEl(t('ai.truncatedByLimit')));
+    if (outcome.finishReason === 'length') {
+      // 'steps' = the agent tool-round limit, not the output token limit —
+      // "ask me to continue" advice would be wrong there.
+      msgEl.after(noteEl(outcome.limit === 'steps' ? t('agent.stepLimit') : t('ai.truncatedByLimit')));
+    }
     else if (outcome.finishReason === 'refusal') msgEl.after(noteEl(t('ai.refusedPartway')));
     if (outcome.usage) {
       const meta = document.createElement('div');
@@ -322,17 +377,5 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
     // TTS button + suggestion loading attach below the answer; keep a stuck
     // view pinned over the newly added chrome.
     smartScrollToBottom();
-  }
-}
-
-/** Short human-readable argument summary for the step list. */
-function describeArgs(json: string): string {
-  try {
-    const args = JSON.parse(json || '{}') as Record<string, unknown>;
-    const parts = Object.values(args).map((v) => String(v)).filter(Boolean);
-    const text = parts.join(', ');
-    return text.length > 60 ? text.slice(0, 60) + '…' : text;
-  } catch {
-    return '';
   }
 }

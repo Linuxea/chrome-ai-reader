@@ -14,11 +14,10 @@
 /**
  * A single chat message in the OpenAI-compatible chat-completion format.
  *
- * NOTE: the optional agent fields below (`tool_calls`, `tool_call_id`, `name`)
- * are RESERVED for a future agent/tool-calling architecture. They are not yet
- * populated by the current chatbot flow (which is pure text-in/text-out), but
- * declaring them here means the type contract is ready when tool calling is
- * introduced — callers won't need to widen ChatMessage later.
+ * The optional agent fields below (`tool_calls`, `tool_call_id`, `name`,
+ * `providerContent`, `agentTrace`) are populated by agent mode (F11): the
+ * worker's tool loop round-trips `tool_calls` / `role: 'tool'` messages,
+ * and the panel records the executed tools as `agentTrace`.
  */
 /**
  * 一个多模态内容块。视觉消息的 `content` 是此类型的数组；
@@ -55,7 +54,7 @@ export interface ChatMessage {
    * sent to the API (see toApiMessage).
    */
   meta?: UserMessageMeta;
-  /** Tool calls emitted by the assistant (agent evolution — not yet wired). */
+  /** Tool calls the model emitted (agent mode F11; normalized to OpenAI style). */
   tool_calls?: ToolCall[];
   /** When role is 'tool', the id of the tool call this result responds to. */
   tool_call_id?: string;
@@ -67,6 +66,25 @@ export interface ChatMessage {
    * provider on the next request. Never persisted, never shown.
    */
   providerContent?: unknown;
+  /**
+   * Assistant messages only (agent mode, F11): the tools this answer used,
+   * recorded live and persisted with the chat so a reload can show the
+   * collapsed "verification steps" block. Never sent to the API
+   * (toApiMessage copies only the wire fields).
+   */
+  agentTrace?: AgentTraceStep[];
+}
+
+/** One tool execution recorded for an answer's agent trace. */
+export interface AgentTraceStep {
+  /** Tool name as the model called it (e.g. 'search_page'). */
+  name: string;
+  /** Human-readable argument summary (describeArgs), shown in the step list. */
+  args: string;
+  /** Excerpt of the tool result — shown when the step is expanded. */
+  result: string;
+  /** 1-based loop round the call belonged to. */
+  round: number;
 }
 
 export interface UserMessageMeta {
@@ -81,8 +99,7 @@ export interface UserMessageMeta {
 }
 
 /**
- * A tool/function call the model requests the host to execute.
- * Reserved for agent evolution — the current chatbot never produces these.
+ * A tool/function call the model requests the host to execute (agent mode F11).
  */
 export interface ToolCall {
   /** Unique id for this call (model-provided). */

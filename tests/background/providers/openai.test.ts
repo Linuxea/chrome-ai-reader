@@ -56,6 +56,19 @@ describe('providers/openai', () => {
     expect(body.tools[0]).toEqual({ type: 'function', function: { name: 'search_page', description: 'd', parameters: {} } });
   });
 
+  it('falls back to a synthesized id/index when the server sends neither', async () => {
+    // Some OpenAI-compatible servers (older vLLM) omit the id, and single-call
+    // responses may omit the index — without a fallback the next round would
+    // carry an empty tool_call_id that strict providers reject.
+    fetchMock.mockResolvedValueOnce(sse(
+      { choices: [{ delta: { tool_calls: [{ function: { name: 'search_page', arguments: '{}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      '[DONE]',
+    ));
+    const out = await collect(openaiProvider.stream(CFG, { model: 'm', messages: [], tools: [{ name: 'search_page', description: 'd', parameters: {} }] }, new AbortController().signal));
+    expect(out).toContainEqual({ type: 'tool_call', call: { id: 'call_0', name: 'search_page', arguments: '{}' } });
+  });
+
   it('throws on an error payload delivered mid-stream', async () => {
     fetchMock.mockResolvedValueOnce(sse({ choices: [{ delta: { content: 'a' } }] }, { error: { message: 'overloaded' } }));
     await expect(collect(openaiProvider.stream(CFG, { model: 'm', messages: [] }, new AbortController().signal))).rejects.toThrow('overloaded');
