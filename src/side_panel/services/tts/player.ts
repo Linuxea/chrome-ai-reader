@@ -320,8 +320,17 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
       maybeFinished(); // covers the zero-segment case (nothing to play) too
     },
     onError: (msg) => {
+      // A segment failing (the engine already retried once) must not kill the
+      // audio that is already playing: log it, let the scheduled audio play
+      // out and finish naturally. Stop immediately only when nothing ever
+      // started (no zombie "loading").
       console.error('[TTS] error:', msg);
-      if (_fullStopFn) _fullStopFn();
+      if (!_audioStarted) {
+        _fullStopFn?.();
+        return;
+      }
+      _drainedAll = true; // nothing more will arrive — treat the rest as the end
+      maybeFinished();
     },
   });
   ttsSegmentStream = createSegmentStream();

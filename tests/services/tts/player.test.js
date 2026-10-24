@@ -206,6 +206,51 @@ describe('TTS Player', () => {
       expect(getTTSPlaybackRate()).toBe(2);
     });
 
+    it('a segment failure (engine retried) does not kill already-playing audio', async () => {
+      const fullStop = vi.fn();
+      setFullStopFn(fullStop);
+      initTTSPlayback();
+      // two segments; drive seg1 to done (it plays), fail seg2 twice
+      ttsEnqueue('seg one');
+      ttsEnqueue('seg two');
+      ttsFinishInput();
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
+      const [p1, p2] = chrome.runtime.connect.mock.results.map((r) => r.value);
+      p1._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000)) });
+      p1._simulateMessage({ type: 'done' });
+      await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(1));
+
+      p2._simulateMessage({ type: 'error', error: 'boom' }); // first failure → retry
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(3), { timeout: 2000 });
+      const p3 = chrome.runtime.connect.mock.results[2].value;
+      p3._simulateMessage({ type: 'error', error: 'boom again' }); // retry exhausted
+
+      // seg1 keeps playing — no immediate full stop
+      expect(fullStop).not.toHaveBeenCalled();
+      expect(isTTSPlaying()).toBe(true);
+
+      // seg1 plays out → natural end (engine failed → nothing more arrives)
+      const ctx = ctxInstances[0];
+      ctx.currentTime = 10;
+      sources.forEach((s) => s.onended?.());
+      await vi.waitFor(() => expect(fullStop).toHaveBeenCalled());
+    });
+
+    it('an engine failure before any audio stops cleanly (no zombie loading)', async () => {
+      const fullStop = vi.fn();
+      setFullStopFn(fullStop);
+      initTTSPlayback();
+      ttsEnqueue('doomed');
+      ttsFinishInput();
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled());
+      const p1 = chrome.runtime.connect.mock.results[0].value;
+      p1._simulateMessage({ type: 'error', error: 'no config' });
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 2000 });
+      const p2 = chrome.runtime.connect.mock.results[1].value;
+      p2._simulateMessage({ type: 'error', error: 'no config' });
+      expect(fullStop).toHaveBeenCalled();
+    });
+
     it('a decode failure skips the segment instead of killing playback', async () => {
       initTTSPlayback();
       ttsEnqueue('bad');
