@@ -31,6 +31,8 @@ interface SegEntry {
   duration: number;
   buffer: AudioBuffer | null;
   scheduled: boolean;
+  /** Decode failed — contributes no audio but must not block the queue. */
+  dead: boolean;
 }
 let _segs: SegEntry[] = [];
 let _nextSched = 0;
@@ -255,7 +257,12 @@ function pumpSchedule(updateBtnState: (removeCls: string[], addCls: string[]) =>
   if (!ttsPlaying || !_ctx) return;
   while (_nextSched < _segs.length) {
     const seg = _segs[_nextSched];
-    if (!seg.buffer) break; // earlier decode still pending
+    if (seg.dead) { // skipped decode failure: no audio, but the queue advances
+      seg.scheduled = true;
+      _nextSched++;
+      continue;
+    }
+    if (!seg.buffer) break; // earlier decode still pending — the ordering gate
     if (!_anchor) _anchor = { ctxTime: _ctx.currentTime + 0.06, bufTime: 0, rate: _rate };
     seg.start = _schedEndBuf;
     scheduleSource(seg, 0, seg.start);
@@ -345,9 +352,19 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
   }, 250);
 }
 
-/** Decode one completed segment's mp3 independently and queue it for scheduling. */
+/**
+ * Take one completed segment's mp3 — delivered strictly in order by the
+ * engine — and queue it for decoding + scheduling.
+ *
+ * The placeholder is pushed synchronously BEFORE the first await, so `_segs`
+ * order always equals DELIVERY order. decodeAudioData is concurrent and may
+ * complete out of order (a longer segment decodes slower); pumpSchedule only
+ * advances past decoded entries, so playback order can never scramble.
+ */
 async function receiveSegment(bytes: ArrayBuffer): Promise<void> {
   if (!ttsPlaying) return;
+  const seg: SegEntry = { start: 0, duration: 0, buffer: null, scheduled: false, dead: false };
+  _segs.push(seg); // synchronous: _segs order == delivery order
   _decoding++;
   try {
     let buffer: AudioBuffer;
@@ -358,15 +375,19 @@ async function receiveSegment(bytes: ArrayBuffer): Promise<void> {
       buffer = await ctx.decodeAudioData(bytes.slice(0));
     } catch (e) {
       // A single bad segment (transient stream corruption) skips — playback
-      // continuity beats dying mid-message.
+      // continuity beats dying mid-message. Marked dead so it doesn't block
+      // the ordered queue forever.
       console.error('[TTS] decode failed, skipping segment', e);
+      seg.dead = true;
+      pumpSchedule(updateBtnState);
       return;
     }
     if (!ttsPlaying) return; // stopped while decoding
-    _segs.push({ start: 0, duration: buffer.duration, buffer, scheduled: false });
+    seg.buffer = buffer;
+    seg.duration = buffer.duration;
     pumpSchedule(updateBtnState);
   } finally {
-    _decoding--;
+    _decoding = Math.max(0, _decoding - 1); // a stale decode may outlive a stop
   }
 }
 

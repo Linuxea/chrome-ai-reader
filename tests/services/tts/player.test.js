@@ -265,6 +265,71 @@ describe('TTS Player', () => {
       MockAudioContext.prototype.decodeAudioData = realDecode;
       expect(isTTSPlaying()).toBe(true); // playback survives
     });
+
+    it('schedules segments in delivery order even when decodeAudioData completes out of order', async () => {
+      initTTSPlayback();
+      // Deferred decodes we resolve MANUALLY, in the opposite order of delivery.
+      const realDecode = MockAudioContext.prototype.decodeAudioData;
+      const deferreds = [];
+      MockAudioContext.prototype.decodeAudioData = vi.fn((buf) => {
+        const d = {};
+        const p = new Promise((resolve) => { d.resolve = resolve; });
+        deferreds.push(d);
+        return p.then(() => realDecode(buf));
+      });
+      try {
+        ttsEnqueue('seg A');
+        ttsEnqueue('seg B');
+        ttsFinishInput();
+        await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
+        const [pA, pB] = chrome.runtime.connect.mock.results.slice(-2).map((r) => r.value);
+        pA._simulateMessage({ type: 'chunk', data: b64('a'.repeat(8000)) }); // 1s
+        pA._simulateMessage({ type: 'done' });
+        pB._simulateMessage({ type: 'chunk', data: b64('b'.repeat(16000)) }); // 2s
+        pB._simulateMessage({ type: 'done' });
+        expect(deferreds.length).toBe(2); // both decodes started, none finished
+
+        // B finishes decoding FIRST — it must NOT be scheduled before A
+        deferreds[1].resolve();
+        await new Promise((r) => setTimeout(r, 0));
+        expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(0);
+
+        // A finishes → both schedule, A (1s) before B (2s)
+        deferreds[0].resolve();
+        await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(2));
+        expect(sources[0].buffer.duration).toBe(1); // A first…
+        expect(sources[1].buffer.duration).toBe(2); // …then B
+        expect(currentProgress()).toEqual({ position: 0, end: 3 });
+      } finally {
+        MockAudioContext.prototype.decodeAudioData = realDecode;
+      }
+    });
+
+    it('a failed decode does not block later segments (dead entry advances the queue)', async () => {
+      initTTSPlayback();
+      const realDecode = MockAudioContext.prototype.decodeAudioData;
+      let call = 0;
+      MockAudioContext.prototype.decodeAudioData = vi.fn(async (buf) => {
+        if (call++ === 0) throw new Error('corrupt');
+        return realDecode(buf);
+      });
+      try {
+        ttsEnqueue('bad');
+        ttsEnqueue('good');
+        ttsFinishInput();
+        await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
+        const [p1, p2] = chrome.runtime.connect.mock.results.slice(-2).map((r) => r.value);
+        p1._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000)) });
+        p1._simulateMessage({ type: 'done' });
+        p2._simulateMessage({ type: 'chunk', data: b64('y'.repeat(16000)) });
+        p2._simulateMessage({ type: 'done' });
+        await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(1));
+        expect(sources[0].buffer.duration).toBe(2); // the GOOD segment plays
+        expect(currentProgress()).toEqual({ position: 0, end: 2 });
+      } finally {
+        MockAudioContext.prototype.decodeAudioData = realDecode;
+      }
+    });
   });
 
   describe('progress (indicator m:ss / m:ss)', () => {
