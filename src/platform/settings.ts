@@ -20,8 +20,6 @@ export interface Settings {
   apiKey: string;
   apiBase: string;
   modelName: string;
-  /** Optional cheaper model for suggestions / titles / annotation / translation. */
-  fastModelName: string;
   systemPrompt: string;
   agentMode: boolean;
   citations: boolean;
@@ -135,20 +133,21 @@ export async function removeSettings(keys: readonly string[]): Promise<void> {
 }
 
 /**
- * Settings retired with the related-reading (知识关联) feature, plus its
- * legacy `pageRecords` blob. Cleared from both storage areas by the service
- * worker at startup so nothing lingers on users' machines.
+ * Settings retired with their features: the related-reading (知识关联) keys
+ * and legacy `pageRecords` blob, plus `fastModelName` (light work now runs
+ * on the main model). Cleared from both storage areas by the service worker
+ * at startup so nothing lingers on users' machines.
  */
-const REMOVED_RELATED_READING_KEYS = [
+const REMOVED_SETTING_KEYS = [
   'embeddingEnabled', 'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
-  'embeddingThreshold', 'embeddingMaxPages', 'pageRecords',
+  'embeddingThreshold', 'embeddingMaxPages', 'pageRecords', 'fastModelName',
 ];
 
 /** One-time cleanup for retired settings (idempotent; runs at SW startup). */
 export async function cleanupRemovedSettings(): Promise<void> {
   await Promise.all([
-    chrome.storage.sync.remove(REMOVED_RELATED_READING_KEYS),
-    chrome.storage.local.remove(REMOVED_RELATED_READING_KEYS),
+    chrome.storage.sync.remove(REMOVED_SETTING_KEYS),
+    chrome.storage.local.remove(REMOVED_SETTING_KEYS),
   ]);
 }
 

@@ -554,7 +554,7 @@ function spinnerLine(text: string): HTMLElement {
   return wrap;
 }
 
-/** One JSON-mode request on the chat port ('light' → the fast model if configured). */
+/** One JSON-mode request on the chat port. */
 function generate(messages: { role: 'system' | 'user'; content: string }[], onDelta?: (delta: string) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     const port = openAIChatPort();
@@ -565,6 +565,6 @@ function generate(messages: { role: 'system' | 'user'; content: string }[], onDe
       else if (msg.type === 'error') { port.disconnect(); reject(new Error(msg.errorKey ? t(msg.errorKey) : (msg.error ?? ''))); }
     });
     port.onDisconnect.addListener(() => reject(new Error(t('error.apiFailed'))));
-    port.postMessage({ type: 'chat', messages, purpose: 'light', response_format: { type: 'json_object' }, temperature: 0.5 });
+    port.postMessage({ type: 'chat', messages, response_format: { type: 'json_object' }, temperature: 0.5 });
   });
 }

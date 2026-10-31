@@ -45,7 +45,6 @@ export async function translateBatch(texts: string[], lang: Lang, signal?: Abort
       { role: 'system', content: getPrompt('immersive.system', lang) },
       { role: 'user', content: JSON.stringify({ paragraphs: missing.map((i) => texts[i]) }) },
     ],
-    purpose: 'light',
     jsonMode: true,
     temperature: 0.3,
     signal,

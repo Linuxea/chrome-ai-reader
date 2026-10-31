@@ -53,10 +53,10 @@ export interface AIChatRequest {
   response_format?: ResponseFormat;
   temperature?: number;
   /**
-   * What the request is for. Routes 'light' work (titles, quizzes, …) to the
-   * optional fast model; 'agent' enables tool calling with the panel's tools.
+   * What the request is for. 'agent' enables tool calling with the panel's
+   * tools; 'chat' (the default) is a plain completion.
    */
-  purpose?: 'chat' | 'light' | 'agent';
+  purpose?: 'chat' | 'agent';
   /** Agent mode: tool definitions the panel can execute. */
   tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
 }

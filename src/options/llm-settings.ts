@@ -8,7 +8,6 @@ const modelNameInput = document.getElementById('modelName') as HTMLInputElement;
 const systemPromptInput = document.getElementById('systemPrompt') as HTMLTextAreaElement;
 const refreshModelsBtn = document.getElementById('refreshModelsBtn') as HTMLButtonElement;
 const providerSelect = document.getElementById('provider') as HTMLSelectElement | null;
-const fastModelInput = document.getElementById('fastModelName') as HTMLInputElement | null;
 const citationsBox = document.getElementById('citations') as HTMLInputElement | null;
 const agentModeBox = document.getElementById('agentMode') as HTMLInputElement | null;
 
@@ -49,7 +48,6 @@ export function loadLlmValues(data: Record<string, unknown>): void {
   if (data.modelName) modelNameInput.value = data.modelName as string;
   if (data.systemPrompt) systemPromptInput.value = data.systemPrompt as string;
   if (providerSelect && data.provider) providerSelect.value = data.provider as string;
-  if (fastModelInput && data.fastModelName) fastModelInput.value = data.fastModelName as string;
   if (citationsBox && data.citations !== undefined) citationsBox.checked = data.citations as boolean;
   if (agentModeBox && data.agentMode !== undefined) agentModeBox.checked = data.agentMode as boolean;
   syncProviderHints();
@@ -59,15 +57,14 @@ export function collectLlmSaveData(): { error?: string; set?: Record<string, str
   const apiKey = apiKeyInput.value.trim(); const apiBase = apiBaseInput.value.trim(); const modelName = modelNameInput.value.trim(); const systemPrompt = systemPromptInput.value.trim();
   if (!apiKey) return { error: t('error.noApiKeySave') };
   if (!apiKey.startsWith('sk-') && !apiBase) return { error: t('error.apiKeyHint') };
-  // visionEnabled / ocrApiKey: retired settings (the chat model is assumed
-  // multimodal, GLM-OCR was removed) — cleared from sync storage on save.
-  const set: Record<string, string | boolean> = { apiKey }; const remove: string[] = ['visionEnabled', 'ocrApiKey'];
+  // visionEnabled / ocrApiKey / fastModelName: retired settings (the chat
+  // model is assumed multimodal; GLM-OCR and the fast-model split were
+  // removed) — cleared from sync storage on save.
+  const set: Record<string, string | boolean> = { apiKey }; const remove: string[] = ['visionEnabled', 'ocrApiKey', 'fastModelName'];
   if (apiBase) set.apiBase = apiBase; else remove.push('apiBase');
   if (modelName) set.modelName = modelName; else remove.push('modelName');
   if (systemPrompt) set.systemPrompt = systemPrompt; else remove.push('systemPrompt');
   set.provider = currentProvider();
-  const fastModel = fastModelInput?.value.trim() ?? '';
-  if (fastModel) set.fastModelName = fastModel; else remove.push('fastModelName');
   if (citationsBox) set.citations = citationsBox.checked;
   if (agentModeBox) set.agentMode = agentModeBox.checked;
   return { set, remove };

@@ -10,8 +10,6 @@
  *   - bubble-ui:       getBubbleHost, createIconFor, IconHandle
  *   - orchestrator:    handleStartAnnotation, handleClearAnnotation, resetAnnotationState
  *   - styles:          ANNOTATION_CSS, injectAnnotationCSS
- *
- * Spec: docs/superpowers/specs/2026-06-20-deep-annotation-design.md
  */
 
 export {

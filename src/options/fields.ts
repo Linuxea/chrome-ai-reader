@@ -3,7 +3,6 @@ export const textFields: Record<string, HTMLInputElement | HTMLTextAreaElement |
   apiKey: document.getElementById('apiKey') as HTMLInputElement,
   apiBase: document.getElementById('apiBase') as HTMLInputElement,
   modelName: document.getElementById('modelName') as HTMLInputElement,
-  fastModelName: document.getElementById('fastModelName') as HTMLInputElement,
   systemPrompt: document.getElementById('systemPrompt') as HTMLTextAreaElement,
   ttsAppId: document.getElementById('ttsAppId') as HTMLInputElement,
   ttsAccessKey: document.getElementById('ttsAccessKey') as HTMLInputElement,

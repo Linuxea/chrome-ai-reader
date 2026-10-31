@@ -154,8 +154,7 @@ export type Result<T, E = Error> =
 
 /**
  * Deep annotation (深度批阅) — AI-generated deep-perspective annotations
- * attached to sentences in the page. See
- * docs/superpowers/specs/2026-06-20-deep-annotation-design.md
+ * attached to sentences in the page.
  */
 
 /** Three deep-perspective categories. */

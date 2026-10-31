@@ -23,7 +23,7 @@ describe('background/sw-translate', () => {
     vi.mocked(completeChat).mockResolvedValueOnce({ text: '{"translations":["你好","世界"]}', finishReason: 'stop' });
     expect(await translateBatch(['Hello', 'World'], 'zh')).toEqual(['你好', '世界']);
     expect(JSON.parse((vi.mocked(completeChat).mock.calls[0][0].messages[1].content) as string)).toEqual({ paragraphs: ['Hello', 'World'] });
-    expect(vi.mocked(completeChat).mock.calls[0][0]).toMatchObject({ purpose: 'light', jsonMode: true });
+    expect(vi.mocked(completeChat).mock.calls[0][0]).toMatchObject({ jsonMode: true });
 
     vi.mocked(completeChat).mockResolvedValueOnce({ text: '{"translations":["新的"]}', finishReason: 'stop' });
     expect(await translateBatch(['World', 'New'], 'zh')).toEqual(['世界', '新的']);

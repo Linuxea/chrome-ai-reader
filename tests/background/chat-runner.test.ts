@@ -73,11 +73,11 @@ describe('chat-runner streamToPort', () => {
     expect(posted).toEqual([{ type: 'error', errorKey: 'error.noApiKeySuggest' }]);
   });
 
-  it('routes light work to the fast model and anthropic settings to the anthropic provider', async () => {
-    Object.assign(settings, { provider: 'anthropic', fastModelName: 'claude-haiku-4-5' });
+  it('routes anthropic settings to the anthropic provider', async () => {
+    Object.assign(settings, { provider: 'anthropic' });
     scripts.push([{ type: 'finish', reason: 'stop' }]);
-    await streamToPort(mockPort(), { messages: [], purpose: 'light' });
-    expect(requests[0]).toMatchObject({ provider: 'anthropic', apiBase: 'https://api.anthropic.com', req: { model: 'claude-haiku-4-5' } });
+    await streamToPort(mockPort(), { messages: [] });
+    expect(requests[0]).toMatchObject({ provider: 'anthropic', apiBase: 'https://api.anthropic.com', req: { model: 'main-model' } });
   });
 
   it('gives up on a silent upstream after the idle timeout', async () => {

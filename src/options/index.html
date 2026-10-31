@@ -94,11 +94,6 @@
             <datalist id="model-list"></datalist>
             <p class="hint" data-i18n="settings.llm.model.hint">选择或输入要使用的模型名称。点击刷新按钮从当前 API 地址获取可用模型列表。上传和截图的图片会直接发给模型，请使用支持图片输入的多模态模型。</p>
           </div>
-          <div class="form-group">
-            <label for="fastModelName" data-i18n="settings.llm.fastModel">快速模型（可选）</label>
-            <input type="text" id="fastModelName" list="model-list" data-i18n-placeholder="settings.llm.fastModel.ph" placeholder="留空则全部使用上面的模型">
-            <p class="hint" data-i18n="settings.llm.fastModel.hint">推荐问题、标题、深度批阅、沉浸式翻译、测验等轻量任务使用这个更便宜更快的模型。</p>
-          </div>
           <label class="toggle-row">
             <span data-i18n="settings.llm.citations">回答附带原文引用（点击 [#N] 跳转到网页对应段落）</span>
             <input type="checkbox" id="citations" checked>

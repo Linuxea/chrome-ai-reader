@@ -86,9 +86,8 @@ interface AnnotateArgs {
 }
 
 /**
- * Annotate one chunk: a JSON-mode completion through the shared chat runner
- * ('light' purpose → the fast model when one is configured). Posts
- * `{type:'annotated', chunkIndex, annotations}` or `{type:'error', …}`.
+ * Annotate one chunk: a JSON-mode completion through the shared chat runner.
+ * Posts `{type:'annotated', chunkIndex, annotations}` or `{type:'error', …}`.
  * Aborts when the port disconnects.
  *
  * Providers that reject JSON mode are downgraded once and remembered by the
@@ -104,7 +103,6 @@ export async function annotateChunk(args: AnnotateArgs, port: chrome.runtime.Por
   try {
     const { text } = await completeChat({
       messages: buildAnnotationMessages(args, lang),
-      purpose: 'light',
       jsonMode: true,
       temperature: 0.7,
       signal: controller.signal,

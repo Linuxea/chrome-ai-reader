@@ -3,7 +3,7 @@
  * port, suggestions, podcast script, annotation, translation, quizzes — runs
  * through here, whatever the provider:
  *
- *   settings → provider + model (the optional fast model for 'light' work)
+ *   settings → provider + model
  *   → provider.stream() deltas → port messages / collected text
  *
  * It owns what used to be scattered or missing: abort on port disconnect,
@@ -37,7 +37,7 @@ export const TOOL_RESULTS_TIMEOUT_MS = 120_000;
 const TOOL_TRIM_KEEP_ROUNDS = 2;
 const TOOL_TRIM_EXCERPT = 500;
 
-export type Purpose = 'chat' | 'light' | 'agent';
+export type Purpose = 'chat' | 'agent';
 
 export interface RunOptions {
   messages: ChatMessage[];
@@ -59,13 +59,13 @@ interface Resolved {
 
 type ResolveResult = { ok: true; value: Resolved } | { ok: false; errorKey: string };
 
-export async function resolveProvider(purpose: Purpose = 'chat', noKeyErrorKey = 'error.noApiKey'): Promise<ResolveResult> {
+export async function resolveProvider(noKeyErrorKey = 'error.noApiKey'): Promise<ResolveResult> {
   const [s, stored] = await Promise.all([
-    readSettings(['provider', 'apiKey', 'modelName', 'fastModelName']),
+    readSettings(['provider', 'apiKey', 'modelName']),
     readStoredSettings(['apiBase']),
   ]);
   if (!s.apiKey) return { ok: false, errorKey: noKeyErrorKey };
-  const model = (purpose === 'light' && s.fastModelName) ? s.fastModelName : s.modelName;
+  const model = s.modelName;
   if (!model) return { ok: false, errorKey: 'error.noModelName' };
   const anthropic = s.provider === 'anthropic';
   const apiBase = (stored.apiBase || (anthropic ? DEFAULT_ANTHROPIC_API_BASE : DEFAULT_API_BASE)).replace(/\/+$/, '');
@@ -147,7 +147,7 @@ function trimOldToolResults(messages: ChatMessage[]): void {
  * may appear in between; the run then waits for the panel's `tool_results`.
  */
 export async function streamToPort(port: chrome.runtime.Port, opts: RunOptions): Promise<void> {
-  const resolved = await resolveProvider(opts.purpose, opts.noKeyErrorKey);
+  const resolved = await resolveProvider(opts.noKeyErrorKey);
   if (!resolved.ok) { safePostMessage(port, { type: 'error', errorKey: resolved.errorKey }); return; }
   const { provider, config, model } = resolved.value;
 
@@ -220,7 +220,7 @@ export interface CompleteResult {
  * translation and other batch work. Throws on error; `signal` cancels.
  */
 export async function completeChat(opts: RunOptions & { signal?: AbortSignal }): Promise<CompleteResult> {
-  const resolved = await resolveProvider(opts.purpose, opts.noKeyErrorKey);
+  const resolved = await resolveProvider(opts.noKeyErrorKey);
   if (!resolved.ok) throw Object.assign(new Error(resolved.errorKey), { errorKey: resolved.errorKey });
   const { provider, config, model } = resolved.value;
   const controller = new AbortController();

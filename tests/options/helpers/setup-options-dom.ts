@@ -16,7 +16,7 @@
 
 /** IDs of all input/textarea elements used across options modules */
 const TEXT_INPUT_IDS = [
-  'apiKey', 'apiBase', 'modelName', 'fastModelName', 'systemPrompt',
+  'apiKey', 'apiBase', 'modelName', 'systemPrompt',
   'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'podcastResourceId', 'ttsSpeaker',
 ] as const;
 
