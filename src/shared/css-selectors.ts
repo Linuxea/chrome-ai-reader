@@ -15,6 +15,9 @@ export const CSS = {
   TTS_LOADING: '.tts-loading',
   TTS_DOWNLOAD_BTN: '.tts-download-btn',
 
+  // Share image (F14)
+  SHARE_IMAGE_BTN: '.share-image-btn',
+
   // Images
   IMAGE_PREVIEW_ITEM: '.image-preview-item',
   IMAGE_THUMB: '.image-thumb',

@@ -18,6 +18,8 @@ export function createTTSButtons(msgEl: HTMLElement, deps: TTSButtonDeps): void 
   if (prevDownload) prevDownload.remove();
   const prevCopy = msgEl.querySelector(CSS.AI_ACTION_BTN);
   if (prevCopy) prevCopy.remove();
+  const prevShare = msgEl.querySelector(CSS.SHARE_IMAGE_BTN);
+  if (prevShare) prevShare.remove();
 
   // Copy button
   const copyBtn = document.createElement('button');
@@ -64,4 +66,12 @@ export function createTTSButtons(msgEl: HTMLElement, deps: TTSButtonDeps): void 
   dlBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
   dlBtn.addEventListener('click', () => deps.onDownload(msgEl));
   msgEl.appendChild(dlBtn);
+
+  // F14 share-as-image button — pure DOM, no callback: features/share-image
+  // wires clicks via delegation on the chat area (ui stays a leaf layer).
+  const shareBtn = document.createElement('button');
+  shareBtn.className = CSS.SHARE_IMAGE_BTN.replace('.', '');
+  shareBtn.title = t('action.shareImage');
+  shareBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
+  msgEl.appendChild(shareBtn);
 }

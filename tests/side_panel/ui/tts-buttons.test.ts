@@ -12,6 +12,7 @@ vi.mock('../../../src/shared/css-selectors.js', () => ({
     TTS_BTN: '.tts-btn',
     TTS_DOWNLOAD_BTN: '.tts-download-btn',
     AI_ACTION_BTN: '.ai-action-btn',
+    SHARE_IMAGE_BTN: '.share-image-btn',
     THINKING_CONTENT: '.thinking-response-content',
     TTS_PLAYING: '.tts-playing',
     TTS_LOADING: '.tts-loading',
@@ -37,6 +38,20 @@ describe('ui/tts-buttons', () => {
     expect(msgEl.querySelector('.ai-action-btn')).toBeTruthy();
     expect(msgEl.querySelector('.tts-btn')).toBeTruthy();
     expect(msgEl.querySelector('.tts-download-btn')).toBeTruthy();
+  });
+
+  // F14 / R-01: the share-as-image button rides the same action row. Pure
+  // DOM — no callback dispatch; features/share-image wires it via delegation.
+  it('creates the share image button (F14), after the download button', () => {
+    createTTSButtons(msgEl, { onToggleTTS, onDownload });
+    const shareBtn = msgEl.querySelector('.share-image-btn');
+    expect(shareBtn).toBeTruthy();
+    expect(shareBtn!.title).toBe('[action.shareImage]');
+    expect(msgEl.lastElementChild).toBe(shareBtn);
+    // No ui-layer wiring: clicking must not dispatch TTS/download callbacks.
+    (shareBtn as HTMLButtonElement).click();
+    expect(onToggleTTS).not.toHaveBeenCalled();
+    expect(onDownload).not.toHaveBeenCalled();
   });
 
   it('removes existing buttons before adding new ones', () => {

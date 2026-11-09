@@ -10,7 +10,8 @@
     "storage",
     "tabs",
     "contextMenus",
-    "declarativeNetRequestWithHostAccess"
+    "declarativeNetRequestWithHostAccess",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "<all_urls>"

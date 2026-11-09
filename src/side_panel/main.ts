@@ -24,6 +24,7 @@ import { initPodcast, handlePodcastClick } from './features/podcast/index.js';
 import { initMiniPlayer } from './features/podcast/mini-player.js';
 import { initAnnotation } from './features/annotation';
 import { initCitations } from './features/citations';
+import { initShareImage } from './features/share-image';
 import { initTabContext } from './features/tab-context';
 import { initNotes } from './features/notes';
 import { initPanelActions } from './features/panel-actions';
@@ -125,6 +126,7 @@ async function init(): Promise<void> {
   initPodcast({ chatArea: els.chatArea });
   initMiniPlayer();
   initCitations({ chatArea: els.chatArea });
+  initShareImage({ chatArea: els.chatArea });
   initImmersive({ button: document.getElementById('immersiveBtn') });
   initQuiz({ button: document.getElementById('quizBtn'), chatArea: els.chatArea });
   initNotes({

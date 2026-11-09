@@ -16,7 +16,8 @@ vi.mock('../../../src/shared/format.js', () => ({
   formatDate: (ts) => `formatted:${ts}`,
 }));
 
-vi.mock('../../../src/shared/download.js', () => ({
+vi.mock('../../../src/shared/download.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   downloadFile: vi.fn(),
 }));
 

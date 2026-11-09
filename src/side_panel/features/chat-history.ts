@@ -1,7 +1,7 @@
 import { t } from '../../shared/i18n.js';
 import { escapeHtml } from '../../shared/constants';
 import { formatDate, formatDateTime, formatDateOnly } from '../../shared/format';
-import { downloadFile } from '../../shared/download';
+import { downloadFile, sanitizeFilename } from '../../shared/download';
 import * as state from '../state';
 import { scrollToBottom } from '../ui/dom-helpers';
 import { showToast } from '../ui/toast';
@@ -326,9 +326,9 @@ export async function renderHistoryList(): Promise<void> {
   });
 }
 
-export function sanitizeFilename(title: string): string {
-  return title.replace(/[/\\:*?"<>|\n\r]/g, '_').slice(0, 30);
-}
+// Moved to shared/download.ts (F14 share images build filenames with it too);
+// re-exported here for existing callers/tests.
+export { sanitizeFilename };
 
 export function stripHtml(html: string): string {
   return parseInertHtml(html).content.textContent || '';
