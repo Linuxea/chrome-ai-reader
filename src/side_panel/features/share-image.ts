@@ -74,8 +74,10 @@ async function handleShareClick(btn: HTMLElement): Promise<void> {
     const card = buildFittedCard({ question, pageTitle, date: formatDateOnly(new Date()), accent, markdown });
     const png = await rasterizeElement(card.el, card.width, card.height);
     openShareModal(png, buildShareFilename(pageTitle));
-  } catch {
-    // E-02: rasterization failed — toast, modal never opens.
+  } catch (err) {
+    // E-02: rasterization failed — toast, modal never opens. Log it: this
+    // path cannot run in jsdom, so real-machine failures are silent without it.
+    console.error('[share-image] rasterization failed:', err);
     showToast(t('share.failed'), 2500);
   } finally {
     delete btn.dataset.generating;
