@@ -164,14 +164,15 @@ describe('services/stream-handler', () => {
       await callAI([{ role: 'user', content: 'q' }], 1, { agent: true });
       expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'agent', tools: expect.any(Array) }));
 
-      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'search_page', arguments: '{"query":"x"}' }], assistant: { role: 'assistant', content: '' } });
+      port._simulateMessage({ type: 'agent_round', round: 1 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c1', name: 'search_page', arguments: '{"query":"x"}' } });
       await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith({
-        type: 'tool_results', results: [{ tool_call_id: 'c1', name: 'search_page', content: 'tool output' }],
+        type: 'tool_result', toolCallId: 'c1', name: 'search_page', content: 'tool output',
       }));
       expect(runAgentTool).toHaveBeenCalledWith('search_page', '{"query":"x"}', 1);
     });
 
-    it('runs one round\'s calls in parallel and posts the results in call order', async () => {
+    it('answers each call independently as it completes (parallel round)', async () => {
       vi.mocked(runAgentTool)
         .mockImplementationOnce(async () => {
           await new Promise((r) => setTimeout(r, 30));
@@ -180,30 +181,28 @@ describe('services/stream-handler', () => {
         .mockImplementationOnce(async () => 'fast');
       await callAI([], 1, { agent: true });
 
-      port._simulateMessage({
-        type: 'tool_calls',
-        calls: [
-          { id: 'c1', name: 'search_page', arguments: '{}' },
-          { id: 'c2', name: 'read_paragraphs', arguments: '{}' },
-        ],
-      });
-      // The fast call finishes first, but results keep the model's call order.
+      port._simulateMessage({ type: 'agent_round', round: 1 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c1', name: 'search_page', arguments: '{}' } });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c2', name: 'read_paragraphs', arguments: '{}' } });
+      // The fast call's result goes out first; the slow one follows. The
+      // worker keys results by toolCallId, so completion order is fine.
       await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith({
-        type: 'tool_results',
-        results: [
-          { tool_call_id: 'c1', name: 'search_page', content: 'slow' },
-          { tool_call_id: 'c2', name: 'read_paragraphs', content: 'fast' },
-        ],
+        type: 'tool_result', toolCallId: 'c2', name: 'read_paragraphs', content: 'fast',
+      }));
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith({
+        type: 'tool_result', toolCallId: 'c1', name: 'search_page', content: 'slow',
       }));
     });
 
     it('separates loop rounds with a header line from round 2 on', async () => {
       document.body.innerHTML = '';
       await callAI([], 1, { agent: true });
-      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'search_page', arguments: '{}' }] });
-      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
-      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c2', name: 'search_page', arguments: '{}' }] });
-      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledTimes(3)); // chat + 2× results
+      port._simulateMessage({ type: 'agent_round', round: 1 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c1', name: 'search_page', arguments: '{}' } });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_result' })));
+      port._simulateMessage({ type: 'agent_round', round: 2 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c2', name: 'search_page', arguments: '{}' } });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ toolCallId: 'c2' })));
 
       const rounds = document.querySelectorAll('.agent-round');
       expect(rounds).toHaveLength(1); // no header for the first round
@@ -213,8 +212,9 @@ describe('services/stream-handler', () => {
 
     it('persists the executed tools as an agentTrace on the answer', async () => {
       await callAI([], 1, { agent: true });
-      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'search_page', arguments: '{"query":"x"}' }] });
-      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'agent_round', round: 1 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c1', name: 'search_page', arguments: '{"query":"x"}' } });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_result' })));
       port._simulateMessage({ type: 'chunk', content: 'answer' });
       port._simulateMessage({ type: 'done' });
 
@@ -234,14 +234,10 @@ describe('services/stream-handler', () => {
         })
         .mockImplementationOnce(async () => 'fast');
       await callAI([], 1, { agent: true });
-      port._simulateMessage({
-        type: 'tool_calls',
-        calls: [
-          { id: 'c1', name: 'search_page', arguments: '{"query":"a"}' },
-          { id: 'c2', name: 'search_page', arguments: '{"query":"b"}' },
-        ],
-      });
-      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'agent_round', round: 1 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c1', name: 'search_page', arguments: '{"query":"a"}' } });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c2', name: 'search_page', arguments: '{"query":"b"}' } });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_result' })));
       port._simulateMessage({ type: 'chunk', content: 'answer' });
       port._simulateMessage({ type: 'done' });
 
@@ -260,8 +256,9 @@ describe('services/stream-handler', () => {
       vi.mocked(runAgentTool).mockResolvedValueOnce('tab content');
 
       await callAI([], 1, { agent: true });
-      port._simulateMessage({ type: 'tool_calls', calls: [{ id: 'c1', name: 'read_tab', arguments: '{"tab_id":5}' }] });
-      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_results' })));
+      port._simulateMessage({ type: 'agent_round', round: 1 });
+      port._simulateMessage({ type: 'tool_call', call: { id: 'c1', name: 'read_tab', arguments: '{"tab_id":5}' } });
+      await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_result' })));
       port._simulateMessage({ type: 'chunk', content: 'a' });
       port._simulateMessage({ type: 'done' });
 

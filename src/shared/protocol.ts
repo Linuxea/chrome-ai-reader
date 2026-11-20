@@ -13,8 +13,9 @@
  * request/response message types. Background handlers and clients must both
  * import from here.
  *
- * Reserved-for-future (agent) message kinds are declared but commented out —
- * see Phase 6 of the refactor plan. They are intentionally NOT wired yet.
+ * Agent wire (see background/agent-runner.ts): `agent_round` + `tool_call`
+ * (worker → panel, once per LLM step that requests tools / once per call)
+ * and `tool_result` (panel → worker, one per call).
  */
 
 import type { ChatMessage, ToolCall } from './types';
@@ -82,15 +83,23 @@ export type StreamMessage =
   | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }
   | { type: 'error'; error?: string; errorKey?: string }
   /**
-   * Agent mode: the model asked for tools. The panel runs them and answers
-   * on the same port with a ToolResultsMessage; the worker then continues.
+   * Agent mode: a new round (LLM step) is requesting tools. Sent once per
+   * round, before that round's `tool_call` messages; `round` is 1-based.
    */
-  | { type: 'tool_calls'; calls: ToolCall[] };
+  | { type: 'agent_round'; round: number }
+  /**
+   * Agent mode: the model asked for one tool. The panel runs it and answers
+   * on the same port with a ToolResultMessage. One message per call — calls
+   * of a round arrive (and may complete) in any order.
+   */
+  | { type: 'tool_call'; call: ToolCall };
 
-/** Panel → worker on the ai-chat port, answering a `tool_calls` message. */
-export interface ToolResultsMessage {
-  type: 'tool_results';
-  results: { tool_call_id: string; name: string; content: string }[];
+/** Panel → worker on the ai-chat port: the result of one `tool_call`. */
+export interface ToolResultMessage {
+  type: 'tool_result';
+  toolCallId: string;
+  name: string;
+  content: string;
 }
 
 // ---------------------------------------------------------------------------

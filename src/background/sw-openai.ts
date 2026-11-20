@@ -1,4 +1,5 @@
 import { streamToPort, type Purpose } from './chat-runner';
+import { streamAgentToPort } from './agent-runner';
 import type { ToolSpec } from './providers/types';
 import type { ChatMessage } from '../shared/types';
 
@@ -6,22 +7,25 @@ import type { ChatMessage } from '../shared/types';
 interface StreamOptions {
   response_format?: Record<string, unknown>;
   temperature?: number;
-  /** 'agent' forwards tool calling to the runner; 'chat' is a plain completion. */
+  /** 'agent' runs the AI SDK tool loop (agent-runner.ts); 'chat' is a plain completion. */
   purpose?: Purpose;
   tools?: ToolSpec[];
 }
 
 /**
  * Chat port (and podcast script): stream an answer, reasoning included.
- * Provider, model routing, timeouts and usage live in chat-runner.ts.
+ * Provider, model routing, timeouts and usage live in chat-runner.ts; the
+ * agent tool loop lives in agent-runner.ts (Vercel AI SDK).
  */
 export async function callOpenAI(messages: ChatMessage[], port: chrome.runtime.Port, options?: StreamOptions): Promise<void> {
+  if (options?.purpose === 'agent') {
+    await streamAgentToPort(port, { messages, tools: options.tools ?? [], temperature: options.temperature });
+    return;
+  }
   await streamToPort(port, {
     messages,
-    purpose: options?.purpose,
     temperature: options?.temperature,
     jsonMode: options?.response_format?.type === 'json_object',
-    tools: options?.tools,
     emitThinking: true,
   });
 }

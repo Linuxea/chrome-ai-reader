@@ -1,50 +1,38 @@
 /**
- * The one chat pipeline in the service worker. Every model call — the chat
- * port, suggestions, podcast script, annotation, translation, quizzes — runs
- * through here, whatever the provider:
+ * The one chat pipeline in the service worker for plain (non-agent) chat.
+ * Every model call — the chat port, suggestions, podcast script,
+ * annotation, translation, quizzes — runs through here, whatever the
+ * provider:
  *
  *   settings → provider + model
  *   → provider.stream() deltas → port messages / collected text
  *
  * It owns what used to be scattered or missing: abort on port disconnect,
  * an idle watchdog (a silent upstream no longer leaves the panel
- * "generating" forever), finish reason + token usage on `done`, usage
- * accounting, and the agent tool loop (tools run in the side panel; the
- * worker waits for their results on the same port).
+ * "generating" forever), finish reason + token usage on `done`, and usage
+ * accounting. The agent tool loop (F11) lives in agent-runner.ts on the
+ * Vercel AI SDK.
  */
 
 import { safePostMessage } from './sw-utils';
 import { readSettings, readStoredSettings, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
-import type { ChatMessage, ToolCall } from '../shared/types';
-import type { FinishReason, TokenUsage, ToolResultsMessage } from '../shared/protocol';
-import type { ChatProvider, ChatRequest, ProviderConfig, ToolSpec } from './providers/types';
+import type { ChatMessage } from '../shared/types';
+import type { FinishReason, TokenUsage } from '../shared/protocol';
+import type { ChatProvider, ChatRequest, ProviderConfig } from './providers/types';
 import { openaiProvider } from './providers/openai';
 import { anthropicProvider } from './providers/anthropic';
 import { recordUsage } from './usage';
 
 /** No bytes from the model for this long → give up with error.streamTimeout. */
 export const IDLE_TIMEOUT_MS = 90_000;
-/** Agent mode: model ↔ tools round trips per user turn. */
-export const AGENT_MAX_STEPS = 6;
-/** Agent mode: give the panel this long to run its tools before giving up. */
-export const TOOL_RESULTS_TIMEOUT_MS = 120_000;
-/**
- * Agent mode context trimming: `role: 'tool'` results from rounds older than
- * the last TOOL_TRIM_KEEP_ROUNDS are shortened to TOOL_TRIM_EXCERPT chars —
- * full results pile up in every next request; old ones only need to remind
- * the model what it already learned.
- */
-const TOOL_TRIM_KEEP_ROUNDS = 2;
-const TOOL_TRIM_EXCERPT = 500;
 
+/** Labels the ai-chat request kind; 'agent' is routed to agent-runner.ts. */
 export type Purpose = 'chat' | 'agent';
 
 export interface RunOptions {
   messages: ChatMessage[];
-  purpose?: Purpose;
   temperature?: number;
   jsonMode?: boolean;
-  tools?: ToolSpec[];
   /** Forward reasoning as `thinking` messages (chat UI) — off for suggestions. */
   emitThinking?: boolean;
   /** errorKey for a missing API key (suggestions use their own wording). */
@@ -87,64 +75,9 @@ function idleWatchdog(controller: AbortController): { kick: () => void; pause: (
   return { kick, pause: stop, stop, fired: () => didFire };
 }
 
-const sum = (a: TokenUsage | undefined, b: TokenUsage | undefined): TokenUsage | undefined =>
-  !a ? b : !b ? a : { inputTokens: a.inputTokens + b.inputTokens, outputTokens: a.outputTokens + b.outputTokens };
-
-/**
- * Wait for the panel's tool results (agent mode). Resolves `null` if the
- * port closes (panel gone) and `'timeout'` if the panel's tools never answer
- * — a hung tab must not leave the stream spinning forever.
- */
-function awaitToolResults(port: chrome.runtime.Port): Promise<ToolResultsMessage | null | 'timeout'> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => { cleanup(); resolve('timeout'); }, TOOL_RESULTS_TIMEOUT_MS);
-    const onMsg = (msg: { type?: string }) => {
-      if (msg?.type !== 'tool_results') return;
-      cleanup();
-      resolve(msg as ToolResultsMessage);
-    };
-    const onGone = () => { cleanup(); resolve(null); };
-    const cleanup = () => {
-      clearTimeout(timer);
-      port.onMessage.removeListener(onMsg);
-      port.onDisconnect.removeListener(onGone);
-    };
-    port.onMessage.addListener(onMsg);
-    port.onDisconnect.addListener(onGone);
-  });
-}
-
-/**
- * Shorten `role: 'tool'` results from agent rounds older than the last
- * TOOL_TRIM_KEEP_ROUNDS. A round = a contiguous run of tool messages (the
- * results of one assistant tool_calls turn). Mutates `messages` in place;
- * only called between rounds, never on the request in flight.
- */
-function trimOldToolResults(messages: ChatMessage[]): void {
-  const rounds: number[][] = [];
-  for (let i = 0; i < messages.length; i++) {
-    if (messages[i].role !== 'tool') continue;
-    const prev = messages[i - 1];
-    if (!prev || prev.role !== 'tool') rounds.push([]);
-    rounds[rounds.length - 1].push(i);
-  }
-  const keep = rounds.slice(-TOOL_TRIM_KEEP_ROUNDS);
-  const keepSet = new Set(keep.flatMap((idx) => idx));
-  for (const round of rounds) {
-    for (const i of round) {
-      if (keepSet.has(i)) continue;
-      const m = messages[i];
-      if (typeof m.content === 'string' && m.content.length > TOOL_TRIM_EXCERPT) {
-        m.content = m.content.slice(0, TOOL_TRIM_EXCERPT) + '\n[earlier tool result omitted]';
-      }
-    }
-  }
-}
-
 /**
  * Stream a chat to a port: `thinking` / `chunk` messages while generating,
- * then exactly one `done` or `error`. In agent mode a `tool_calls` message
- * may appear in between; the run then waits for the panel's `tool_results`.
+ * then exactly one `done` or `error`.
  */
 export async function streamToPort(port: chrome.runtime.Port, opts: RunOptions): Promise<void> {
   const resolved = await resolveProvider(opts.noKeyErrorKey);
@@ -157,48 +90,22 @@ export async function streamToPort(port: chrome.runtime.Port, opts: RunOptions):
   port.onDisconnect.addListener(onDisconnect);
   const watchdog = idleWatchdog(controller);
 
-  const messages = [...opts.messages];
   let usage: TokenUsage | undefined;
   let finish: FinishReason = 'stop';
-  /** Set when the agent loop ended at AGENT_MAX_STEPS (not a token limit). */
-  let hitStepLimit = false;
-  const tools = opts.purpose === 'agent' ? opts.tools : undefined;
 
   try {
-    for (let step = 0; ; step++) {
-      const req: ChatRequest = { model, messages, temperature: opts.temperature, jsonMode: opts.jsonMode, tools };
-      const calls: ToolCall[] = [];
-      let text = '';
-      let providerContent: unknown;
+    const req: ChatRequest = { model, messages: [...opts.messages], temperature: opts.temperature, jsonMode: opts.jsonMode };
+    watchdog.kick();
+    for await (const delta of provider.stream(config, req, controller.signal)) {
       watchdog.kick();
-      for await (const delta of provider.stream(config, req, controller.signal)) {
-        watchdog.kick();
-        if (delta.type === 'text') { text += delta.text; safePostMessage(port, { type: 'chunk', content: delta.text }); }
-        else if (delta.type === 'thinking') { if (opts.emitThinking !== false) safePostMessage(port, { type: 'thinking', content: delta.text }); }
-        else if (delta.type === 'tool_call') calls.push(delta.call);
-        else if (delta.type === 'finish') { finish = delta.reason; usage = sum(usage, delta.usage); providerContent = delta.providerContent; }
-      }
-      watchdog.pause();
-
-      // Tools only when the turn completed normally: a max_tokens cut can
-      // leave a tool input truncated, and a refusal is never acted on.
-      if (!tools || finish !== 'tool_calls' || calls.length === 0) break;
-      if (step + 1 >= AGENT_MAX_STEPS) { finish = 'length'; hitStepLimit = true; break; }
-
-      const assistant: ChatMessage = { role: 'assistant', content: text, tool_calls: calls, providerContent };
-      safePostMessage(port, { type: 'tool_calls', calls });
-      const results = await awaitToolResults(port);
-      if (!results) return; // panel went away
-      if (results === 'timeout') {
-        safePostMessage(port, { type: 'error', errorKey: 'error.streamTimeout' });
-        return;
-      }
-      messages.push(assistant);
-      for (const r of results.results) messages.push({ role: 'tool', tool_call_id: r.tool_call_id, name: r.name, content: r.content });
-      trimOldToolResults(messages);
+      if (delta.type === 'text') { safePostMessage(port, { type: 'chunk', content: delta.text }); }
+      else if (delta.type === 'thinking') { if (opts.emitThinking !== false) safePostMessage(port, { type: 'thinking', content: delta.text }); }
+      else if (delta.type === 'finish') { finish = delta.reason; usage = delta.usage; }
     }
+    watchdog.pause();
+
     if (usage) recordUsage(model, usage);
-    safePostMessage(port, { type: 'done', finishReason: finish, usage, model, ...(hitStepLimit ? { limit: 'steps' } : {}) });
+    safePostMessage(port, { type: 'done', finishReason: finish, usage, model });
   } catch (e: unknown) {
     if (portGone) return;
     if (watchdog.fired()) { safePostMessage(port, { type: 'error', errorKey: 'error.streamTimeout' }); return; }

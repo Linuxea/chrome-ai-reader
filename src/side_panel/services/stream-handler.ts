@@ -176,9 +176,12 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
       if (isTTSAutoPlay()) {
         ttsAppendChunk(msg.content || '');
       }
-    } else if (msg.type === 'tool_calls') {
+    } else if (msg.type === 'agent_round') {
       removeTypingIndicator(typingEl);
-      void runToolCalls(msg.calls);
+      handleAgentRound(msg.round);
+    } else if (msg.type === 'tool_call') {
+      removeTypingIndicator(typingEl);
+      void handleAgentToolCall(msg.call);
     } else if (msg.type === 'done') {
       finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, limit: msg.limit });
     } else if (msg.type === 'error') {
@@ -191,46 +194,57 @@ export async function callAI(messages: ChatMessage[], tabId: number | null, opti
   });
 
   /**
-   * Agent mode: show each step, run the tools here, send the results back.
-   * Lines are created up-front so display order is stable while executions
-   * run in parallel and light up independently. Trace entries are collected
-   * by call position and pushed in order after the round, so the persisted
-   * trail matches the live display even when tools finish out of order.
+   * Agent mode (one message per tool call — the worker's AI SDK loop may
+   * run a round's calls in parallel and they complete in any order):
+   * - step lines are appended in message order, so display order is
+   *   stable while executions light up independently;
+   * - trace entries are flushed in call order (a done map behind an
+   *   arrival-order queue), so the persisted trail matches the live
+   *   display even when tools finish out of order.
    */
-  async function runToolCalls(calls: ToolCall[]): Promise<void> {
-    agentRound++;
-    let steps = msgEl.querySelector<HTMLElement>('.agent-steps');
-    if (!steps) {
-      steps = document.createElement('div');
-      steps.className = 'agent-steps';
-      msgEl.insertBefore(steps, msgEl.firstChild);
-    }
-    if (agentRound > 1) steps.appendChild(createAgentRoundHeader(agentRound));
+  let agentSteps: HTMLElement | null = null;
+  const traceQueue: string[] = [];
+  const traceDone = new Map<string, AgentTraceStep>();
 
-    type Result = { tool_call_id: string; name: string; content: string };
-    const results: (Result | undefined)[] = new Array(calls.length);
-    const entries: (AgentTraceStep | undefined)[] = new Array(calls.length);
-    await Promise.all(calls.map(async (call, i) => {
-      const line = createAgentStepLine(call.name, describeArgs(call.arguments));
-      steps!.appendChild(line);
-      // read_tab: resolve the tab's title in parallel with the tool run — it
-      // feeds both the live line and the persisted trace entry.
-      const titlePromise = call.name === 'read_tab' ? readTabTitle(call.arguments) : null;
-      if (titlePromise) void titlePromise.then((title) => {
-        if (title && !finished) line.textContent = t('agent.step', { tool: agentToolLabel(call.name), args: title });
-      });
-      const content = await runAgentTool(call.name, call.arguments, tabId!);
-      const tabTitle = titlePromise ? await titlePromise : null;
-      if (finished) return;
-      const argsText = tabTitle ?? describeArgs(call.arguments);
-      line.classList.add('done');
-      attachStepResult(line, content);
-      results[i] = { tool_call_id: call.id, name: call.name, content };
-      entries[i] = { name: call.name, args: argsText, result: excerptResult(content), round: agentRound };
-    }));
+  function pushTraceEntry(callId: string, step: AgentTraceStep): void {
+    traceDone.set(callId, step);
+    while (traceQueue.length > 0 && traceDone.has(traceQueue[0])) {
+      const next = traceQueue.shift()!;
+      agentTrace.push(traceDone.get(next)!);
+      traceDone.delete(next);
+    }
+  }
+
+  function handleAgentRound(round: number): void {
+    agentRound = round;
+    if (!agentSteps) {
+      agentSteps = document.createElement('div');
+      agentSteps.className = 'agent-steps';
+      msgEl.insertBefore(agentSteps, msgEl.firstChild);
+    }
+    if (round > 1) agentSteps.appendChild(createAgentRoundHeader(round));
+  }
+
+  /** Run one tool call and answer the worker on the same port. */
+  async function handleAgentToolCall(call: ToolCall): Promise<void> {
+    if (!agentSteps) handleAgentRound(agentRound || 1);
+    traceQueue.push(call.id);
+    const line = createAgentStepLine(call.name, describeArgs(call.arguments));
+    agentSteps!.appendChild(line);
+    // read_tab: resolve the tab's title in parallel with the tool run — it
+    // feeds both the live line and the persisted trace entry.
+    const titlePromise = call.name === 'read_tab' ? readTabTitle(call.arguments) : null;
+    if (titlePromise) void titlePromise.then((title) => {
+      if (title && !finished) line.textContent = t('agent.step', { tool: agentToolLabel(call.name), args: title });
+    });
+    const content = await runAgentTool(call.name, call.arguments, tabId!);
+    const tabTitle = titlePromise ? await titlePromise : null;
     if (finished) return;
-    agentTrace.push(...entries.filter((e): e is AgentTraceStep => e !== undefined));
-    try { port.postMessage({ type: 'tool_results', results: results.filter((r): r is Result => r !== undefined) }); } catch { /* stream ended */ }
+    const argsText = tabTitle ?? describeArgs(call.arguments);
+    line.classList.add('done');
+    attachStepResult(line, content);
+    pushTraceEntry(call.id, { name: call.name, args: argsText, result: excerptResult(content), round: agentRound });
+    try { port.postMessage({ type: 'tool_result', toolCallId: call.id, name: call.name, content }); } catch { /* stream ended */ }
   }
 
   /** Look up a tab's title for the step display; null when unavailable. */
