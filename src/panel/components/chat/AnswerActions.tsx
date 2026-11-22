@@ -9,7 +9,7 @@ import { t } from '@/shared/i18n.js';
  * TTS button state is DERIVED from the window-global playback origin — no
  * DOM anchor, so tab switches / re-renders can never lose it.
  */
-export function AnswerActions({ msgId, markdown, onShare }: { msgId: string; markdown: string; onShare?: () => void }) {
+export function AnswerActions({ msgId, markdown, tabId, onShare }: { msgId: string; markdown: string; tabId: number | null; onShare?: () => void }) {
   const [copied, setCopied] = useState(false);
   const playing = useTTSStore(s => s.playing);
   const audioStarted = useTTSStore(s => s.audioStarted);
@@ -34,7 +34,7 @@ export function AnswerActions({ msgId, markdown, onShare }: { msgId: string; mar
       </button>
       <button
         className={`answer-action${thisTTS ? (audioStarted ? ' tts-on' : ' tts-loading') : ''}`}
-        onClick={() => handleTTSButtonClick({ tabId: origin.tabId, msgId, markdown })}
+        onClick={() => handleTTSButtonClick({ tabId, msgId, markdown })}
         title={t('action.tts')}
       >
         <Volume2 size={13} />
@@ -42,13 +42,13 @@ export function AnswerActions({ msgId, markdown, onShare }: { msgId: string; mar
       <button
         className={`answer-action${thisDownloading ? ' tts-loading' : ''}`}
         disabled={thisDownloading}
-        onClick={() => handleTTSDownloadClick({ tabId: origin.tabId, msgId, markdown })}
+        onClick={() => handleTTSDownloadClick({ tabId, msgId, markdown })}
         title={thisDownloading ? t('status.ttsDownloading') : t('action.ttsDownload')}
       >
         <Download size={13} />
       </button>
       {onShare && (
-        <button className="answer-action" onClick={onShare} title={t('share.button')}>
+        <button className="answer-action" onClick={onShare} title={t('action.shareImage')}>
           <Share2 size={13} />
         </button>
       )}

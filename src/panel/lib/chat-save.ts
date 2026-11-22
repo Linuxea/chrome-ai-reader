@@ -21,6 +21,8 @@ import {
 import * as core from '@/panel/state';
 import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
+import { useStreamStore } from '@/panel/stores/stream-store';
+import { removeSuggestions } from './suggest';
 
 export type { ChatHistoryEntry };
 
@@ -43,8 +45,14 @@ export function displayMessagesFromHistory(history: ChatMessage[]): DisplayMessa
 
 let _saveQueue: Promise<void> = Promise.resolve();
 
-export function saveCurrentChat(): Promise<void> {
-  const tabId = core.getActiveTabId();
+/**
+ * Snapshot + persist one tab's chat. Defaults to the active tab; the stream
+ * controller passes the STREAM's tab explicitly (an answer finishing in a
+ * background tab must save THAT tab's chat — the active tab's snapshot
+ * would be the wrong conversation, or empty → early-return → answer lost).
+ */
+export function saveCurrentChat(tabIdArg?: number): Promise<void> {
+  const tabId = tabIdArg ?? core.getActiveTabId();
   const ts = tabId != null ? core.getStateForTab(tabId) : null;
   if (!ts) return _saveQueue;
   const messages = displayMessagesFromHistory(ts.conversationHistory);
@@ -136,6 +144,15 @@ export async function loadChat(id: string): Promise<boolean> {
   if (!chat) return false;
 
   const store = useTabsStore.getState();
+  const tabId = core.getActiveTabId();
+  // The outgoing conversation's quote / suggestion chips / live stream
+  // leftovers must not bleed into the loaded chat (legacy handleLoadChat
+  // cleared them too).
+  store.setSelectedText('');
+  if (tabId != null) {
+    removeSuggestions(tabId);
+    useStreamStore.getState().clear(tabId);
+  }
   // History-first render (same path as a tab switch): user bubbles come
   // back with their original text/quote and working retry/edit.
   store.setPageTitle(chat.pageTitle || '');

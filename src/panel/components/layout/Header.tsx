@@ -1,7 +1,9 @@
 import { MessageSquarePlus, Moon, Sun, Settings as SettingsIcon, History, StickyNote } from 'lucide-react';
 import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
+import { useComposerStore } from '@/panel/stores/composer-store';
 import { saveCurrentChat } from '@/panel/lib/chat-save';
+import { removeSuggestions } from '@/panel/lib/suggest';
 import { applyTheme, getThemeState } from '@/shared/theme';
 import { t } from '@/shared/i18n.js';
 
@@ -21,6 +23,13 @@ export function Header() {
       return;
     }
     void saveCurrentChat();
+    // Legacy newChat also dropped the outgoing conversation's suggestion
+    // chips and pending image previews — they must not leak into the new
+    // chat (a stray chip would fill the input with the OLD page's question;
+    // a pending image would silently ride the new chat's first message).
+    const tabId = store.activeTabId;
+    if (tabId != null) removeSuggestions(tabId);
+    useComposerStore.setState({ images: [], tabs: [] });
     store.setPageContent('');
     store.setPageExcerpt('');
     store.setPageTitle('');

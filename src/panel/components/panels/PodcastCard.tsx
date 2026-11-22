@@ -74,7 +74,7 @@ function PodcastCardBody({ np }: { np: NowPlaying }) {
 
   return (
     <motion.div
-      className="podcast-card flex flex-col gap-2.5 rounded-lg border border-border bg-card p-3 text-sm"
+      className="podcast-card flex max-h-[60%] min-h-0 shrink basis-auto flex-col gap-2.5 overflow-y-auto rounded-lg border border-border bg-card p-3 text-sm"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}

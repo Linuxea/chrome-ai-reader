@@ -150,6 +150,27 @@
   color: var(--primary);
   background: var(--primary-light);
 }
+/* Toggle-on state (immersive translation) + annotation's done/busy states. */
+.action-chip.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.action-chip.done {
+  border-color: var(--success);
+  color: var(--success);
+}
+.action-chip.busy {
+  border-color: var(--primary);
+  animation: tts-pulse 1.2s ease-in-out infinite;
+}
+.icon-btn.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-chip.busy { animation: none; }
+}
 
 /* ===== Chat area ===== */
 
@@ -157,6 +178,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Chrome scroll anchoring fights the streaming markdown rebuild (it
+     "compensates" scrollTop on innerHTML replacement → the panel looks
+     scrollable but isn't). The legacy panel hit exactly this; documented
+     in 4ad8242 side_panel.css. */
+  overflow-anchor: none;
   padding: 14px 14px 10px;
   display: flex;
   flex-direction: column;
@@ -272,6 +298,11 @@
 }
 .user-msg-group:hover .user-actions,
 .user-actions:focus-within { opacity: 1; }
+/* Touch devices have no hover — the actions must be visible there. */
+@media (hover: none) {
+  .user-actions,
+  .answer-actions { opacity: 1; }
+}
 
 .icon-mini {
   display: inline-flex;
@@ -285,6 +316,11 @@
 }
 .icon-mini:hover { background: var(--primary-light); color: var(--primary); }
 .icon-mini:disabled { opacity: 0.4; cursor: default; }
+/* Two-step delete: armed = waiting for the confirming second click. */
+.icon-mini.delete-confirm.armed {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
 
 .branch-switcher {
   display: inline-flex;
@@ -332,6 +368,9 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .typing-dot { animation: none; }
+  .tts-pulsing,
+  .answer-action.tts-loading { animation: none; opacity: 0.7; }
+  .suggest-bar { animation: none; }
 }
 
 .thinking-block {
@@ -352,6 +391,7 @@
   color: var(--text-secondary);
   max-height: 200px;
   overflow-y: auto;
+  overflow-anchor: none; /* same streaming-rebuild trap as .chat-area */
 }
 
 /* Agent trace */
@@ -421,7 +461,14 @@
 .error-icon { flex-shrink: 0; }
 .error-text { flex: 1; min-width: 120px; }
 .error-actions { display: inline-flex; gap: 6px; }
-.error-card .btn-ghost { background: rgba(127, 127, 127, 0.12); }
+.answer-card .btn-ghost { background: rgba(127, 127, 127, 0.12); }
+
+.answer-usage {
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
 
 .msg-note {
   font-size: 12px;
@@ -723,6 +770,14 @@
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: 10px;
+  /* The card is a flex child of .panel-root OUTSIDE the chat scroll area:
+     without shrink allowance it refuses to compress on short panels and
+     pushes the composer out of the viewport (P0). Scroll inside instead. */
+  flex-shrink: 1;
+  min-height: 0;
+  max-height: 65%;
+  overflow-y: auto;
+  overflow-anchor: none;
   background: var(--card-bg, var(--bg));
 }
 .quiz-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -1145,7 +1200,6 @@
 }
 
 /* ===== Podcast ===== */
-
 /* Progress bar: the fill/thumb positions are inline styles (live ratio);
    these rules carry the interaction affordances Tailwind can't express. */
 .podcast-progress {

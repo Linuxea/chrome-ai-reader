@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { RotateCcw, Settings, Ban } from 'lucide-react';
+import type { ChatMessage } from '@/shared/types';
 import type { LiveStream } from '@/panel/stores/stream-store';
 import { useThrottledText } from '@/panel/hooks/useThrottledText';
 import { MarkdownView } from './MarkdownView';
@@ -21,27 +22,57 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
   const streaming = live.status === 'streaming';
   const started = live.thinking !== '' || live.answer !== '' || live.rounds.length > 0;
 
+  // A failed send: the user bubble renders as its own right-aligned turn
+  // (like any user message) with the error card below it.
+  if (live.status === 'error') {
+    return (
+      <>
+        {live.failedUserMessage && <FailedUserBubble msg={live.failedUserMessage} />}
+        <div className="ai-msg">
+          {live.rounds.length > 0 && <AgentTraceView rounds={live.rounds} />}
+          <ErrorCard live={live} />
+        </div>
+      </>
+    );
+  }
+
+  // Stopped before any answer text: the kept user turn (retryable) + note.
+  if (live.status === 'aborted') {
+    return (
+      <>
+        {live.failedUserMessage && <FailedUserBubble msg={live.failedUserMessage} />}
+        <div className="msg-note">{live.note}</div>
+      </>
+    );
+  }
+
   return (
     <div className="ai-msg">
-      {streaming && <AgentTraceView rounds={live.rounds} />}
-      {live.status === 'error' && live.failedUserMessage?.agentTrace && (
-        <AgentTraceView steps={live.failedUserMessage.agentTrace} />
-      )}
-      {streaming && live.answer === '' && <ThinkingBlock text={live.thinking} />}
-      {streaming && !started && (
+      <AgentTraceView rounds={live.rounds} />
+      {live.answer === '' && <ThinkingBlock text={live.thinking} />}
+      {!started && (
         <div className="ai-msg-pending">
           <TypingIndicator />
         </div>
       )}
-      {(streaming || live.answer !== '') && throttled !== '' && (
+      {throttled !== '' && (
         <>
-          {streaming && live.answer !== '' && live.thinking !== '' && <ThinkingBlock text={live.thinking} />}
+          {live.answer !== '' && live.thinking !== '' && <ThinkingBlock text={live.thinking} />}
           <MarkdownView text={throttled} />
           {streaming && <span className="stream-cursor" aria-hidden />}
         </>
       )}
-      {live.status === 'error' && <ErrorCard live={live} />}
-      {live.status === 'aborted' && <div className="msg-note">{live.note}</div>}
+    </div>
+  );
+}
+
+function FailedUserBubble({ msg }: { msg: ChatMessage }) {
+  return (
+    <div className="user-msg-group">
+      <div className="user-bubble failed-user" data-msg-id={msg.id}>
+        {msg.meta?.quote && <blockquote className="bubble-quote">{msg.meta.quote}</blockquote>}
+        <div className="bubble-text">{msg.meta?.displayText ?? (typeof msg.content === 'string' ? msg.content : '')}</div>
+      </div>
     </div>
   );
 }
@@ -49,7 +80,8 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
 function ErrorCard({ live }: { live: LiveStream }) {
   const [retrying, setRetrying] = useState(false);
   const failed = live.failedUserMessage;
-  const configError = live.error === t('error.noApiKey') || live.error === t('error.noModelName');
+  // Key-driven (not translated-text comparison): survives language switches.
+  const configError = live.errorKey === 'error.noApiKey' || live.errorKey === 'error.noModelName';
   return (
     <>
       {failed && (

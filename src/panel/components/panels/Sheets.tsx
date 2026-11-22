@@ -50,6 +50,16 @@ function SheetHeader({ title, onClose, extra }: { title: string; onClose: () => 
 
 function HistorySheet({ onClose }: { onClose: () => void }) {
   const [chats, setChats] = useState<ChatHistoryEntry[] | null>(null);
+  // Two-step delete (legacy armed pattern): the first click lights the
+  // button up, only the second within the window deletes. IndexedDB has no
+  // undo — a stray click must not destroy a saved conversation.
+  const [armedId, setArmedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (armedId == null) return;
+    const t = setTimeout(() => setArmedId(null), 2500);
+    return () => clearTimeout(t);
+  }, [armedId]);
 
   const refresh = () => { void listChatHistory().then(setChats); };
   useEffect(refresh, []);
@@ -79,9 +89,16 @@ function HistorySheet({ onClose }: { onClose: () => void }) {
               <span className="history-item-date">{formatDate(chat.updatedAt)}</span>
             </button>
             <button
-              className="icon-mini"
-              title={t('action.delete')}
-              onClick={() => { void deleteChatById(chat.id).then(refresh); }}
+              className={`icon-mini delete-confirm${armedId === chat.id ? ' armed' : ''}`}
+              title={armedId === chat.id ? t('action.delete') : ''}
+              onClick={() => {
+                if (armedId === chat.id) {
+                  setArmedId(null);
+                  void deleteChatById(chat.id).then(refresh);
+                } else {
+                  setArmedId(chat.id);
+                }
+              }}
             >
               <Trash2 size={13} />
             </button>

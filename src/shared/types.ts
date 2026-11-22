@@ -73,6 +73,19 @@ export interface ChatMessage {
    * (toApiMessage copies only the wire fields).
    */
   agentTrace?: AgentTraceStep[];
+  /**
+   * Assistant messages only: how the answer ended + token usage — drives
+   * the usage footer and the truncation / step-limit notes. Local-only,
+   * stripped by toApiMessage; duplicated literals (not imported from
+   * protocol.ts) to keep types.ts a leaf.
+   */
+  finish?: {
+    reason?: 'stop' | 'length' | 'tool_calls' | 'refusal' | 'other';
+    /** 'steps' qualifies reason 'length' as the agent round cap. */
+    limit?: 'steps';
+    usage?: { inputTokens: number; outputTokens: number };
+    model?: string;
+  };
 }
 
 /** One tool execution recorded for an answer's agent trace. */

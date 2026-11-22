@@ -178,7 +178,9 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
 
     if (keepsAnswer) {
       // Append to THAT tab's history (it may be a background tab) — never
-      // through the active-tab-scoped store wrappers.
+      // through the active-tab-scoped store wrappers. The finish info
+      // (usage / truncation / step-limit) persists with the message so the
+      // usage footer and notes survive reloads.
       historyOps.appendMessage(tabState, {
         id: assistantId,
         role: 'assistant',
@@ -186,36 +188,47 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
         // F11: persist the evidence trail with the answer (only when the
         // model actually used tools) so reloads can rebuild the trace block.
         ...(agentTrace.length ? { agentTrace } : {}),
+        ...(outcome.kind === 'done'
+          ? { finish: { reason: outcome.finishReason, limit: outcome.limit, usage: outcome.usage, model: outcome.model } }
+          : {}),
       }, tabId);
       useStreamStore.getState().clear(tabId);
       useTabsStore.getState().setGeneratingForTab(tabId, false);
-      if (outcome.kind !== 'done') {
+      if (outcome.kind === 'done') {
+        // Autoplay tail flush + suggestion chips attach here.
+        ttsAutoplayFinish();
+        generateSuggestionsFor(tabId);
+      } else {
         // Partial answer kept after stop/disconnect — ephemeral outcome note
         // (the answer itself is already in history).
         useUIStore.getState().pushToast(outcome.kind === 'aborted' ? t('ai.stopped') : t('error.apiFailed'));
-      } else {
-        // Autoplay tail flush + suggestion chips + chat save attach here.
-        ttsAutoplayFinish();
-        saveCurrentChat();
-        generateSuggestionsFor(tabId);
       }
+      // Save THAT tab's chat — it may be a background tab (saving the active
+      // tab's chat here would save the wrong conversation, or early-return
+      // on an empty one and lose the answer forever). Save failures are
+      // non-fatal (quota / storage errors must not surface as stream errors).
+      void saveCurrentChat(tabId).catch(() => {});
       return;
     }
 
     if (outcome.kind === 'aborted') {
-      // Stopped before any answer text: drop the unanswered turn from history
-      // (the user bubble stays rendered from the stream entry) + quiet note.
+      // Stopped before any answer text: drop the unanswered turn from
+      // history, but keep it VISIBLE on the stream entry with its retry
+      // affordance (legacy kept the bubble) + a quiet note.
+      const hist = tabState.conversationHistory;
+      const failedUser = hist.length > 0 && hist[hist.length - 1]!.role === 'user' ? hist[hist.length - 1]! : undefined;
       historyOps.rollbackTrailingUserMessage(tabState, tabId);
-      useStreamStore.getState().abort(tabId, t('ai.stopped'));
+      useStreamStore.getState().abort(tabId, t('ai.stopped'), failedUser);
       useTabsStore.getState().setGeneratingForTab(tabId, false);
       return;
     }
 
     const errorText = outcome.kind === 'error' ? outcome.errorText : t('error.apiFailed');
+    const errorKey = outcome.kind === 'error' ? outcome.errorKey : undefined;
     const hist = tabState.conversationHistory;
     const failedUserMessage = hist.length > 0 && hist[hist.length - 1]!.role === 'user' ? hist[hist.length - 1]! : undefined;
     historyOps.rollbackTrailingUserMessage(tabState, tabId);
-    useStreamStore.getState().fail(tabId, errorText, failedUserMessage);
+    useStreamStore.getState().fail(tabId, errorText, failedUserMessage, errorKey);
     useTabsStore.getState().setGeneratingForTab(tabId, false);
   }
 }

@@ -82,6 +82,8 @@ export function ShareModal() {
       const blob = await rasterizeElement(fitted.el, fitted.width, Math.max(fitted.height, 200));
       if (mode === 'download') downloadShareImage(blob, buildShareFilename(tabState?.pageTitle || ''));
       else await copyShareImage(blob);
+    } catch {
+      useUIStore.getState().pushToast(t('error.apiFailed'), 'error');
     } finally {
       setBusy(false);
     }
@@ -97,7 +99,7 @@ export function ShareModal() {
           exit={{ opacity: 0 }}
           onClick={e => { if (e.target === e.currentTarget) closeShare(); }}
           role="dialog"
-          aria-label={t('share.button')}
+          aria-label={t('action.shareImage')}
         >
           <motion.div
             className="share-modal"
@@ -113,7 +115,7 @@ export function ShareModal() {
               <button className="btn-ghost" disabled={busy} onClick={() => void save('copy')}>
                 <Copy size={13} /> {t('action.copy')}
               </button>
-              <button className="icon-btn" onClick={closeShare} aria-label={t('action.cancel')}>
+              <button className="icon-btn" onClick={closeShare} aria-label={t('action.edit.cancel')}>
                 <X size={15} />
               </button>
             </div>

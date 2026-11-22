@@ -138,8 +138,11 @@ export async function sendToAI(
     const extractResult = await ensurePageContent(startTabId);
     if (takePendingAbort(startTabId)) {
       // Stop was pressed while the page was being extracted: nothing was
-      // sent — roll the turn back and end quietly (the bubble keeps retry).
+      // sent — roll the turn back, leave the bubble + a quiet stop note
+      // (the stream entry is created here: callAI never ran, so abort()
+      // would otherwise no-op and the turn would vanish silently).
       historyOps.rollbackTrailingUserMessage(tabState, startTabId);
+      if (!useStreamStore.getState().streams[startTabId]) useStreamStore.getState().start(startTabId);
       useStreamStore.getState().abort(startTabId, t('ai.stopped'));
       useTabsStore.getState().setGeneratingForTab(startTabId, false);
       return;
@@ -186,7 +189,10 @@ export async function sendToAI(
     }
 
     // Newest turns within the history budget (the page already has its own).
-    const { messages: recentHistory } = trimHistory(tabState.conversationHistory || []);
+    // The just-appended user message is EXCLUDED here and pushed explicitly
+    // below — otherwise it is sent to the model TWICE (it is already in
+    // conversationHistory) and needlessly consumes the trim budget.
+    const { messages: recentHistory } = trimHistory((tabState.conversationHistory || []).slice(0, -1));
     messages.push(...recentHistory.map(historyOps.toApiMessage));
     messages.push(historyOps.toApiMessage(userMessage));
 
@@ -201,9 +207,13 @@ export async function sendToAI(
     const errMsg = toErrorMessage(e);
     // Keep the user message visible for retry, but out of history: the
     // controller's fail() records it on the stream entry after rollback.
+    // Errors thrown BEFORE callAI (page extraction failure, oversized
+    // images) reach this catch with NO stream entry — fail() would no-op
+    // and the failure would be completely silent. Ensure the entry exists.
     const hist = tabState.conversationHistory;
     const failedUserMessage = hist.length > 0 && hist[hist.length - 1]!.role === 'user' ? hist[hist.length - 1]! : userMessage;
     historyOps.rollbackTrailingUserMessage(tabState, startTabId);
+    if (!useStreamStore.getState().streams[startTabId]) useStreamStore.getState().start(startTabId);
     useStreamStore.getState().fail(startTabId, errMsg, failedUserMessage);
     useTabsStore.getState().setGeneratingForTab(startTabId, false);
   }
@@ -224,8 +234,11 @@ async function resendUserMessage(opts: {
   sendDisplay: string;
   rawQuote?: string;
   msgId?: string;
+  /** Images extracted from the retried message itself — the history entry
+   *  may already be gone (failed sends roll back), so the fallback matters. */
+  contentImages?: string[];
 }): Promise<void> {
-  const { lookupText, sendText, sendDisplay, rawQuote, msgId } = opts;
+  const { lookupText, sendText, sendDisplay, rawQuote, msgId, contentImages } = opts;
   const startTabId = core.getActiveTabId();
   const tabState = startTabId != null ? core.getStateForTab(startTabId) : null;
   if (!tabState || startTabId == null || tabState.isGenerating) return;
@@ -239,7 +252,9 @@ async function resendUserMessage(opts: {
 
   // Capture images + tabs from the history entry BEFORE truncating — visual
   // messages keep image_url parts in their content array (data, not DOM).
-  const retriedImages = extractImagesForRetry(tabState, userContent, msgId);
+  // A FAILED send's history entry is already rolled back → fall back to the
+  // message's own content parts (the failedUserMessage carries them).
+  const retriedImages = extractImagesForRetry(tabState, userContent, msgId) ?? contentImages;
   const retriedTabs = msgId ? tabState.conversationHistory.find(m => m.id === msgId)?.meta?.tabs : undefined;
 
   // Keep what is being replaced as a branch (‹ n/m › on the new bubble).
@@ -259,6 +274,7 @@ export async function retryMessage(msg: ChatMessage): Promise<void> {
     sendDisplay: meta?.displayText ?? contentToText(msg),
     rawQuote: meta?.quote,
     msgId: msg.id,
+    contentImages: imagesFromContent(msg),
   });
 }
 
@@ -271,7 +287,15 @@ export async function editMessage(msg: ChatMessage, editedText: string): Promise
     sendDisplay: editedText,
     rawQuote: meta?.quote,
     msgId: msg.id,
+    contentImages: imagesFromContent(msg),
   });
+}
+
+/** image_url parts of a message's content (string content → none). */
+function imagesFromContent(msg: ChatMessage): string[] | undefined {
+  if (typeof msg.content === 'string') return undefined;
+  const uris = msg.content.filter(p => p.type === 'image_url').map(p => (p.type === 'image_url' ? p.image_url.url : ''));
+  return uris.length ? uris : undefined;
 }
 
 function contentToText(msg: ChatMessage): string {

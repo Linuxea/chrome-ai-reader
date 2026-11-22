@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileText, Languages, KeyRound, HelpCircle, BookOpenText, GraduationCap, Podcast, PenLine, CircleCheck, Clock, AlertTriangle } from 'lucide-react';
 import { handleQuickAction } from '@/panel/lib/quick-action-handler';
 import { useAnnotationStore, onAnnotationClick, annotationFor } from '@/panel/lib/annotation';
@@ -17,6 +17,10 @@ export function QuickActions() {
   const activeTabId = useTabsStore(s => s.activeTabId);
   const byTab = useAnnotationStore(s => s.byTab);
   const annotation = (activeTabId != null && byTab[activeTabId]) || { kind: 'idle' as const };
+
+  // The toggle state belongs to the page shown (legacy reset it on tab
+  // switch) — a fresh tab is never in immersive mode.
+  useEffect(() => { setImmersiveOn(false); }, [activeTabId]);
 
   return (
     <div className="quick-actions">

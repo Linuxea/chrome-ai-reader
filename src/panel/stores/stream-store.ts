@@ -41,13 +41,16 @@ export interface LiveStream {
   usage?: TokenUsage;
   model?: string;
   error?: string;
+  /** i18n key of the error (config errors key the settings shortcut). */
+  errorKey?: string;
   /** A quiet "stopped" note rendered after an empty-answer abort. */
   note?: string;
   /**
    * A send that failed before the model answered: the user message was
    * rolled back from history (so the next send starts clean) but stays
    * visible here with its retry affordance — the data equivalent of the
-   * legacy "keep the bubble, roll back the history" behavior.
+   * legacy "keep the bubble, roll back the history" behavior. Also set on
+   * an empty-answer abort (stop before the first token).
    */
   failedUserMessage?: ChatMessage;
 }
@@ -67,9 +70,9 @@ interface StreamStore {
   /** Normal end: keep the accumulated text visible until folded into history. */
   finish: (tabId: number, outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }) => void;
   /** Abnormal end (port error / provider error). Keeps the failed user message for retry. */
-  fail: (tabId: number, error: string, failedUserMessage?: ChatMessage) => void;
-  /** User stopped before any answer text — render as a quiet note. */
-  abort: (tabId: number, note: string) => void;
+  fail: (tabId: number, error: string, failedUserMessage?: ChatMessage, errorKey?: string) => void;
+  /** User stopped before any answer text — keep the user turn retryable + a quiet note. */
+  abort: (tabId: number, note: string, failedUserMessage?: ChatMessage) => void;
   /** Drop the entry — after its content was folded into history or rolled back. */
   clear: (tabId: number) => void;
 }
@@ -146,18 +149,18 @@ export const useStreamStore = create<StreamStore>()(set => ({
       };
     }),
 
-  fail: (tabId, error, failedUserMessage) =>
+  fail: (tabId, error, failedUserMessage, errorKey) =>
     set(s => {
       const cur = s.streams[tabId];
       if (!cur || cur.status !== 'streaming') return s;
-      return { streams: { ...s.streams, [tabId]: { ...cur, status: 'error', error, failedUserMessage } } };
+      return { streams: { ...s.streams, [tabId]: { ...cur, status: 'error', error, errorKey, failedUserMessage } } };
     }),
 
-  abort: (tabId, note) =>
+  abort: (tabId, note, failedUserMessage) =>
     set(s => {
       const cur = s.streams[tabId];
       if (!cur || cur.status !== 'streaming') return s;
-      return { streams: { ...s.streams, [tabId]: { ...cur, status: 'aborted', note } } };
+      return { streams: { ...s.streams, [tabId]: { ...cur, status: 'aborted', note, failedUserMessage } } };
     }),
 
   clear: tabId =>

@@ -25,7 +25,10 @@ export function MessageList() {
   const empty = history.length === 0 && !live;
 
   return (
-    <div className="chat-area" ref={ref}>
+    // key={activeTabId}: a fresh scroll container per tab — the outgoing
+    // tab's scroll offset / stick-to-bottom state must never leak into the
+    // incoming one (legacy reset the scroll on every tab switch).
+    <div className="chat-area" key={activeTabId ?? 'none'} ref={ref}>
       {empty && (
         <motion.div className="welcome" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
           <p>{t('sidebar.welcome')}</p>

@@ -56,10 +56,10 @@ export const UserBubble = memo(function UserBubble({ msg, tabState }: { msg: Cha
                   setEditing(false);
                 }}
               >
-                <Check size={14} /> {t('action.confirm')}
+                <Check size={14} /> {t('action.edit.save')}
               </button>
               <button className="btn-ghost" onClick={() => setEditing(false)}>
-                <X size={14} /> {t('action.cancel')}
+                <X size={14} /> {t('action.edit.cancel')}
               </button>
             </div>
           </div>

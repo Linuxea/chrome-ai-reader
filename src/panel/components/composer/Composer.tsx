@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { useComposerStore } from '@/panel/stores/composer-store';
 import { useTabsStore, useActiveTabState } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
@@ -48,8 +48,12 @@ export function Composer() {
         const cmd = list[highlighted];
         useUIStore.getState().closeCommandPopup();
         if (cmd) {
+          // Pass the remainder as-is — an EMPTY string must block submit()'s
+          // fallback to the composer draft (which still holds "/命令名");
+          // `rest || undefined` used to re-attach the slash text as a
+          // supplement instruction and the model got the command twice.
           const rest = query.toLowerCase().startsWith(cmd.name.toLowerCase()) ? query.slice(cmd.name.length).trim() : '';
-          void submit({ prompt: cmd.prompt, display: cmd.name, draft: rest || undefined });
+          void submit({ prompt: cmd.prompt, display: cmd.name, draft: rest });
         }
         return;
       }
@@ -61,6 +65,17 @@ export function Composer() {
       void sendMessage();
     }
   };
+
+  // Outside-click closes the command popup (same affordance as TabPicker).
+  useEffect(() => {
+    if (!popup.open) return;
+    const onDown = (e: MouseEvent) => {
+      const wrapper = e.target instanceof Element ? e.target.closest('.input-wrapper') : null;
+      if (!wrapper) useUIStore.getState().closeCommandPopup();
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [popup.open]);
 
   return (
     <div className="input-area">

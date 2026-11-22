@@ -1,5 +1,6 @@
 import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
+import { t } from '@/shared/i18n.js';
 
 /**
  * `/` quick-command popup — filters the user's custom quick commands.
@@ -20,7 +21,7 @@ export function CommandPopup({ onPick }: { onPick: (prompt: string, display: str
   return (
     <div className="command-popup" role="listbox" aria-label="quick commands">
       <div className="command-list">
-        {matches.length === 0 && <div className="command-empty">没有匹配的命令</div>}
+        {matches.length === 0 && <div className="command-empty">{t('cmd.noMatch')}</div>}
         {matches.map((cmd, i) => (
           <button
             key={cmd.id ?? cmd.name}
@@ -36,13 +37,15 @@ export function CommandPopup({ onPick }: { onPick: (prompt: string, display: str
           </button>
         ))}
       </div>
-      <div className="command-hint">↑↓ 选择 · Enter 运行 · Esc 关闭</div>
+      <div className="command-hint">{t('cmd.hint')}</div>
     </div>
   );
 
   function pick(name: string, prompt: string): void {
+    // Empty string (not undefined!) so submit never falls back to the
+    // composer draft — it still holds "/命令名".
     const rest = query.toLowerCase().startsWith(name.toLowerCase()) ? query.slice(name.length).trim() : '';
-    onPick(prompt, name, rest || undefined);
+    onPick(prompt, name, rest);
   }
 }
 

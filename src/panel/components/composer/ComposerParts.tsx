@@ -1,5 +1,6 @@
 import { Paperclip, ImagePlus, Camera, Frame, Send, Square, X } from 'lucide-react';
 import { useComposerStore } from '@/panel/stores/composer-store';
+import { useTabsStore } from '@/panel/stores/tabs-store';
 import { captureVisibleTab, captureFullPage } from '@/panel/lib/screenshot';
 import { t } from '@/shared/i18n.js';
 
@@ -28,7 +29,12 @@ export function QuotePreview({ quote }: { quote: string }) {
   return (
     <div className="quote-preview">
       <span className="quote-text">{quote.length > 160 ? `${quote.slice(0, 160)}…` : quote}</span>
-      <button className="quote-close" title={t('sidebar.clearQuote')} aria-label={t('sidebar.clearQuote')}>
+      <button
+        className="quote-close"
+        title={t('sidebar.clearQuote')}
+        aria-label={t('sidebar.clearQuote')}
+        onClick={() => useTabsStore.getState().setSelectedText('')}
+      >
         <X size={12} />
       </button>
     </div>

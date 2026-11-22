@@ -182,6 +182,10 @@ export const useTabsStore = create<TabsStoreState>()((set, get) => ({
   switchBranch: (anchor, to) => {
     const { tabId, ts } = activePair();
     if (!ts || tabId == null) return false;
+    // Guard: switching mid-generation splices the LIVE tail (with the
+    // in-flight turn) into a branch — the finishing answer would land on
+    // the WRONG branch (legacy guarded BRANCH_SWITCH the same way).
+    if (ts.isGenerating) return false;
     const ok = historyOps.switchBranch(ts, anchor, to, tabId);
     if (ok) get().bump();
     return ok;
