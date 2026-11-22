@@ -1,10 +1,15 @@
 /**
  * Share image (F14, React port): the E-01 fit cascade, card construction
  * and Chromium-safe rasterization all live in the legacy share modules
- * (DOM-by-design, node-in/node-out) and are reused verbatim. The modal
- * mounts the fitted card for preview; the toolbar downloads / copies it.
+ * (DOM-by-design, node-in/node-out) and are reused verbatim.
+ *
+ * PREVIEW: the card is a fixed 720px-wide subtree (it is rasterized at that
+ * exact width); mounting it unscaled inside a 300–500px side panel pushed
+ * the modal out on both sides. The preview therefore renders the card at
+ * intrinsic size inside a scaler node that is CSS-`transform: scale()`d to
+ * fit the modal — layout and PNG stay identical.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Download, Copy, X } from 'lucide-react';
 import { useUIStore } from '@/panel/stores/ui-store';
@@ -21,6 +26,7 @@ export function ShareModal() {
   const [fitted, setFitted] = useState<FittedShareCard | null>(null);
   const [busy, setBusy] = useState(false);
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const scalerRef = useRef<HTMLDivElement | null>(null);
 
   const msg = shareMsgId != null ? tabState?.conversationHistory.find(m => m.id === shareMsgId) : undefined;
   const markdown = typeof msg?.content === 'string' ? msg.content : '';
@@ -30,7 +36,7 @@ export function ShareModal() {
 
   useEffect(() => {
     if (!msg) { setFitted(null); return; }
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#c07842';
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#7c5230';
     const card = buildFittedCard({
       question,
       pageTitle: tabState?.pageTitle || '',
@@ -40,15 +46,33 @@ export function ShareModal() {
     });
     setFitted(card);
     return () => { card.el.remove(); };
-    // Deps: rebuild only when the shared message changes (history/tab are
-    // read for content but a rebuild on every keystroke would flicker).
-  }, [shareMsgId]);
+  }, [shareMsgId]); // rebuild on message change only
 
-  // Mount the legacy-built card node into the modal (React owns the chrome).
+  // Mount the legacy-built card node into the scaler (React owns the chrome).
   useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount || !fitted) return;
-    mount.replaceChildren(fitted.el);
+    const scaler = scalerRef.current;
+    if (!scaler || !fitted) return;
+    scaler.replaceChildren(fitted.el);
+  }, [fitted]);
+
+  // Scale the intrinsic-width card to fit the preview frame.
+  useLayoutEffect(() => {
+    const frame = mountRef.current;
+    const scaler = scalerRef.current;
+    if (!frame || !scaler || !fitted) return;
+    const apply = () => {
+      const k = Math.min(1, frame.clientWidth / Math.max(fitted.width, 1));
+      scaler.style.transform = `scale(${k})`;
+      // Reserve the scaled space so the frame scrolls the SCALED card.
+      scaler.style.width = `${fitted.width}px`;
+      scaler.style.height = fitted.height > 0 ? `${fitted.height}px` : 'auto';
+      const inner = scaler.parentElement;
+      if (inner) inner.style.height = fitted.height > 0 ? `${Math.round(fitted.height * k)}px` : 'auto';
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(frame);
+    return () => ro.disconnect();
   }, [fitted]);
 
   const save = async (mode: 'download' | 'copy') => {
@@ -93,7 +117,11 @@ export function ShareModal() {
                 <X size={15} />
               </button>
             </div>
-            <div className="share-preview" ref={mountRef} />
+            <div className="share-preview" ref={mountRef}>
+              <div className="share-preview-inner" style={{ overflow: 'auto' }}>
+                <div className="share-preview-scaler" ref={scalerRef} />
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       )}

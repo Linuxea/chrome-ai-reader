@@ -908,29 +908,36 @@
 }
 .suggest-item:hover { border-color: var(--primary); color: var(--primary); border-style: solid; }
 
-/* ===== TTS indicator ===== */
+/* ===== TTS indicator (in-flow strip under the quick actions) ===== */
 
 .tts-indicator {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
-  z-index: 60;
-  padding: 4px 6px 4px 10px;
-  border-radius: var(--radius-pill);
+  padding: 4px 12px;
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--text-secondary);
+  /* Narrow-panel guard: CJK text breaks anywhere by default — keep the
+     strip on one line and ellipsize the progress when space runs out. */
+  white-space: nowrap;
+  overflow: hidden;
 }
-.tts-indicator-label { color: var(--primary); }
-.tts-indicator-progress { font-size: 11px; font-variant-numeric: tabular-nums; }
+.tts-indicator-label { color: var(--primary); flex-shrink: 0; }
+.tts-indicator-progress {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 .tts-pulsing { animation: tts-pulse 1s ease-in-out infinite; }
 .tts-rate {
+  flex-shrink: 0;
   border: 1px solid var(--border);
   background: none;
   border-radius: var(--radius-sm);
@@ -941,6 +948,7 @@
   font-family: inherit;
 }
 .tts-stop {
+  flex-shrink: 0;
   display: inline-flex;
   padding: 3px;
   border: none;
@@ -1102,26 +1110,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 12px;
 }
 .share-modal {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 100%;
+  /* The card is a fixed 720px-wide subtree (it gets rasterized at that
+     width); the modal must never exceed the side-panel viewport or the
+     720px content pushes it out on BOTH sides ("broken page" bug). */
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
   background: var(--bg);
   border-radius: var(--radius-lg);
   padding: 10px;
   box-shadow: var(--shadow-lg);
 }
-.share-toolbar { display: flex; gap: 6px; justify-content: flex-end; }
+.share-toolbar { display: flex; gap: 6px; justify-content: flex-end; flex-shrink: 0; }
+/* Scale-to-fit preview frame: the card keeps its intrinsic 720px layout
+   (identical to the exported PNG) and is scaled down visually. */
 .share-preview {
-  overflow: auto;
-  display: flex;
-  justify-content: center;
-  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+  overflow: hidden;
   border-radius: var(--radius-md);
-  padding: 8px;
+  background: #ffffff;
+  min-height: 80px;
+}
+.share-preview-inner {
+  overflow: auto;
+  max-height: calc(100vh - 140px);
+}
+.share-preview-scaler {
+  transform-origin: top left;
+  width: max-content; /* keeps the card's intrinsic layout while scaled */
 }
 
 /* ===== Podcast ===== */

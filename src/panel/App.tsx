@@ -84,11 +84,11 @@ export default function App() {
       <div className="panel-root">
         <Header />
         <QuickActions />
+        <TtsIndicator />
         <MessageList />
         <QuizCard />
         <PodcastCard />
         <Composer />
-        <TtsIndicator />
         <PodcastMiniPlayer />
         <Sheets />
         <ShareModal />
