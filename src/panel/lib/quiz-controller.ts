@@ -214,6 +214,23 @@ export async function startQuiz(): Promise<void> {
 }
 
 /**
+ * Close the quiz card for a tab entirely: stop any in-flight generation
+ * (main stream AND variant request) and drop the session from the store and
+ * TabState — the card's × affordance. The session is gone, not paused.
+ */
+export function dismissQuiz(tabId: number): void {
+  // Invalidate the generation token FIRST: the aborted run's catch checks
+  // isLive() and bails without committing a failed session over the discard.
+  _generations.delete(tabId);
+  _stopRequests.delete(tabId);
+  _runs.get(`${tabId}:quiz`)?.abort();
+  _runs.get(`${tabId}:variant`)?.abort();
+  useQuizStore.getState().discard(tabId);
+  useQuizStore.getState().setVariantBusy(tabId, false);
+  useQuizStore.getState().setFlipped(tabId, false);
+}
+
+/**
  * Abort the ACTIVE tab's quiz stream. Before anything arrived the card is
  * dropped; with questions already kept it degrades like a mid-stream
  * disconnect (`quiz.partialFailed`).

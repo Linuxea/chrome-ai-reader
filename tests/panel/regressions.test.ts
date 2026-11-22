@@ -71,6 +71,8 @@ import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useComposerStore } from '@/panel/stores/composer-store';
 import { useStreamStore } from '@/panel/stores/stream-store';
 import { useUIStore } from '@/panel/stores/ui-store';
+import { useQuizStore } from '@/panel/stores/quiz-store';
+import { dismissQuiz } from '@/panel/lib/quiz-controller';
 import { submit, retryMessage } from '@/panel/lib/send';
 import { abortGeneration } from '@/panel/lib/stream-controller';
 
@@ -181,5 +183,20 @@ describe('code-review regressions', () => {
     const payload = getPort()!.postMessage.mock.calls[0]![0] as { messages: { role: string; content: unknown }[] };
     const user = payload.messages.filter(m => m.role === 'user').pop()!;
     expect(user.content).toBe('SUMMARIZE'); // no "/总结" supplement appended
+  });
+
+  it('quiz: dismissQuiz clears the store session AND the persisted TabState (no zombie card)', async () => {
+    // A generating session is exactly what startQuiz persists first.
+    useQuizStore.getState().begin(42);
+    expect(useQuizStore.getState().sessions[42]).toBeDefined();
+    expect(core.getStateForTab(42)!.quizSession).toBeDefined();
+
+    dismissQuiz(42);
+
+    expect(useQuizStore.getState().sessions[42]).toBeUndefined();
+    expect(core.getStateForTab(42)!.quizSession).toBeUndefined();
+    // And it must not resurrect: adopt() (panel reopen) finds nothing either.
+    useQuizStore.setState({ sessions: {} }); // simulate a fresh panel
+    expect(useQuizStore.getState().adopt(42)).toBeNull();
   });
 });

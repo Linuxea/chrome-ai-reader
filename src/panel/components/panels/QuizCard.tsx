@@ -26,7 +26,7 @@ import type { QuizSession } from '@/shared/quiz';
 import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useQuizStore } from '@/panel/stores/quiz-store';
 import {
-  answerQuestion, backToSummary, drillUnknownCards, exportCsv, followupDraft,
+  answerQuestion, backToSummary, dismissQuiz, drillUnknownCards, exportCsv, followupDraft,
   gotoNextQuestion, gradeCard, letter, requestVariant, retakeWrongQuestions,
   startDeck, startQuiz, stopQuiz, wrongAnswerIndexes,
 } from '@/panel/lib/quiz-controller';
@@ -77,6 +77,18 @@ export function QuizCard(): ReactElement | null {
             <Square size={13} />
           </button>
         )}
+        {/* The card's ONLY exit while a session exists — the session is
+            persisted in TabState, so without this the quiz card squats on
+            the panel forever (survives restarts via adopt). */}
+        <button
+          type="button"
+          className="quiz-stop icon-btn"
+          title={t('quiz.close')}
+          aria-label={t('quiz.close')}
+          onClick={() => dismissQuiz(activeTabId)}
+        >
+          <X size={13} />
+        </button>
       </div>
       {session.error && <div className="quiz-error">{session.error}</div>}
       <motion.div
