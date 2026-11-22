@@ -40,7 +40,7 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
   if (live.status === 'aborted') {
     return (
       <>
-        {live.failedUserMessage && <FailedUserBubble msg={live.failedUserMessage} />}
+        {live.failedUserMessage && <FailedUserBubble msg={live.failedUserMessage} retryable />}
         <div className="msg-note">{live.note}</div>
       </>
     );
@@ -66,13 +66,20 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
   );
 }
 
-function FailedUserBubble({ msg }: { msg: ChatMessage }) {
+function FailedUserBubble({ msg, retryable }: { msg: ChatMessage; retryable?: boolean }) {
   return (
     <div className="user-msg-group">
       <div className="user-bubble failed-user" data-msg-id={msg.id}>
         {msg.meta?.quote && <blockquote className="bubble-quote">{msg.meta.quote}</blockquote>}
         <div className="bubble-text">{msg.meta?.displayText ?? (typeof msg.content === 'string' ? msg.content : '')}</div>
       </div>
+      {retryable && (
+        <div className="user-actions visible">
+          <button className="icon-mini" title={t('action.retry')} onClick={() => void retryMessage(msg)}>
+            <RotateCcw size={13} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -83,38 +90,30 @@ function ErrorCard({ live }: { live: LiveStream }) {
   // Key-driven (not translated-text comparison): survives language switches.
   const configError = live.errorKey === 'error.noApiKey' || live.errorKey === 'error.noModelName';
   return (
-    <>
-      {failed && (
-        <div className="user-bubble failed-user" data-msg-id={failed.id}>
-          {failed.meta?.quote && <blockquote className="bubble-quote">{failed.meta.quote}</blockquote>}
-          <div className="bubble-text">{failed.meta?.displayText ?? (typeof failed.content === 'string' ? failed.content : '')}</div>
-        </div>
-      )}
-      <motion.div
-        className="error-card"
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        role="alert"
-      >
-        <Ban size={14} className="error-icon" />
-        <span className="error-text">{live.error}</span>
-        <span className="error-actions">
-          {failed && (
-            <button
-              className="btn-ghost"
-              disabled={retrying}
-              onClick={() => { setRetrying(true); void retryMessage(failed); }}
-            >
-              <RotateCcw size={13} /> {t('action.retry')}
-            </button>
-          )}
-          {configError && (
-            <button className="btn-ghost" onClick={() => void openOptionsPage()}>
-              <Settings size={13} /> {t('action.openSettings')}
-            </button>
-          )}
-        </span>
-      </motion.div>
-    </>
+    <motion.div
+      className="error-card"
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      role="alert"
+    >
+      <Ban size={14} className="error-icon" />
+      <span className="error-text">{live.error}</span>
+      <span className="error-actions">
+        {failed && (
+          <button
+            className="btn-ghost"
+            disabled={retrying}
+            onClick={() => { setRetrying(true); void retryMessage(failed); }}
+          >
+            <RotateCcw size={13} /> {t('action.retry')}
+          </button>
+        )}
+        {configError && (
+          <button className="btn-ghost" onClick={() => void openOptionsPage()}>
+            <Settings size={13} /> {t('action.openSettings')}
+          </button>
+        )}
+      </span>
+    </motion.div>
   );
 }

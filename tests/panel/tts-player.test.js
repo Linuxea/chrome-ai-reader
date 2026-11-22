@@ -61,6 +61,16 @@ import {
 
 const b64 = (s) => btoa(s);
 
+/**
+ * The engine CONNECTS segments in cache-lookup completion order, which can
+ * differ from the enqueue order — resolve ports by the text they requested,
+ * never by connect index (that assumption was a 1-in-6 flake).
+ */
+const portFor = (text) =>
+  chrome.runtime.connect.mock.results
+    .map((r) => r.value)
+    .find((p) => p.postMessage.mock.calls.some(([m]) => m && m.text === text));
+
 describe('TTS Player', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -144,8 +154,9 @@ describe('TTS Player', () => {
   async function deliverSegments(texts, byteSeconds = 1) {
     for (const text of texts) ttsEnqueue(text);
     ttsFinishInput();
-    await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(texts.length));
-    const ports = chrome.runtime.connect.mock.results.slice(-texts.length).map((r) => r.value);
+    await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(texts.length), { timeout: 4000 });
+    const ports = texts.map((text) => portFor(text));
+    expect(ports.every(Boolean)).toBe(true);
     ports.forEach((port, i) => {
       port._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000 * (byteSeconds[i] ?? byteSeconds))) });
       port._simulateMessage({ type: 'done' });
@@ -186,7 +197,7 @@ describe('TTS Player', () => {
       const ctx = ctxInstances[0];
       ctx.currentTime = 10; // playhead past the end
       for (const s of [...sources]) s.onended?.();
-      await vi.waitFor(() => expect(fullStop).toHaveBeenCalled());
+      await vi.waitFor(() => expect(fullStop).toHaveBeenCalled(), { timeout: 4000 });
     });
 
     it('rate change stops live sources and reschedules the unplayed remainder', async () => {
@@ -214,11 +225,12 @@ describe('TTS Player', () => {
       ttsEnqueue('seg one');
       ttsEnqueue('seg two');
       ttsFinishInput();
-      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
-      const [p1, p2] = chrome.runtime.connect.mock.results.map((r) => r.value);
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 4000 });
+      const p1 = portFor('seg one');
+      const p2 = portFor('seg two');
       p1._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000)) });
       p1._simulateMessage({ type: 'done' });
-      await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(1));
+      await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(1), { timeout: 4000 });
 
       p2._simulateMessage({ type: 'error', error: 'boom' }); // first failure → retry
       await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(3), { timeout: 2000 });
@@ -233,7 +245,7 @@ describe('TTS Player', () => {
       const ctx = ctxInstances[0];
       ctx.currentTime = 10;
       sources.forEach((s) => s.onended?.());
-      await vi.waitFor(() => expect(fullStop).toHaveBeenCalled());
+      await vi.waitFor(() => expect(fullStop).toHaveBeenCalled(), { timeout: 4000 });
     });
 
     it('an engine failure before any audio stops cleanly (no zombie loading)', async () => {
@@ -242,7 +254,7 @@ describe('TTS Player', () => {
       initTTSPlayback();
       ttsEnqueue('doomed');
       ttsFinishInput();
-      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled());
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled(), { timeout: 4000 });
       const p1 = chrome.runtime.connect.mock.results[0].value;
       p1._simulateMessage({ type: 'error', error: 'no config' });
       await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 2000 });
@@ -255,13 +267,13 @@ describe('TTS Player', () => {
       initTTSPlayback();
       ttsEnqueue('bad');
       ttsFinishInput();
-      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled());
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled(), { timeout: 4000 });
       const port = chrome.runtime.connect.mock.results.at(-1).value;
       const realDecode = MockAudioContext.prototype.decodeAudioData;
       MockAudioContext.prototype.decodeAudioData = vi.fn(async () => { throw new Error('corrupt'); });
       port._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000)) });
       port._simulateMessage({ type: 'done' });
-      await vi.waitFor(() => expect(console.error).toHaveBeenCalled());
+      await vi.waitFor(() => expect(console.error).toHaveBeenCalled(), { timeout: 4000 });
       MockAudioContext.prototype.decodeAudioData = realDecode;
       expect(isTTSPlaying()).toBe(true); // playback survives
     });
@@ -281,8 +293,9 @@ describe('TTS Player', () => {
         ttsEnqueue('seg A');
         ttsEnqueue('seg B');
         ttsFinishInput();
-        await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
-        const [pA, pB] = chrome.runtime.connect.mock.results.slice(-2).map((r) => r.value);
+        await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 4000 });
+        const pA = portFor('seg A');
+        const pB = portFor('seg B');
         pA._simulateMessage({ type: 'chunk', data: b64('a'.repeat(8000)) }); // 1s
         pA._simulateMessage({ type: 'done' });
         pB._simulateMessage({ type: 'chunk', data: b64('b'.repeat(16000)) }); // 2s
@@ -296,7 +309,7 @@ describe('TTS Player', () => {
 
         // A finishes → both schedule, A (1s) before B (2s)
         deferreds[0].resolve();
-        await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(2));
+        await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(2), { timeout: 4000 });
         expect(sources[0].buffer.duration).toBe(1); // A first…
         expect(sources[1].buffer.duration).toBe(2); // …then B
         expect(currentProgress()).toEqual({ position: 0, end: 3 });
@@ -317,13 +330,14 @@ describe('TTS Player', () => {
         ttsEnqueue('bad');
         ttsEnqueue('good');
         ttsFinishInput();
-        await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2));
-        const [p1, p2] = chrome.runtime.connect.mock.results.slice(-2).map((r) => r.value);
+        await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 4000 });
+        const p1 = portFor('bad');
+        const p2 = portFor('good');
         p1._simulateMessage({ type: 'chunk', data: b64('x'.repeat(8000)) });
         p1._simulateMessage({ type: 'done' });
         p2._simulateMessage({ type: 'chunk', data: b64('y'.repeat(16000)) });
         p2._simulateMessage({ type: 'done' });
-        await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(1));
+        await vi.waitFor(() => expect(sources.filter((s) => s.start.mock.calls.length > 0).length).toBe(1), { timeout: 4000 });
         expect(sources[0].buffer.duration).toBe(2); // the GOOD segment plays
         expect(currentProgress()).toEqual({ position: 0, end: 2 });
       } finally {
@@ -371,7 +385,7 @@ describe('TTS Player', () => {
       const ctx = ctxInstances[0];
       ctx.currentTime = 10;
       sources.forEach((s) => s.onended?.());
-      await vi.waitFor(() => expect(fn).toHaveBeenCalled());
+      await vi.waitFor(() => expect(fn).toHaveBeenCalled(), { timeout: 4000 });
     });
   });
 

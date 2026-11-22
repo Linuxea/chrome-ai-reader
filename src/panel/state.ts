@@ -294,6 +294,18 @@ export function setGeneratingForTab(tabId: number, v: boolean): void {
 export function getCurrentChatId(): string | null { return _activeState?.currentChatId ?? null; }
 export function setCurrentChatId(v: string | null): void { if (!_activeState) return; _activeState.currentChatId = v; schedulePersist(); }
 
+/**
+ * Tab-scoped chat id writer: a background tab's first save must stamp ITS
+ * OWN state — the active-scoped setter would hijack the ACTIVE tab's id
+ * (cross-chat record corruption; see chat-save.ts).
+ */
+export function setCurrentChatIdForTab(tabId: number, v: string | null): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts) return;
+  ts.currentChatId = v;
+  persistForTab(tabId);
+}
+
 export function getSelectedText(): string { return _activeState?.selectedText ?? ''; }
 export function setSelectedText(v: string): void { if (!_activeState) return; _activeState.selectedText = v; schedulePersist(); }
 

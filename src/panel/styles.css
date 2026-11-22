@@ -461,7 +461,9 @@
 .error-icon { flex-shrink: 0; }
 .error-text { flex: 1; min-width: 120px; }
 .error-actions { display: inline-flex; gap: 6px; }
-.answer-card .btn-ghost { background: rgba(127, 127, 127, 0.12); }
+.error-card .btn-ghost { background: rgba(127, 127, 127, 0.12); }
+
+.user-actions.visible { opacity: 1; }
 
 .answer-usage {
   margin-top: 6px;

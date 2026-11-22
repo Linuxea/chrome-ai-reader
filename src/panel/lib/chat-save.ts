@@ -53,7 +53,8 @@ let _saveQueue: Promise<void> = Promise.resolve();
  */
 export function saveCurrentChat(tabIdArg?: number): Promise<void> {
   const tabId = tabIdArg ?? core.getActiveTabId();
-  const ts = tabId != null ? core.getStateForTab(tabId) : null;
+  if (tabId == null) return _saveQueue;
+  const ts = core.getStateForTab(tabId);
   if (!ts) return _saveQueue;
   const messages = displayMessagesFromHistory(ts.conversationHistory);
   if (messages.length === 0) return _saveQueue;
@@ -62,9 +63,11 @@ export function saveCurrentChat(tabIdArg?: number): Promise<void> {
   let chatId = ts.currentChatId;
   const isNew = !chatId;
   if (!chatId) {
-    // Unique even for two chats saved in the same millisecond.
+    // Unique even for two chats saved in the same millisecond. Written to
+    // THAT tab's state — the active-scoped setter would stamp the ACTIVE
+    // tab (cross-chat corruption when a background tab saves first).
     chatId = `chat_${now}_${genId().slice(0, 8)}`;
-    core.setCurrentChatId(chatId);
+    core.setCurrentChatIdForTab(tabId, chatId);
     useTabsStore.getState().bump();
   }
   const snapshot = {
