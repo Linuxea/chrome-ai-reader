@@ -21,6 +21,7 @@ import { TTSSynthEngine, getTTSVoice } from '@/panel/lib/tts/engine';
 import {
   initTTSPlayback as playerStart,
   stopTTSPlayback,
+  setFullStopFn,
   subscribeTTSState,
   subscribeTTSProgress,
   getTTSOrigin,
@@ -90,6 +91,12 @@ let _initialized = false;
 export function initTTS(): void {
   if (_initialized) return;
   _initialized = true;
+
+  // Natural end of playback (all segments played out) flows through the
+  // player's maybeFinished → fullStop hook. Without this wiring the player
+  // never stops itself: ttsPlaying stays true forever and the indicator
+  // strip never disappears ("播放完组件一直停在那里" bug).
+  setFullStopFn(stopAllTTS);
 
   chrome.storage.sync.get(['ttsAutoPlay'], data => {
     setTTSAutoPlay(data.ttsAutoPlay === true);
