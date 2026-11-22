@@ -28,6 +28,12 @@ export interface Settings {
   darkMode: boolean;
   themeName: string;
   suggestQuestions: boolean;
+  /**
+   * Composer attachment tools shown DIRECTLY in the input bar; every tool
+   * not listed here folds into the "+" overflow menu instead (never gone —
+   * four one-click utilities stay reachable, the bar just gets calmer).
+   */
+  composerTools: ComposerToolId[];
   // Speech
   ttsAppId: string;
   ttsAccessKey: string;
@@ -39,6 +45,11 @@ export interface Settings {
   podcastResourceId: string;
   podcastDirect: boolean;
 }
+
+/** The composer's attachment tools, in toolbar order. */
+export type ComposerToolId = 'capture' | 'captureFull' | 'upload' | 'tabs';
+
+export const COMPOSER_TOOL_IDS: readonly ComposerToolId[] = ['capture', 'captureFull', 'upload', 'tabs'];
 
 export type SettingKey = keyof Settings;
 
@@ -55,6 +66,7 @@ export const SETTING_DEFAULTS: Partial<Settings> = {
   agentMode: false,
   citations: true,
   suggestQuestions: true,
+  composerTools: [...COMPOSER_TOOL_IDS],
   ttsResourceId: 'seed-tts-2.0',
   ttsSpeaker: 'zh_female_vv_uranus_bigtts',
   ttsAutoPlay: false,

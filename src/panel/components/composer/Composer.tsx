@@ -6,7 +6,11 @@ import { useAutoResize } from '@/panel/hooks/useAutoResize';
 import { sendMessage, submit } from '@/panel/lib/send';
 import { abortGeneration } from '@/panel/lib/stream-controller';
 import { readImageFiles, imagesFromTransfer } from '@/panel/lib/images';
-import { ImagePreviewBar, QuotePreview, TabChipBar, SendButton, UploadButton, CaptureButton, FullPageCaptureButton, TabPickerButton } from './ComposerParts';
+import { readSettings, onSettingsChange, COMPOSER_TOOL_IDS, type ComposerToolId } from '@/platform/settings';
+import {
+  ImagePreviewBar, QuotePreview, TabChipBar, SendButton, UploadButton, CaptureButton,
+  FullPageCaptureButton, TabPickerButton, MoreToolsMenu,
+} from './ComposerParts';
 import { CommandPopup, commandMatchesCount } from './CommandPopup';
 import { TabPicker } from './TabPicker';
 import { t } from '@/shared/i18n.js';
@@ -29,6 +33,21 @@ export function Composer() {
   const popup = useUIStore(s => s.commandPopup);
   const [tabPickerOpen, setTabPickerOpen] = useState(false);
   const ref = useAutoResize(draftText);
+
+  // Which attachment tools sit in the bar vs the "+" menu (options page,
+  // applied live). Absent/invalid stored value → all tools shown (default).
+  const [toolbarTools, setToolbarTools] = useState<ComposerToolId[]>([...COMPOSER_TOOL_IDS]);
+  useEffect(() => {
+    void readSettings(['composerTools']).then(({ composerTools }) => {
+      if (Array.isArray(composerTools)) setToolbarTools(composerTools.filter(id => (COMPOSER_TOOL_IDS as readonly string[]).includes(id)));
+    });
+    return onSettingsChange(['composerTools'], changed => {
+      const next = changed.composerTools;
+      if (Array.isArray(next)) setToolbarTools(next.filter(id => (COMPOSER_TOOL_IDS as readonly string[]).includes(id)));
+    });
+  }, []);
+  const show = (id: ComposerToolId): boolean => toolbarTools.includes(id);
+  const hasOverflow = toolbarTools.length < COMPOSER_TOOL_IDS.length;
 
   const ingest = (files: FileList | File[]) => readImageFiles(files, uris => { addImages(uris); });
 
@@ -92,10 +111,20 @@ export function Composer() {
             void submit({ prompt, display, draft });
           }}
         />
-        <CaptureButton onUri={uri => addImages([uri])} />
-        <FullPageCaptureButton onUris={uris => addImages(uris)} />
-        <UploadButton onFiles={ingest} />
-        <TabPickerButton onOpen={() => setTabPickerOpen(v => !v)} />
+        {show('capture') && <CaptureButton onUri={uri => addImages([uri])} />}
+        {show('captureFull') && <FullPageCaptureButton onUris={uris => addImages(uris)} />}
+        {show('upload') && <UploadButton onFiles={ingest} />}
+        {show('tabs') && <TabPickerButton onOpen={() => setTabPickerOpen(v => !v)} />}
+        {hasOverflow && (
+          <MoreToolsMenu>
+            {!show('capture') && <CaptureButton onUri={uri => addImages([uri])} labeled />}
+            {!show('captureFull') && <FullPageCaptureButton onUris={uris => addImages(uris)} labeled />}
+            {!show('upload') && <UploadButton onFiles={ingest} labeled />}
+            {!show('tabs') && (
+              <TabPickerButton labeled onOpen={() => setTabPickerOpen(true)} />
+            )}
+          </MoreToolsMenu>
+        )}
         <textarea
           ref={ref}
           id="userInput"

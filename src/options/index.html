@@ -167,6 +167,30 @@
         </div>
       </details>
 
+      <!-- 输入框工具 -->
+      <details class="config-details">
+        <summary class="config-summary" data-i18n="settings.composerTools">输入框工具</summary>
+        <div class="config-fields">
+          <p class="hint" data-i18n-html="settings.composerTools.hint">勾选的功能直接显示在输入框；未勾选的收进“+”菜单，随时可用。</p>
+          <label class="toggle-row">
+            <span data-i18n="sidebar.visionCapture">截取当前画面</span>
+            <input type="checkbox" id="composerToolCapture" checked>
+          </label>
+          <label class="toggle-row">
+            <span data-i18n="sidebar.visionCaptureFull">整页截屏</span>
+            <input type="checkbox" id="composerToolCaptureFull" checked>
+          </label>
+          <label class="toggle-row">
+            <span data-i18n="sidebar.uploadImage">上传图片</span>
+            <input type="checkbox" id="composerToolUpload" checked>
+          </label>
+          <label class="toggle-row">
+            <span data-i18n="sidebar.attachTabs">附加其他标签页（一起提问 / 对比）</span>
+            <input type="checkbox" id="composerToolTabs" checked>
+          </label>
+        </div>
+      </details>
+
       <button id="saveBtn" class="primary-btn" data-i18n="settings.save">保存设置</button>
     </section>
 

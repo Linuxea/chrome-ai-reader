@@ -52,6 +52,9 @@ const TRANSLATIONS = {
     'settings.tts.autoPlay': 'AI 回复后自动朗读',
 
 
+    'settings.composerTools': '输入框工具',
+    'settings.composerTools.hint': '勾选的功能直接显示在输入框；未勾选的收进“+”菜单，随时可用。',
+    'sidebar.moreTools': '更多工具',
     'settings.suggest': '推荐追问',
     'settings.suggest.toggle': 'AI 回复后自动生成推荐问题',
 
@@ -387,6 +390,9 @@ const TRANSLATIONS = {
     'settings.tts.autoPlay': 'Auto-play TTS after AI response',
 
 
+    'settings.composerTools': 'Input bar tools',
+    'settings.composerTools.hint': 'Checked tools sit directly in the input bar; unchecked ones fold into the “+” menu.',
+    'sidebar.moreTools': 'More tools',
     'settings.suggest': 'Suggested Follow-ups',
     'settings.suggest.toggle': 'Auto-generate suggested questions after AI response',
 

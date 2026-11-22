@@ -161,6 +161,32 @@ describe('Composer behavior', () => {
     await vi.waitFor(() => expect(send()).toBeEnabled());
   });
 
+  it('composer tools: folded-out tools land in the "+" menu (live from settings)', async () => {
+    // Only "upload" stays in the bar — the other three fold into the menu.
+    store.sync.composerTools = ['upload'];
+    render(<Composer />);
+
+    // Wait for readSettings to apply; the bar then has exactly one tool + "+”.
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: '更多工具' })).toBeInTheDocument();
+    });
+    const bar = document.querySelector('.input-wrapper')!;
+    // DIRECT tool children of the bar: just "upload" (the "+" lives inside
+    // its own .tools-menu-slot, not a direct child).
+    const barTools = bar.querySelectorAll(':scope > .upload-btn');
+    expect(barTools.length).toBe(1);
+    expect(bar.querySelector('.tools-menu-slot')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '更多工具' }));
+    const menu = document.querySelector('.tools-menu')!;
+    const items = menu.querySelectorAll('.upload-btn');
+    expect(items.length).toBe(3); // capture / captureFull / tabs — upload stays in the bar
+    expect(menu.textContent).toContain('截取当前画面');
+    expect(menu.textContent).toContain('整页截屏');
+    expect(menu.textContent).toContain('附加其他标签页');
+    expect(menu.textContent).not.toContain('上传图片');
+  });
+
   it('typing "/" opens the command popup; Escape closes it', async () => {
     const { useUIStore } = await import('@/panel/stores/ui-store');
     render(<Composer />);

@@ -6,6 +6,7 @@ import { initThemeSettings } from './theme-settings';
 import { initLlmSettings, fetchModels, loadLlmValues, collectLlmSaveData } from './llm-settings';
 import { initTtsSettings, loadTtsValues, collectTtsSaveData } from './tts-settings';
 import { initSuggestSettings, loadSuggestValues, collectSuggestSaveData } from './suggest-settings';
+import { initComposerToolsSettings, loadComposerToolValues } from './composer-tools-settings';
 import { initQuickCommandsEditor } from './quick-commands-editor';
 import { initImportExport } from './import-export';
 import { initUsagePanel } from './usage-panel';
@@ -14,6 +15,7 @@ initThemeSettings();
 initLlmSettings();
 initTtsSettings();
 initSuggestSettings();
+initComposerToolsSettings();
 initQuickCommandsEditor();
 initImportExport();
 initUsagePanel();
@@ -22,6 +24,7 @@ readStoredSettings(SYNC_FIELDS as SettingKey[]).then((data) => {
   loadLlmValues(data as Record<string, unknown>);
   loadTtsValues(data as Record<string, unknown>);
   loadSuggestValues(data as Record<string, unknown>);
+  loadComposerToolValues(data as Record<string, unknown>);
   if (data.apiKey) fetchModels();
 });
 

@@ -647,6 +647,35 @@
 }
 .upload-btn:hover { color: var(--primary); background: var(--primary-light); }
 
+/* "+" overflow menu for folded-out attachment tools. */
+.tools-menu-slot { position: relative; flex-shrink: 0; align-self: flex-end; }
+.tools-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+.tools-menu .upload-btn {
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  align-self: stretch;
+  font-size: 12.5px;
+}
+.tools-menu .upload-btn:hover { background: var(--bg-hover); color: var(--primary); }
+.tool-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .user-input {
   flex: 1;
   /* Without this, long unbreakable content stretches the textarea past its

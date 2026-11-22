@@ -26,4 +26,4 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
  */
 export { SECRET_KEYS as SECRET_FIELDS } from '../platform/settings';
 
-export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language'];
+export const SYNC_FIELDS: string[] = [...Object.keys(textFields), ...Object.keys(checkboxFields), 'themeName', 'language', 'composerTools'];
