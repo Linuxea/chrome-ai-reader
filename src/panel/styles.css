@@ -1191,9 +1191,14 @@
   border-radius: var(--radius-md);
   background: #ffffff;
   min-height: 80px;
+  display: flex;
+  justify-content: center;
 }
+/* Inner wrapper: sized to the SCALED card in JS (both axes). Overflow-x
+   hidden is the belt-and-braces against 1px rounding — the layout overflow
+   to the right of a scaled card is empty space by definition. */
 .share-preview-inner {
-  overflow: auto;
+  overflow: hidden auto;
   max-height: calc(100vh - 140px);
 }
 .share-preview-scaler {

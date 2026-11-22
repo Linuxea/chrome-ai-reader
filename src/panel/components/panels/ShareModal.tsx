@@ -63,11 +63,19 @@ export function ShareModal() {
     const apply = () => {
       const k = Math.min(1, frame.clientWidth / Math.max(fitted.width, 1));
       scaler.style.transform = `scale(${k})`;
-      // Reserve the scaled space so the frame scrolls the SCALED card.
+      // The scaler keeps the card's INTRINSIC layout (720px) so the card —
+      // and the exported PNG — render identically; the transform shrinks it
+      // only VISUALLY. Layout size ≠ visual size, so the wrapper must be
+      // sized to the SCALED card on BOTH axes: compensating only the height
+      // left a 720px-wide layout box with a visually-smaller card in it →
+      // horizontal scrollbar scrolling into blank space.
       scaler.style.width = `${fitted.width}px`;
       scaler.style.height = fitted.height > 0 ? `${fitted.height}px` : 'auto';
       const inner = scaler.parentElement;
-      if (inner) inner.style.height = fitted.height > 0 ? `${Math.round(fitted.height * k)}px` : 'auto';
+      if (inner) {
+        inner.style.width = `${Math.floor(fitted.width * k)}px`;
+        inner.style.height = fitted.height > 0 ? `${Math.floor(fitted.height * k)}px` : 'auto';
+      }
     };
     apply();
     const ro = new ResizeObserver(apply);
@@ -120,7 +128,7 @@ export function ShareModal() {
               </button>
             </div>
             <div className="share-preview" ref={mountRef}>
-              <div className="share-preview-inner" style={{ overflow: 'auto' }}>
+              <div className="share-preview-inner">
                 <div className="share-preview-scaler" ref={scalerRef} />
               </div>
             </div>
