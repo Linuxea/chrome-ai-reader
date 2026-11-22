@@ -621,11 +621,13 @@
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: 7px;
   border: 1px solid var(--border);
   background: var(--input-bg);
   border-radius: var(--radius-lg);
-  padding: 6px 6px 6px 8px;
+  /* Symmetric padding: the send button's inset must mirror the first
+     icon's (an asymmetric frame reads as crooked at a glance). */
+  padding: 6px;
   transition: border-color 0.15s ease;
 }
 .input-wrapper:focus-within { border-color: var(--primary); }
@@ -636,7 +638,9 @@
   justify-content: center;
   padding: 6px;
   border-radius: var(--radius-md);
-  color: var(--text-secondary);
+  /* Resting weight is deliberately quiet — the text input is the composer's
+     center; the attachments light up on hover. */
+  color: var(--text-tertiary);
   cursor: pointer;
   flex-shrink: 0;
   align-self: flex-end;
@@ -645,6 +649,9 @@
 
 .user-input {
   flex: 1;
+  /* Without this, long unbreakable content stretches the textarea past its
+     flex share on narrow panels (the classic flex-item min-width:auto trap). */
+  min-width: 0;
   border: none;
   outline: none;
   resize: none;
@@ -663,17 +670,25 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: none;
-  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  border-radius: 50%; /* a circle echoes the pill wrapper's arc */
   background: var(--primary);
   color: var(--user-text);
   cursor: pointer;
   flex-shrink: 0;
   align-self: flex-end;
-  transition: background-color 0.15s ease, opacity 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.send-btn:hover { background: var(--primary-hover); }
-.send-btn:disabled { opacity: 0.4; cursor: default; }
+.send-btn:not(:disabled):hover { background: var(--primary-hover); }
+/* Empty composer: a quiet ghost — the accent appears only when a message
+   exists (the resting composer's visual center is the INPUT, not the button). */
+.send-btn:disabled {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-tertiary);
+  opacity: 1;
+  cursor: default;
+}
 .send-btn.stop { background: var(--error-text); }
 .send-btn.stop:hover { background: var(--error); }
 

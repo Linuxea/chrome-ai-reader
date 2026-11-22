@@ -60,13 +60,32 @@ export function TabChipBar() {
   );
 }
 
-export function SendButton({ generating, onSend, onStop }: { generating: boolean; onSend: () => void; onStop: () => void }) {
+/**
+ * The composer's only primary action. Two visual weights:
+ * - ready (text/attachments): the solid accent circle — the affordance
+ *   lights up only when there is something to send;
+ * - empty: a quiet ghost circle (the input area stays the visual center of
+ *   the resting composer; the accent only enters when it means something).
+ * While generating it becomes Stop — always alert-colored, always enabled.
+ */
+export function SendButton({ generating, canSend, onSend, onStop }: {
+  generating: boolean;
+  canSend: boolean;
+  onSend: () => void;
+  onStop: () => void;
+}) {
   return generating ? (
     <button className="send-btn stop" onClick={onStop} title={t('action.stop')} aria-label={t('action.stop')}>
       <Square size={14} fill="currentColor" />
     </button>
   ) : (
-    <button className="send-btn" onClick={onSend} title={t('sidebar.send')} aria-label={t('sidebar.send')}>
+    <button
+      className="send-btn"
+      disabled={!canSend}
+      onClick={onSend}
+      title={t('sidebar.send')}
+      aria-label={t('sidebar.send')}
+    >
       <Send size={15} />
     </button>
   );

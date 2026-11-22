@@ -145,6 +145,22 @@ describe('Composer behavior', () => {
     expect(core.getConversationHistory()).toHaveLength(0);
   });
 
+  it('send button is ghosted (disabled) while empty, enabled by text OR images', async () => {
+    render(<Composer />);
+    const send = () => screen.getByRole('button', { name: '发送' });
+    expect(send()).toBeDisabled();
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '问题' } });
+    expect(send()).toBeEnabled();
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+    expect(send()).toBeDisabled();
+
+    // Images alone are a valid message (submit()'s free-text guard).
+    useComposerStore.setState({ images: [{ id: 'i1', dataUri: 'data:image/png;base64,x' }], tabs: [] });
+    await vi.waitFor(() => expect(send()).toBeEnabled());
+  });
+
   it('typing "/" opens the command popup; Escape closes it', async () => {
     const { useUIStore } = await import('@/panel/stores/ui-store');
     render(<Composer />);

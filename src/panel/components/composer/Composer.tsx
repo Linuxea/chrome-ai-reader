@@ -20,6 +20,8 @@ export function Composer() {
   const draftText = useComposerStore(s => s.draftText);
   const setDraftText = useComposerStore(s => s.setDraftText);
   const addImages = useComposerStore(s => s.addImages);
+  // Mirror of submit()'s free-text guard: text OR attachments make a message.
+  const canSend = useComposerStore(s => s.draftText.trim().length > 0 || s.images.length > 0 || s.tabs.length > 0);
   const isGenerating = useTabsStore(s => s.isGenerating);
   const activeTabId = useTabsStore(s => s.activeTabId);
   const tabState = useActiveTabState();
@@ -121,6 +123,7 @@ export function Composer() {
         />
         <SendButton
           generating={isGenerating}
+          canSend={canSend}
           onSend={() => void sendMessage()}
           onStop={() => activeTabId != null && abortGeneration(activeTabId)}
         />
