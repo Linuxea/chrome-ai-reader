@@ -187,6 +187,29 @@ describe('Composer behavior', () => {
     expect(menu.textContent).not.toContain('上传图片');
   });
 
+  it('composer tools: clicking "+" again CLOSES the menu (mousedown-outside vs click-toggle race)', async () => {
+    store.sync.composerTools = ['upload'];
+    render(<Composer />);
+    const plus = await screen.findByRole('button', { name: '更多工具' });
+
+    fireEvent.click(plus);
+    expect(document.querySelector('.tools-menu')).not.toBeNull();
+
+    // Real event order on a second click: mousedown (outside-menu listener
+    // fires) THEN click (toggle). With the listener matching only .tools-menu,
+    // the launcher itself was "outside": mousedown closed, click reopened —
+    // the menu could never be dismissed by its own button.
+    fireEvent.mouseDown(plus);
+    fireEvent.click(plus);
+    expect(document.querySelector('.tools-menu')).toBeNull();
+
+    // And a genuinely-outside click closes it too.
+    fireEvent.click(plus);
+    expect(document.querySelector('.tools-menu')).not.toBeNull();
+    fireEvent.mouseDown(document.body);
+    expect(document.querySelector('.tools-menu')).toBeNull();
+  });
+
   it('typing "/" opens the command popup; Escape closes it', async () => {
     const { useUIStore } = await import('@/panel/stores/ui-store');
     render(<Composer />);

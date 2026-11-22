@@ -5,7 +5,8 @@ import { useTabsStore } from '@/panel/stores/tabs-store';
 import { captureVisibleTab, captureFullPage } from '@/panel/lib/screenshot';
 import { t } from '@/shared/i18n.js';
 
-/** Pending-image thumbnails above the input (state, not a DOM preview bar). */export function ImagePreviewBar() {
+/** Pending-image thumbnails above the input (state, not a DOM preview bar). */
+export function ImagePreviewBar() {
   const images = useComposerStore(s => s.images);
   const removeImage = useComposerStore(s => s.removeImage);
   if (images.length === 0) return null;
@@ -159,7 +160,11 @@ export function MoreToolsMenu({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (e.target instanceof Element && e.target.closest('.tools-menu')) return;
+      // The SLOT (launcher included) is the menu's own territory: matching
+      // only .tools-menu made the launcher an "outside" click — mousedown
+      // closed the menu, the following click toggled it right back open,
+      // and "+" could never close its own menu.
+      if (e.target instanceof Element && e.target.closest('.tools-menu-slot')) return;
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent): void => {

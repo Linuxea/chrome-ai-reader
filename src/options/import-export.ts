@@ -2,7 +2,8 @@ import { t } from '../shared/i18n.js';
 import { downloadFile } from '../shared/download';
 import { showStatus } from './status';
 import { textFields, checkboxFields, SYNC_FIELDS } from './fields';
-import { readStoredSettings, writeSettings, removeSettings, isSecret, type SettingKey, type Settings } from '../platform/settings';
+import { loadComposerToolValues } from './composer-tools-settings';
+import { readStoredSettings, writeSettings, removeSettings, isSecret, COMPOSER_TOOL_IDS, type SettingKey, type Settings } from '../platform/settings';
 import { COMMANDS_KEY, saveQuickCommands, renderCurrentCommands } from './quick-commands-editor';
 import { fetchModels } from './llm-settings';
 
@@ -43,6 +44,15 @@ export function initImportExport(): void {
         const values: Record<string, unknown> = {};
         for (const [key, input] of Object.entries(textFields)) { if (data[key]) { values[key] = data[key]; input.value = data[key] as string; } }
         for (const [key, checkbox] of Object.entries(checkboxFields)) { if (data[key] !== undefined) { values[key] = data[key]; checkbox.checked = data[key] as boolean; } }
+        // composerTools travels with backups (SYNC_FIELDS) but is neither a
+        // text nor checkbox field — apply it here, unknown ids filtered
+        // against the same table the panel uses. An older backup without
+        // the key leaves the current choice untouched.
+        if (Array.isArray(data.composerTools)) {
+          const tools = (data.composerTools as string[]).filter(id => (COMPOSER_TOOL_IDS as readonly string[]).includes(id));
+          values.composerTools = tools;
+          loadComposerToolValues({ composerTools: tools });
+        }
         // A backup exported without secrets must not wipe the configured keys.
         const toRemove = Object.keys(textFields).filter(f => !(f in data) && !isSecret(f));
         for (const f of Object.keys(checkboxFields)) {

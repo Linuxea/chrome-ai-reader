@@ -47,7 +47,10 @@ export function Composer() {
     });
   }, []);
   const show = (id: ComposerToolId): boolean => toolbarTools.includes(id);
-  const hasOverflow = toolbarTools.length < COMPOSER_TOOL_IDS.length;
+  // Set-based: a hand-edited store value with duplicate ids (['upload','x4'])
+  // must not trick the length check into "everything shown" — that would
+  // make the folded-out tools unreachable.
+  const hasOverflow = new Set(toolbarTools).size < COMPOSER_TOOL_IDS.length;
 
   const ingest = (files: FileList | File[]) => readImageFiles(files, uris => { addImages(uris); });
 

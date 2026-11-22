@@ -21,8 +21,8 @@ export function initComposerToolsSettings(): void {
 
 function save(): Promise<void> {
   const shown = COMPOSER_TOOL_IDS.filter(id => CHECKBOXES[id].checked);
-  // All tools unchecked is a valid state (everything in the "+" menu) —
-  // the panel guards against a missing/empty array with the full default.
+  // All tools unchecked is a VALID state — everything lives in the "+" menu.
+  // Only a missing / non-array stored value falls back to all-shown.
   return chrome.storage.sync.set({ composerTools: shown });
 }
 
