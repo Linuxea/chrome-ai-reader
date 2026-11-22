@@ -17,7 +17,7 @@
     "<all_urls>"
   ],
   "side_panel": {
-    "default_path": "src/side_panel/index.html"
+    "default_path": "src/panel/index.html"
   },
   "content_scripts": [
     {

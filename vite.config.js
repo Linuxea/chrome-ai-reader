@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // `npm run dev` runs this build in watch mode next to scripts/watch-iife.js,
 // which writes dist/content.js + dist/background.js. Vite empties outDir on
@@ -13,6 +15,15 @@ const outDir = process.env.DIST_DIR || 'dist';
 
 export default defineConfig({
   base: '',  // Use relative paths — required for Chrome extension
+  plugins: [
+    react(),      // src/panel/ (React rewrite of the side panel)
+    tailwindcss(), // Tailwind v4 — panel styles.css
+  ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'), // matches tsconfig paths + shadcn components.json
+    },
+  },
   build: {
     outDir,
     emptyOutDir: !isWatch,
@@ -21,7 +32,7 @@ export default defineConfig({
     modulePreload: false,  // Not needed for Chrome extensions
     rollupOptions: {
       input: {
-        side_panel: resolve(__dirname, 'src/side_panel/index.html'),
+        panel: resolve(__dirname, 'src/panel/index.html'),
         options: resolve(__dirname, 'src/options/index.html'),
       },
       output: {

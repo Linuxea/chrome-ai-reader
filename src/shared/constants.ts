@@ -5,6 +5,14 @@ export const TRUNCATE_LIMITS = {
   QUOTE: 64000,
 } as const;
 
+/** At most this many other tabs ride along with one message (F4). Shared by
+ *  the legacy composer service and the panel composer store. */
+export const MAX_ATTACHED_TABS = 4;
+
+/** Upper bound for the images of one message (data-URI characters). Checked
+ *  BEFORE consuming, so an oversized draft stays put for the user to trim. */
+export const MAX_IMAGE_PAYLOAD_BYTES = 10 * 1024 * 1024;
+
 export function safeTruncate(text: string | undefined | null, maxLen: number, suffix?: string): string | undefined | null {
   if (!text) return text;
   const chars = [...text];

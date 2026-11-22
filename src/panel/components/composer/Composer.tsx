@@ -1,0 +1,115 @@
+import { useState, type KeyboardEvent } from 'react';
+import { useComposerStore } from '@/panel/stores/composer-store';
+import { useTabsStore, useActiveTabState } from '@/panel/stores/tabs-store';
+import { useUIStore } from '@/panel/stores/ui-store';
+import { useAutoResize } from '@/panel/hooks/useAutoResize';
+import { sendMessage, submit } from '@/panel/lib/send';
+import { abortGeneration } from '@/panel/lib/stream-controller';
+import { readImageFiles, imagesFromTransfer } from '@/panel/lib/images';
+import { ImagePreviewBar, QuotePreview, TabChipBar, SendButton, UploadButton, CaptureButton, FullPageCaptureButton, TabPickerButton } from './ComposerParts';
+import { CommandPopup, commandMatchesCount } from './CommandPopup';
+import { TabPicker } from './TabPicker';
+import { t } from '@/shared/i18n.js';
+
+/**
+ * The input area. Enter sends (IME-safe), Shift+Enter breaks a line, `/`
+ * opens the quick-command popup, paste/drop ingests images. While a
+ * generation runs the send button becomes Stop.
+ */
+export function Composer() {
+  const draftText = useComposerStore(s => s.draftText);
+  const setDraftText = useComposerStore(s => s.setDraftText);
+  const addImages = useComposerStore(s => s.addImages);
+  const isGenerating = useTabsStore(s => s.isGenerating);
+  const activeTabId = useTabsStore(s => s.activeTabId);
+  const tabState = useActiveTabState();
+  const quote = tabState?.selectedText ?? '';
+  const popup = useUIStore(s => s.commandPopup);
+  const [tabPickerOpen, setTabPickerOpen] = useState(false);
+  const ref = useAutoResize(draftText);
+
+  const ingest = (files: FileList | File[]) => readImageFiles(files, uris => { addImages(uris); });
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME composition: Enter confirms the composition, it must NOT send
+    // (nativeEvent.isComposing or the legacy keyCode 229 both cover it).
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+
+    if (popup.open) {
+      const matches = commandMatchesCount();
+      const highlighted = Math.min(useUIStore.getState().commandPopup.highlighted, Math.max(matches - 1, 0));
+      if (e.key === 'ArrowUp') { e.preventDefault(); useUIStore.getState().setCommandHighlight((highlighted - 1 + Math.max(matches, 1)) % Math.max(matches, 1)); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); useUIStore.getState().setCommandHighlight((highlighted + 1) % Math.max(matches, 1)); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const query = popup.query.replace(/^\//, '');
+        const quickCommands = useTabsStore.getState().quickCommands;
+        const list = quickCommands.filter(c => c.name.toLowerCase().includes(query.toLowerCase()));
+        const cmd = list[highlighted];
+        useUIStore.getState().closeCommandPopup();
+        if (cmd) {
+          const rest = query.toLowerCase().startsWith(cmd.name.toLowerCase()) ? query.slice(cmd.name.length).trim() : '';
+          void submit({ prompt: cmd.prompt, display: cmd.name, draft: rest || undefined });
+        }
+        return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); useUIStore.getState().closeCommandPopup(); return; }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  };
+
+  return (
+    <div className="input-area">
+      <QuotePreview quote={quote} />
+      <ImagePreviewBar />
+      <TabChipBar />
+      <div className="input-wrapper">
+        {tabPickerOpen && <TabPicker onClose={() => setTabPickerOpen(false)} />}
+        <CommandPopup
+          onPick={(prompt, display, draft) => {
+            useUIStore.getState().closeCommandPopup();
+            void submit({ prompt, display, draft });
+          }}
+        />
+        <CaptureButton onUri={uri => addImages([uri])} />
+        <FullPageCaptureButton onUris={uris => addImages(uris)} />
+        <UploadButton onFiles={ingest} />
+        <TabPickerButton onOpen={() => setTabPickerOpen(v => !v)} />
+        <textarea
+          ref={ref}
+          id="userInput"
+          className="user-input"
+          value={draftText}
+          rows={1}
+          placeholder={t('sidebar.input.ph')}
+          onChange={e => {
+            const value = e.target.value;
+            setDraftText(value);
+            if (value.startsWith('/')) useUIStore.getState().setCommandQuery(value);
+            else if (useUIStore.getState().commandPopup.open) useUIStore.getState().closeCommandPopup();
+          }}
+          onKeyDown={onKeyDown}
+          onPaste={e => {
+            const files = imagesFromTransfer(e.clipboardData);
+            if (files.length) { e.preventDefault(); ingest(files); }
+          }}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => {
+            e.preventDefault();
+            const files = imagesFromTransfer(e.dataTransfer);
+            if (files.length) ingest(files);
+          }}
+        />
+        <SendButton
+          generating={isGenerating}
+          onSend={() => void sendMessage()}
+          onStop={() => activeTabId != null && abortGeneration(activeTabId)}
+        />
+      </div>
+    </div>
+  );
+}

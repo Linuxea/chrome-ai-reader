@@ -1,9 +1,18 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'), // mirrors vite.config.js / tsconfig paths
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
+    // RTL matcher augmentation (toBeInTheDocument etc.) — inert for the
+    // legacy DOM tests, required for panel/ React tests.
+    setupFiles: ['tests/helpers/rtl-setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html'],
@@ -14,7 +23,6 @@ export default defineConfig({
         'src/shared/types.ts',
         'src/shared/types.js',
         // 入口编排文件，仅调用 init() 组装，测试 ROI 极低
-        'src/side_panel/main.ts',
         'src/options/index.ts',
         'src/content/index.ts',
       ],

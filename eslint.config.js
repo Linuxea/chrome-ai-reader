@@ -6,7 +6,7 @@ export default [
   js.configs.recommended,
   // TypeScript: without a parser ESLint never linted a single .ts file (the
   // vast majority of src/). Syntax-level rules only — type safety is tsc's job.
-  ...tseslint.configs.recommended.map((c) => ({ ...c, files: ['**/*.ts'] })),
+  ...tseslint.configs.recommended.map((c) => ({ ...c, files: ['**/*.{ts,tsx}'] })),
   {
     languageOptions: {
       ecmaVersion: 2022,
@@ -26,7 +26,7 @@ export default [
     },
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     rules: {
       // The base rule misreads type-only usages; the TS-aware one replaces it.
       'no-unused-vars': 'off',
