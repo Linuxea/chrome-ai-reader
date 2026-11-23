@@ -18,7 +18,7 @@
  * and `tool_result` (panel → worker, one per call).
  */
 
-import type { ChatMessage, ToolCall } from './types';
+import type { ChatMessage, ToolCall, WebResult, WebSource, WebStep, WebStepAction } from './types';
 
 // ---------------------------------------------------------------------------
 // Port names — the single registry of long-lived `chrome.runtime.connect` ports
@@ -60,7 +60,42 @@ export interface AIChatRequest {
   purpose?: 'chat' | 'agent';
   /** Agent mode: tool definitions the panel can execute. */
   tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
+  /**
+   * F15: allow web search for this request. The worker then declares
+   * DeepSeek's server-side `deepseek_web_search` tool (and nothing else
+   * changes: whether to search is the model's call, question by question).
+   */
+  webSearch?: boolean;
 }
+
+// --- F15 web search progress (DeepSeek `server_tool_event`, normalized) -------
+
+/** A server-side web tool call started: its complete `action` is known. */
+export interface WebCallStarted {
+  type: 'call_started';
+  step: number;
+  call: { id: string; index: number; kind: WebStep['kind']; action: WebStepAction };
+}
+
+/** A server-side web tool call ended: results / page / error, no `signature`. */
+export interface WebCallCompleted {
+  type: 'call_completed';
+  step: number;
+  call: {
+    id: string;
+    index: number;
+    status: WebStep['status'];
+    sources?: WebSource[];
+    page?: WebStep['page'];
+    error?: string;
+  };
+}
+
+/** The three events DeepSeek streams in `choices[0].server_tool_event`. */
+export type ServerToolEvent = WebCallStarted | WebCallCompleted | { type: 'step_reasoning_done'; step: number };
+
+/** The events that describe a call (what the panel shows as the search trace). */
+export type WebCallEvent = WebCallStarted | WebCallCompleted;
 
 /** Why generation ended, normalized across providers. */
 export type FinishReason = 'stop' | 'length' | 'tool_calls' | 'refusal' | 'other';
@@ -80,8 +115,24 @@ export type StreamMessage =
    * `limit: 'steps'` qualifies it as the agent tool-round limit (not tokens)
    * so the panel can word the note correctly.
    */
-  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }
+  /**
+   * `web` (F15) is present only when the answer used the web: the search
+   * steps, the cited sources and where they are cited.
+   */
+  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps'; web?: WebResult }
   | { type: 'error'; error?: string; errorKey?: string }
+  /**
+   * F15 web search: a server-side call started or completed, forwarded as it
+   * streams so the panel can show the search while the answer is pending.
+   */
+  | { type: 'search_event'; event: WebCallEvent }
+  /**
+   * The worker restarts the request (once): the connection dropped before any
+   * answer text was produced. What the dead attempt streamed (reasoning,
+   * search events) is void — the panel resets the live entry; `attempt` is
+   * the 1-based number of the new attempt.
+   */
+  | { type: 'retry'; attempt: number }
   /**
    * Agent mode: a new round (LLM step) is requesting tools. Sent once per
    * round, before that round's `tool_call` messages; `round` is 1-based.

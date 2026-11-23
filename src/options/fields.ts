@@ -15,6 +15,7 @@ export const checkboxFields: Record<string, HTMLInputElement> = {
   suggestQuestions: document.getElementById('suggestQuestions') as HTMLInputElement,
   ttsAutoPlay: document.getElementById('ttsAutoPlay') as HTMLInputElement,
   citations: document.getElementById('citations') as HTMLInputElement,
+  webSearch: document.getElementById('webSearch') as HTMLInputElement,
   agentMode: document.getElementById('agentMode') as HTMLInputElement,
   podcastDirect: document.getElementById('podcastDirect') as HTMLInputElement,
 };

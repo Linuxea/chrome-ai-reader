@@ -9,7 +9,7 @@ import { readImageFiles, imagesFromTransfer } from '@/panel/lib/images';
 import { readSettings, onSettingsChange, COMPOSER_TOOL_IDS, type ComposerToolId } from '@/platform/settings';
 import {
   ImagePreviewBar, QuotePreview, TabChipBar, SendButton, UploadButton, CaptureButton,
-  FullPageCaptureButton, TabPickerButton, MoreToolsMenu,
+  FullPageCaptureButton, TabPickerButton, MoreToolsMenu, WebSearchButton,
 } from './ComposerParts';
 import { CommandPopup, commandMatchesCount } from './CommandPopup';
 import { TabPicker } from './TabPicker';
@@ -153,6 +153,7 @@ export function Composer() {
             if (files.length) ingest(files);
           }}
         />
+        <WebSearchButton />
         <SendButton
           generating={isGenerating}
           canSend={canSend}

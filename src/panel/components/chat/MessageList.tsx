@@ -20,7 +20,7 @@ export function MessageList() {
   const activeTabId = useTabsStore(s => s.activeTabId);
   const live = useStreamStore(s => (activeTabId != null ? s.streams[activeTabId] : undefined));
   const history = tabState?.conversationHistory ?? [];
-  const ref = useStickToBottom<HTMLDivElement>([history.length, live?.answer, live?.thinking, live?.rounds.length]);
+  const ref = useStickToBottom<HTMLDivElement>([history.length, live?.answer, live?.thinking, live?.rounds.length, live?.webSteps.length]);
 
   const empty = history.length === 0 && !live;
 

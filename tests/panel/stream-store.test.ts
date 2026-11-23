@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStreamStore } from '@/panel/stores/stream-store';
+import type { WebCallEvent } from '@/shared/protocol';
+
+const STARTED: WebCallEvent = { type: 'call_started', step: 0, call: { id: 'c1', index: 0, kind: 'deep_search', action: { type: 'search', queries: ['q1', 'q2'] } } };
 
 describe('stream-store', () => {
   beforeEach(() => {
@@ -12,6 +15,68 @@ describe('stream-store', () => {
     s.appendAnswer(1, 'partial');
     s.start(1); // restart (e.g. resend) must not keep old text
     expect(useStreamStore.getState().streams[1]).toMatchObject({ tabId: 1, answer: '', status: 'streaming' });
+  });
+
+  // F15 web search trace
+  it('web steps: a start appends a running step; completions fill their step by id, whatever order they arrive in', () => {
+    const s = useStreamStore.getState();
+    s.start(1);
+    s.addSearchEvent(1, STARTED);
+    s.addSearchEvent(1, { type: 'call_started', step: 1, call: { id: 'c2', index: 0, kind: 'deep_search', action: { type: 'open_page', url: 'https://a.test/' } } });
+    s.addSearchEvent(1, { type: 'call_started', step: 1, call: { id: 'c3', index: 1, kind: 'deep_search', action: { type: 'open_page', url: 'https://b.test/' } } });
+    // Within step 1 the second call completes first (observed on the live API).
+    s.addSearchEvent(1, { type: 'call_completed', step: 1, call: { id: 'c3', index: 1, status: 'completed', page: { url: 'https://b.test/', title: 'B' } } });
+    s.addSearchEvent(1, { type: 'call_completed', step: 0, call: { id: 'c1', index: 0, status: 'completed', sources: [{ url: 'https://a.test/', title: 'A', siteName: 'A site' }] } });
+    expect(useStreamStore.getState().streams[1]!.webSteps).toEqual([
+      { id: 'c1', kind: 'deep_search', action: { type: 'search', queries: ['q1', 'q2'] }, status: 'completed', sources: [{ url: 'https://a.test/', title: 'A', siteName: 'A site' }] },
+      { id: 'c2', kind: 'deep_search', action: { type: 'open_page', url: 'https://a.test/' }, status: 'running' },
+      { id: 'c3', kind: 'deep_search', action: { type: 'open_page', url: 'https://b.test/' }, status: 'completed', page: { url: 'https://b.test/', title: 'B' } },
+    ]);
+  });
+
+  it('web steps: a duplicate start and an orphan completion are ignored; a failed call records its error', () => {
+    const s = useStreamStore.getState();
+    s.start(1);
+    // No start was ever seen for this id — nothing to attach the result to.
+    s.addSearchEvent(1, { type: 'call_completed', step: 0, call: { id: 'orphan', index: 0, status: 'completed', sources: [{ url: 'https://x.test/', title: 'X' }] } });
+    s.addSearchEvent(1, STARTED);
+    s.addSearchEvent(1, { ...STARTED, call: { ...STARTED.call, action: { type: 'search', queries: ['again'] } } });
+    s.addSearchEvent(1, { type: 'call_completed', step: 0, call: { id: 'c1', index: 0, status: 'failed', error: 'unavailable' } });
+    expect(useStreamStore.getState().streams[1]!.webSteps).toEqual([
+      { id: 'c1', kind: 'deep_search', action: { type: 'search', queries: ['q1', 'q2'] }, status: 'failed', error: 'unavailable' },
+    ]);
+  });
+
+  it('web steps: ignored once the stream has left "streaming"; a restart clears them', () => {
+    const s = useStreamStore.getState();
+    s.start(1);
+    s.addSearchEvent(1, STARTED);
+    s.abort(1, 'stopped');
+    s.addSearchEvent(1, { type: 'call_completed', step: 0, call: { id: 'c1', index: 0, status: 'completed' } });
+    expect(useStreamStore.getState().streams[1]!.webSteps.map(step => step.status)).toEqual(['running']);
+    s.start(1);
+    expect(useStreamStore.getState().streams[1]!.webSteps).toEqual([]);
+  });
+
+  it('restart: forgets what a dead attempt streamed, keeps the entry and its assistant id', () => {
+    const s = useStreamStore.getState();
+    s.start(1);
+    const assistantId = useStreamStore.getState().streams[1]!.assistantId;
+    s.addSearchEvent(1, STARTED);
+    s.appendThinking(1, 'half a thought');
+    s.appendAnswer(1, 'text that must not exist at this point');
+    s.startRound(1, 1);
+    s.restart(1);
+    expect(useStreamStore.getState().streams[1]).toEqual({
+      tabId: 1, assistantId, thinking: '', answer: '', rounds: [], webSteps: [], status: 'streaming',
+    });
+    // Still streaming: new events of the retried attempt are accepted.
+    s.addSearchEvent(1, STARTED);
+    expect(useStreamStore.getState().streams[1]!.webSteps).toHaveLength(1);
+    // Not streaming → nothing to restart.
+    s.finish(1, { finishReason: 'stop' });
+    s.restart(1);
+    expect(useStreamStore.getState().streams[1]!.webSteps).toHaveLength(1);
   });
 
   it('accumulates thinking and answer independently, per tab', () => {

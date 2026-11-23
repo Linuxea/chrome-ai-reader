@@ -6,6 +6,7 @@ import type { LiveStream } from '@/panel/stores/stream-store';
 import { useThrottledText } from '@/panel/hooks/useThrottledText';
 import { MarkdownView } from './MarkdownView';
 import { AgentTraceView } from './AgentTraceView';
+import { WebTraceView } from './WebTraceView';
 import { TypingIndicator } from './TypingIndicator';
 import { ThinkingBlock } from './AssistantBubble';
 import { retryMessage } from '@/panel/lib/send';
@@ -20,7 +21,9 @@ import { t } from '@/shared/i18n.js';
 export function LiveAnswer({ live }: { live: LiveStream }) {
   const throttled = useThrottledText(live.answer);
   const streaming = live.status === 'streaming';
-  const started = live.thinking !== '' || live.answer !== '' || live.rounds.length > 0;
+  // A running web search is activity too: it replaces the typing indicator
+  // with its own "searching…" line.
+  const started = live.thinking !== '' || live.answer !== '' || live.rounds.length > 0 || live.webSteps.length > 0;
 
   // A failed send: the user bubble renders as its own right-aligned turn
   // (like any user message) with the error card below it.
@@ -30,6 +33,7 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
         {live.failedUserMessage && <FailedUserBubble msg={live.failedUserMessage} />}
         <div className="ai-msg">
           {live.rounds.length > 0 && <AgentTraceView rounds={live.rounds} />}
+          {live.webSteps.length > 0 && <WebTraceView steps={live.webSteps} />}
           <ErrorCard live={live} />
         </div>
       </>
@@ -49,6 +53,7 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
   return (
     <div className="ai-msg">
       <AgentTraceView rounds={live.rounds} />
+      <WebTraceView steps={live.webSteps} live />
       {live.answer === '' && <ThinkingBlock text={live.thinking} />}
       {!started && (
         <div className="ai-msg-pending">

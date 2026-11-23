@@ -21,7 +21,8 @@
  * rendering is derived from state for whichever tab is active.
  */
 import { t } from '@/shared/i18n.js';
-import type { AgentTraceStep, ChatMessage, ToolCall } from '@/shared/types';
+import type { AgentTraceStep, ChatMessage, ToolCall, WebResult, WebStep } from '@/shared/types';
+import { webResultFromSteps } from '@/shared/web-search';
 import type { StreamMessage, FinishReason, TokenUsage } from '@/shared/protocol';
 import { openAIChatPort } from '@/platform/ports';
 import { AGENT_TOOL_SPECS, runAgentTool } from '@/panel/lib/agent-tools';
@@ -35,7 +36,7 @@ import { saveCurrentChat } from './chat-save';
 import { generateSuggestionsFor } from './suggest';
 
 type Outcome =
-  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }
+  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps'; web?: WebResult }
   | { kind: 'error'; errorText: string; errorKey?: string }
   | { kind: 'aborted' }
   /** The service worker's end went away (worker restart / crash). */
@@ -50,6 +51,8 @@ const _pendingAborts = new Set<number>();
 export interface CallAIOptions {
   /** Agent mode: offer the panel's tools; the worker loops until an answer. */
   agent?: boolean;
+  /** F15: ask the worker to declare DeepSeek's web search tool (never together with `agent`). */
+  webSearch?: boolean;
 }
 
 /**
@@ -89,7 +92,7 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
   const port = openAIChatPort();
   port.postMessage(options.agent
     ? { type: 'chat', messages, purpose: 'agent', tools: AGENT_TOOL_SPECS }
-    : { type: 'chat', messages });
+    : { type: 'chat', messages, ...(options.webSearch ? { webSearch: true } : {}) });
 
   // Window-global TTS autoplay: claim the audio resource for this answer
   // before the first chunk (a running podcast stops; a previous playback is
@@ -111,8 +114,17 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
       streamApi.startRound(tabId, msg.round);
     } else if (msg.type === 'tool_call') {
       void handleAgentToolCall(msg.call);
+    } else if (msg.type === 'search_event') {
+      // F15: web search progress — shown in the trace while the answer is pending.
+      streamApi.addSearchEvent(tabId, msg.event);
+    } else if (msg.type === 'retry') {
+      // The worker restarted the request after the connection dropped before
+      // any answer text: the reasoning / search events of the dead attempt are
+      // void. The user message stays in history and the tab stays generating.
+      streamApi.restart(tabId);
+      useUIStore.getState().pushToast(t('ai.retrying'));
     } else if (msg.type === 'done') {
-      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, limit: msg.limit });
+      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, limit: msg.limit, web: msg.web });
     } else if (msg.type === 'error') {
       finalize({
         kind: 'error',
@@ -177,6 +189,12 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
     const keepsAnswer = outcome.kind === 'done' || (text !== '' && (outcome.kind === 'aborted' || outcome.kind === 'disconnected'));
 
     if (keepsAnswer) {
+      // F15: the web trace + citations travel with the answer. A finished
+      // answer carries them on `done`; one cut short (stop / disconnect
+      // after some text) keeps whatever search calls had completed.
+      const web = outcome.kind === 'done'
+        ? outcome.web
+        : webResultFromSteps(live?.webSteps.filter((step): step is WebStep => step.status !== 'running') ?? []);
       // Append to THAT tab's history (it may be a background tab) — never
       // through the active-tab-scoped store wrappers. The finish info
       // (usage / truncation / step-limit) persists with the message so the
@@ -188,6 +206,7 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
         // F11: persist the evidence trail with the answer (only when the
         // model actually used tools) so reloads can rebuild the trace block.
         ...(agentTrace.length ? { agentTrace } : {}),
+        ...(web ? { web } : {}),
         ...(outcome.kind === 'done'
           ? { finish: { reason: outcome.finishReason, limit: outcome.limit, usage: outcome.usage, model: outcome.model } }
           : {}),

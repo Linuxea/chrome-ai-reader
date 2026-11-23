@@ -3,14 +3,20 @@
  * format into this one delta stream; background/chat-runner.ts consumes it.
  */
 
-import type { ChatMessage, ToolCall } from '../../shared/types';
-import type { FinishReason, TokenUsage } from '../../shared/protocol';
+import type { ChatMessage, ToolCall, WebResult } from '../../shared/types';
+import type { FinishReason, ServerToolEvent, TokenUsage } from '../../shared/protocol';
 
 export type ChatDelta =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   /** A complete tool call (arguments fully streamed). */
   | { type: 'tool_call'; call: ToolCall }
+  /**
+   * F15 web search: one progress event of a server-side tool call. Yielded
+   * for every event (including `step_reasoning_done`) so the runner's idle
+   * watchdog sees the stream is alive while the model searches.
+   */
+  | { type: 'search_event'; event: ServerToolEvent }
   | {
     type: 'finish';
     reason: FinishReason;
@@ -21,6 +27,8 @@ export type ChatDelta =
      * unchanged next to the tool_use blocks). Opaque to everyone else.
      */
     providerContent?: unknown;
+    /** F15: present only when the answer used the web. */
+    web?: WebResult;
   };
 
 /** A tool the model may call (JSON Schema parameters). */
@@ -37,6 +45,13 @@ export interface ChatRequest {
   /** Ask for a JSON object answer (native mode where the provider has one). */
   jsonMode?: boolean;
   tools?: ToolSpec[];
+  /**
+   * F15: declare DeepSeek's server-side `deepseek_web_search` tool. The rule
+   * (a system message) and the `latest_reminder` travel with the declaration
+   * — the provider sends all three or none, so the model is never told it
+   * can search on a request that does not offer the tool.
+   */
+  webSearch?: { rule: string; reminder: string };
 }
 
 export interface ProviderConfig {

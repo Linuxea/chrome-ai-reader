@@ -721,6 +721,27 @@
 .send-btn.stop { background: var(--error-text); }
 .send-btn.stop:hover { background: var(--error); }
 
+/* F15: the web search switch. Same footprint as the send button, so the
+   composer's right edge stays a neat row of two circles. Off = the
+   attachments' quiet weight; on (the default) = the accent. */
+.web-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: flex-end;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.web-btn:hover { color: var(--primary); background: var(--primary-light); }
+.web-btn.on { color: var(--primary); background: var(--primary-light); }
+
 /* Command popup */
 .command-popup {
   position: absolute;
@@ -982,6 +1003,75 @@
   font-family: inherit;
 }
 .citation-chip:hover { background: var(--primary-light); }
+
+/* F15 web search — the trace line above an answer and the source chips.
+   The chips are deliberately NOT shaped like the outlined [#N] paragraph
+   chips above: these are filled numbers, so the two kinds of citation can
+   be told apart at a glance. */
+.web-steps { margin-bottom: 8px; font-size: 12px; }
+.web-steps > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  user-select: none;
+  list-style: none;
+  overflow: hidden;
+}
+.web-steps > summary::-webkit-details-marker { display: none; }
+.web-steps > summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-steps[open] > summary { margin-bottom: 4px; }
+.web-steps.searching > summary { color: var(--primary); }
+.web-steps.searching .web-glyph { animation: tts-pulse 1.1s ease-in-out infinite; }
+.web-step {
+  border-left: 2px solid var(--border);
+  padding: 2px 0 2px 8px;
+  margin: 3px 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.web-step.done { border-left-color: var(--primary); }
+.web-step.failed { border-left-color: var(--error-text); }
+.web-step-line { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.web-step-line > svg { flex-shrink: 0; align-self: center; }
+.web-step-label { color: var(--text); flex-shrink: 0; }
+.web-step-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-step-count, .web-step-note { color: var(--text-tertiary); flex-shrink: 0; }
+.web-step.running .web-step-label { color: var(--primary); }
+.web-results { list-style: none; margin: 3px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.web-results a, .web-results span {
+  display: block;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-results a { text-decoration: none; }
+.web-results a:hover { color: var(--primary); text-decoration: underline; }
+.web-site { color: var(--text-tertiary); margin-left: 5px; }
+
+.md-body a.web-cite, .md-body span.web-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border: none;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 78%, var(--bg));
+  color: var(--user-text);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: 2.5px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.md-body a.web-cite:hover { background: var(--primary); }
+.md-body span.web-cite { cursor: default; }
 
 .suggest-loading { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
 .suggest-bar {

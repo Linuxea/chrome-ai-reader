@@ -6,10 +6,18 @@
  * Capability downgrades are remembered per apiBase+model (capabilities.ts):
  * a provider that rejects `response_format` or `stream_options` gets the
  * request retried without it, once, and never sees the field again.
+ *
+ * F15 web search: `req.webSearch` declares DeepSeek's server-side
+ * `deepseek_web_search` tool. Search progress streams back as
+ * `server_tool_event` chunks (→ `search_event` deltas); the complete call
+ * list and the citations arrive on the chunk that carries `finish_reason`
+ * (→ `finish.web`). No probing or downgrade here: this build targets
+ * `deepseek-flash`, which accepts the tool.
  */
 
 import { createSSEParser } from '../../shared/sse';
-import type { ChatMessage, MessageContentPart, ToolCall } from '../../shared/types';
+import { buildWebResult, parseServerToolEvent } from '../../shared/web-search';
+import type { ChatMessage, MessageContentPart, ToolCall, WebResult } from '../../shared/types';
 import type { FinishReason, TokenUsage } from '../../shared/protocol';
 import type { ChatDelta, ChatProvider, ChatRequest, ProviderConfig } from './types';
 import { ProviderError } from './types';
@@ -37,6 +45,28 @@ export function toOpenAIMessages(messages: ChatMessage[]): WireMessage[] {
   });
 }
 
+/** DeepSeek's server-side web search tool — declaring it lets the model search; it does not make it search. */
+export const WEB_SEARCH_TOOL = { type: 'deepseek_web_search' } as const;
+
+/**
+ * F15: add the two messages that go with a web search declaration.
+ * - the rule becomes its own system message right after the leading system
+ *   messages (appending it to the article message would bury it under tens
+ *   of thousands of characters);
+ * - the `latest_reminder` goes directly before the LAST message, and only
+ *   when that is the user message — the API rejects a reminder that is not
+ *   immediately followed by one (400).
+ */
+export function withWebSearch(messages: WireMessage[], web: ChatRequest['webSearch']): WireMessage[] {
+  if (!web) return messages;
+  const out = [...messages];
+  let head = 0;
+  while (head < out.length && out[head].role === 'system') head++;
+  out.splice(head, 0, { role: 'system', content: web.rule });
+  if (out[out.length - 1]?.role === 'user') out.splice(out.length - 1, 0, { role: 'latest_reminder', content: web.reminder });
+  return out;
+}
+
 function mapFinish(reason: string | null | undefined): FinishReason {
   switch (reason) {
     case 'stop': return 'stop';
@@ -56,8 +86,14 @@ interface ChunkJSON {
       /** Some providers (OpenRouter, vLLM) name it `reasoning`. */
       reasoning?: string | null;
       tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[];
+      /** F15 (DeepSeek): complete server-side tool calls, on the chunk that carries `finish_reason`. */
+      server_tool_calls?: unknown;
+      /** F15 (DeepSeek): `url_citation` items, code-point ranges into `content`. */
+      annotations?: unknown;
     };
     finish_reason?: string | null;
+    /** F15 (DeepSeek): progress of a server-side tool call; these chunks carry no `delta`. */
+    server_tool_event?: unknown;
   }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 }
@@ -92,15 +128,18 @@ export const openaiProvider: ChatProvider = {
       const sent: Capability[] = [];
       const body: Record<string, unknown> = {
         model: req.model,
-        messages: toOpenAIMessages(req.messages),
+        messages: withWebSearch(toOpenAIMessages(req.messages), req.webSearch),
         stream: true,
         temperature: req.temperature ?? 0.7,
       };
       if (req.jsonMode && !hasCapabilityIssue(key, 'jsonMode')) { body.response_format = { type: 'json_object' }; sent.push('jsonMode'); }
       if (!hasCapabilityIssue(key, 'streamUsage')) { body.stream_options = { include_usage: true }; sent.push('streamUsage'); }
-      if (req.tools?.length) {
-        body.tools = req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
-      }
+      // F15: the web tool is declared next to any function tools (the API
+      // accepts both in one request). Nothing else changes: `temperature`
+      // and the sampling params are simply ignored while it is declared.
+      const functionTools = req.tools?.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) ?? [];
+      if (req.webSearch) body.tools = [...functionTools, WEB_SEARCH_TOOL];
+      else if (functionTools.length) body.tools = functionTools;
       return { body, sent };
     };
 
@@ -125,6 +164,7 @@ export const openaiProvider: ChatProvider = {
     let finish: FinishReason | null = null;
     let usage: TokenUsage | undefined;
     let sawDone = false;
+    let web: WebResult | undefined;
 
     const handle = function* (data: string): Generator<ChatDelta> {
       if (data === '[DONE]') { sawDone = true; return; }
@@ -144,6 +184,13 @@ export const openaiProvider: ChatProvider = {
       }
       const choice = json.choices?.[0];
       if (!choice) return;
+      // F15: search progress. These chunks have no delta at all — skipping
+      // them (as before) would leave the runner's idle watchdog unkicked
+      // for the whole search. Malformed events are dropped by the parser.
+      if (choice.server_tool_event !== undefined) {
+        const event = parseServerToolEvent(choice.server_tool_event);
+        if (event) yield { type: 'search_event', event };
+      }
       const d = choice.delta;
       const reasoning = d?.reasoning_content ?? d?.reasoning;
       if (reasoning) yield { type: 'thinking', text: reasoning };
@@ -161,7 +208,11 @@ export const openaiProvider: ChatProvider = {
         if (!cur.id) cur.id = `call_${idx}`;
         toolCalls.set(idx, cur);
       }
-      if (choice.finish_reason) finish = mapFinish(choice.finish_reason);
+      if (choice.finish_reason) {
+        finish = mapFinish(choice.finish_reason);
+        // F15: the complete tool calls + citations ride once on this chunk.
+        web = buildWebResult(d?.server_tool_calls, d?.annotations) ?? web;
+      }
     };
 
     while (!sawDone) {
@@ -173,6 +224,6 @@ export const openaiProvider: ChatProvider = {
 
     const calls: ToolCall[] = [...toolCalls.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c);
     for (const call of calls) yield { type: 'tool_call', call };
-    yield { type: 'finish', reason: finish ?? (calls.length ? 'tool_calls' : 'stop'), usage };
+    yield { type: 'finish', reason: finish ?? (calls.length ? 'tool_calls' : 'stop'), usage, ...(web ? { web } : {}) };
   },
 };

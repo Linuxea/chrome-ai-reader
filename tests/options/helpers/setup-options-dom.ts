@@ -20,9 +20,9 @@ const TEXT_INPUT_IDS = [
   'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'podcastResourceId', 'ttsSpeaker',
 ] as const;
 
-/** IDs of all checkbox elements */
+/** IDs of all checkbox elements. `webSearch` is checked in the page (on by default). */
 const CHECKBOX_IDS = [
-  'suggestQuestions', 'ttsAutoPlay', 'citations', 'agentMode', 'podcastDirect',
+  'suggestQuestions', 'ttsAutoPlay', 'citations', 'webSearch', 'agentMode', 'podcastDirect',
 ] as const;
 
 /** IDs of all button elements */
@@ -56,7 +56,7 @@ export function setupOptionsDom(): void {
       : `<input id="${id}" type="text"/>`);
   }
   for (const id of CHECKBOX_IDS) {
-    parts.push(`<input id="${id}" type="checkbox"/>`);
+    parts.push(`<input id="${id}" type="checkbox"${id === 'webSearch' ? ' checked' : ''}/>`);
   }
   for (const id of BUTTON_IDS) {
     parts.push(`<button id="${id}">Btn</button>`);

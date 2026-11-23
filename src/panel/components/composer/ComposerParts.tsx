@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Paperclip, ImagePlus, Camera, Frame, Plus, Send, Square, X } from 'lucide-react';
+import { Paperclip, ImagePlus, Camera, Frame, Plus, Send, Square, X, Globe, GlobeOff } from 'lucide-react';
 import { useComposerStore } from '@/panel/stores/composer-store';
 import { useTabsStore } from '@/panel/stores/tabs-store';
+import { readSettings, writeSettings, onSettingsChange } from '@/platform/settings';
 import { captureVisibleTab, captureFullPage } from '@/panel/lib/screenshot';
 import { t } from '@/shared/i18n.js';
 
@@ -88,6 +89,35 @@ export function SendButton({ generating, canSend, onSend, onStop }: {
       aria-label={t('sidebar.send')}
     >
       <Send size={15} />
+    </button>
+  );
+}
+
+/**
+ * F15: the web search switch, between the input and the send button — it
+ * reads as "this message goes out with web access".
+ *
+ * ON by default: search is the norm, and declaring the tool does not force a
+ * search (the model decides, question by question), so this is mostly an
+ * indicator with an opt-out. It mirrors the options page checkbox: both write
+ * the same setting and follow each other through storage change events.
+ */
+export function WebSearchButton() {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    void readSettings(['webSearch']).then(({ webSearch }) => setOn(webSearch !== false));
+    return onSettingsChange(['webSearch'], changed => { if (changed.webSearch !== undefined) setOn(changed.webSearch); });
+  }, []);
+  const title = on ? t('sidebar.webSearch.on') : t('sidebar.webSearch.off');
+  return (
+    <button
+      className={`web-btn${on ? ' on' : ''}`}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      onClick={() => { setOn(!on); void writeSettings({ webSearch: !on }); }}
+    >
+      {on ? <Globe size={16} /> : <GlobeOff size={16} />}
     </button>
   );
 }

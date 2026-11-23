@@ -141,6 +141,19 @@ describe('options/import-export', () => {
       expect(parsed.apiKey).toBe('sk-test');
       expect(parsed.ttsAccessKey).toBe('tts-secret');
     });
+
+    it('F15: exports a stored webSearch value and leaves the key out when it was never set', async () => {
+      store.sync = { modelName: 'm', webSearch: false };
+      exportBtn.click();
+      await flush();
+      expect(JSON.parse(vi.mocked(downloadFile).mock.calls[0][0] as string).webSearch).toBe(false);
+
+      store.sync = { modelName: 'm' };
+      exportBtn.click();
+      await flush();
+      const parsed = JSON.parse(vi.mocked(downloadFile).mock.calls[1][0] as string);
+      expect(parsed).not.toHaveProperty('webSearch');
+    });
   });
 
   describe('import — file selection', () => {
@@ -234,6 +247,26 @@ describe('options/import-export', () => {
       await flush();
 
       expect(store.local.quickCommands).toEqual([{ name: 'imported', prompt: 'p' }]);
+    });
+
+    // F15: web search is on by default.
+    it('imports webSearch when the backup has it', async () => {
+      simulateFileSelect(JSON.stringify({ version: 1, webSearch: false }));
+      await flush();
+
+      expect(store.sync.webSearch).toBe(false);
+      expect((document.getElementById('webSearch') as HTMLInputElement).checked).toBe(false);
+    });
+
+    it('a backup without webSearch restores the default (on)', async () => {
+      store.sync = { webSearch: false };
+      (document.getElementById('webSearch') as HTMLInputElement).checked = false;
+
+      simulateFileSelect(JSON.stringify({ version: 1, modelName: 'm' }));
+      await flush();
+
+      expect(store.sync).not.toHaveProperty('webSearch');
+      expect((document.getElementById('webSearch') as HTMLInputElement).checked).toBe(true);
     });
   });
 });

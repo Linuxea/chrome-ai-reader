@@ -47,6 +47,7 @@ registerPort(PORT_NAMES.AI_CHAT, 'extension', async (msg, port) => {
       temperature: req.temperature,
       purpose: req.purpose,
       tools: req.purpose === 'agent' ? req.tools : undefined,
+      webSearch: req.webSearch,
     });
   }
 });

@@ -154,6 +154,28 @@ describe('background/service-worker', () => {
       );
     });
 
+    it('passes webSearch (F15) to callOpenAI, and leaves it off when the panel does not ask', async () => {
+      const port = createMockPortForRoute('ai-chat');
+      onConnectListener()!(port);
+      const messages = [{ role: 'user', content: 'hello' }];
+
+      port._receiveMessage({ type: 'chat', messages, webSearch: true });
+      await vi.waitFor(() => expect(callOpenAI).toHaveBeenCalled());
+      expect(callOpenAI).toHaveBeenLastCalledWith(
+        messages,
+        expect.objectContaining({ name: 'ai-chat' }),
+        expect.objectContaining({ webSearch: true }),
+      );
+
+      port._receiveMessage({ type: 'chat', messages });
+      await vi.waitFor(() => expect(callOpenAI).toHaveBeenCalledTimes(2));
+      expect(callOpenAI).toHaveBeenLastCalledWith(
+        messages,
+        expect.anything(),
+        expect.objectContaining({ webSearch: undefined }),
+      );
+    });
+
     it('routes tts port to callTTS on "tts" message', async () => {
       const port = createMockPortForRoute('tts');
       onConnectListener()!(port);

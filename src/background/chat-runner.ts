@@ -16,15 +16,22 @@
 
 import { safePostMessage } from './sw-utils';
 import { readSettings, readStoredSettings, DEFAULT_API_BASE, DEFAULT_ANTHROPIC_API_BASE } from '../platform/settings';
+import { getPrompt, type Lang } from '../shared/prompts';
+import { buildLatestReminder } from '../shared/latest-reminder';
 import type { ChatMessage } from '../shared/types';
 import type { FinishReason, TokenUsage } from '../shared/protocol';
+import type { WebResult } from '../shared/types';
 import type { ChatProvider, ChatRequest, ProviderConfig } from './providers/types';
+import { ProviderError } from './providers/types';
 import { openaiProvider } from './providers/openai';
 import { anthropicProvider } from './providers/anthropic';
 import { recordUsage } from './usage';
 
 /** No bytes from the model for this long → give up with error.streamTimeout. */
 export const IDLE_TIMEOUT_MS = 90_000;
+
+/** Requests per chat turn: the first, plus one retry when the connection drops before any answer text. */
+export const MAX_ATTEMPTS = 2;
 
 /** Labels the ai-chat request kind; 'agent' is routed to agent-runner.ts. */
 export type Purpose = 'chat' | 'agent';
@@ -37,19 +44,27 @@ export interface RunOptions {
   emitThinking?: boolean;
   /** errorKey for a missing API key (suggestions use their own wording). */
   noKeyErrorKey?: string;
+  /**
+   * F15: declare DeepSeek's web search tool. Chat only — the batch callers
+   * (suggestions, podcast, annotation, …) never set it, and several of them
+   * use JSON mode, which the API refuses next to the tool.
+   */
+  webSearch?: boolean;
 }
 
 interface Resolved {
   provider: ChatProvider;
   config: ProviderConfig;
   model: string;
+  /** UI language ('zh' | 'en'), for the web search rule and the date reminder. */
+  lang: Lang;
 }
 
 type ResolveResult = { ok: true; value: Resolved } | { ok: false; errorKey: string };
 
 export async function resolveProvider(noKeyErrorKey = 'error.noApiKey'): Promise<ResolveResult> {
   const [s, stored] = await Promise.all([
-    readSettings(['provider', 'apiKey', 'modelName']),
+    readSettings(['provider', 'apiKey', 'modelName', 'language']),
     readStoredSettings(['apiBase']),
   ]);
   if (!s.apiKey) return { ok: false, errorKey: noKeyErrorKey };
@@ -57,9 +72,10 @@ export async function resolveProvider(noKeyErrorKey = 'error.noApiKey'): Promise
   if (!model) return { ok: false, errorKey: 'error.noModelName' };
   const anthropic = s.provider === 'anthropic';
   const apiBase = (stored.apiBase || (anthropic ? DEFAULT_ANTHROPIC_API_BASE : DEFAULT_API_BASE)).replace(/\/+$/, '');
+  const lang: Lang = s.language === 'en' ? 'en' : 'zh';
   return {
     ok: true,
-    value: { provider: anthropic ? anthropicProvider : openaiProvider, config: { apiKey: s.apiKey, apiBase }, model },
+    value: { provider: anthropic ? anthropicProvider : openaiProvider, config: { apiKey: s.apiKey, apiBase }, model, lang },
   };
 }
 
@@ -82,7 +98,7 @@ function idleWatchdog(controller: AbortController): { kick: () => void; pause: (
 export async function streamToPort(port: chrome.runtime.Port, opts: RunOptions): Promise<void> {
   const resolved = await resolveProvider(opts.noKeyErrorKey);
   if (!resolved.ok) { safePostMessage(port, { type: 'error', errorKey: resolved.errorKey }); return; }
-  const { provider, config, model } = resolved.value;
+  const { provider, config, model, lang } = resolved.value;
 
   const controller = new AbortController();
   let portGone = false;
@@ -91,21 +107,57 @@ export async function streamToPort(port: chrome.runtime.Port, opts: RunOptions):
   const watchdog = idleWatchdog(controller);
 
   let usage: TokenUsage | undefined;
-  let finish: FinishReason = 'stop';
+  let finish: FinishReason;
+  let web: WebResult | undefined;
 
   try {
-    const req: ChatRequest = { model, messages: [...opts.messages], temperature: opts.temperature, jsonMode: opts.jsonMode };
-    watchdog.kick();
-    for await (const delta of provider.stream(config, req, controller.signal)) {
-      watchdog.kick();
-      if (delta.type === 'text') { safePostMessage(port, { type: 'chunk', content: delta.text }); }
-      else if (delta.type === 'thinking') { if (opts.emitThinking !== false) safePostMessage(port, { type: 'thinking', content: delta.text }); }
-      else if (delta.type === 'finish') { finish = delta.reason; usage = delta.usage; }
+    const req: ChatRequest = {
+      model,
+      messages: [...opts.messages],
+      temperature: opts.temperature,
+      jsonMode: opts.jsonMode,
+      // F15: the rule and the date reminder are built here, in the worker,
+      // because only it knows the tool will actually be declared.
+      ...(opts.webSearch ? { webSearch: { rule: getPrompt('websearch.rule', lang), reminder: buildLatestReminder(lang) } } : {}),
+    };
+    for (let attempt = 1; ; attempt++) {
+      // Every attempt starts clean: a retried one must not inherit the dead
+      // attempt's finish reason / usage / web record.
+      let textStarted = false;
+      finish = 'stop'; usage = undefined; web = undefined;
+      try {
+        watchdog.kick();
+        for await (const delta of provider.stream(config, req, controller.signal)) {
+          watchdog.kick();
+          if (delta.type === 'text') { textStarted = true; safePostMessage(port, { type: 'chunk', content: delta.text }); }
+          else if (delta.type === 'thinking') { if (opts.emitThinking !== false) safePostMessage(port, { type: 'thinking', content: delta.text }); }
+          else if (delta.type === 'search_event') {
+            // `step_reasoning_done` only exists to keep the watchdog alive above;
+            // the trace the panel shows is built from the call events.
+            if (delta.event.type !== 'step_reasoning_done') safePostMessage(port, { type: 'search_event', event: delta.event });
+          }
+          else if (delta.type === 'finish') { finish = delta.reason; usage = delta.usage; web = delta.web; }
+        }
+        break; // completed
+      } catch (e: unknown) {
+        // The connection dropped (or the API ended the stream with an error)
+        // before any answer text was produced — nothing is lost by starting
+        // over, so do it once instead of making the user press retry. Long
+        // streams are exposed to this: measured 2026-11-23 on the test
+        // machine, a plain streaming fetch of one web-search answer broke
+        // mid-body in 6 of 16 runs (HTTP/2), a third of them before any text.
+        // Never retried: a failure after text started (the panel may have
+        // shown it), an HTTP status (the request itself was refused — it
+        // would be again), the idle watchdog, and a closed port.
+        const transportLevel = !(e instanceof ProviderError && e.status);
+        if (attempt >= MAX_ATTEMPTS || textStarted || portGone || watchdog.fired() || !transportLevel) throw e;
+        safePostMessage(port, { type: 'retry', attempt });
+      }
     }
     watchdog.pause();
 
     if (usage) recordUsage(model, usage);
-    safePostMessage(port, { type: 'done', finishReason: finish, usage, model });
+    safePostMessage(port, { type: 'done', finishReason: finish, usage, model, ...(web ? { web } : {}) });
   } catch (e: unknown) {
     if (portGone) return;
     if (watchdog.fired()) { safePostMessage(port, { type: 'error', errorKey: 'error.streamTimeout' }); return; }

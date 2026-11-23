@@ -231,6 +231,35 @@ describe('background/sw-openai', () => {
     });
   });
 
+  // F15 web search: the panel asks for it, the runner adds the rule and the
+  // date reminder, the provider declares the tool.
+  describe('callOpenAI · F15 web search', () => {
+    beforeEach(() => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, body: createSSEStream([]), json: vi.fn() });
+    });
+
+    it('declares the web tool, the rule and the date reminder when asked', async () => {
+      await callOpenAI([{ role: 'user', content: 'hi' }], port, { webSearch: true });
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      expect(body.tools).toEqual([{ type: 'deepseek_web_search' }]);
+      expect(body.messages.map(m => m.role)).toEqual(['system', 'latest_reminder', 'user']);
+      expect(body.messages[0].content).toContain('联网搜索');
+      expect(body.messages[1].content).toMatch(/^\d{4}-\d{2}-\d{2},[^,]+,,Web,中文$/);
+      expect(body.response_format).toBeUndefined();
+    });
+
+    it('declares no tool for a plain chat nor for the podcast script', async () => {
+      await callOpenAI([{ role: 'user', content: 'hi' }], port);
+      await callOpenAI([{ role: 'user', content: 'script' }], port, { response_format: { type: 'json_object' } });
+      for (const call of fetch.mock.calls) {
+        const body = JSON.parse(call[1].body);
+        expect(body).not.toHaveProperty('tools');
+        expect(body.messages.some(m => m.role === 'latest_reminder')).toBe(false);
+      }
+    });
+  });
+
   describe('callSuggestQuestions', () => {
     it('sends error when no API key', async () => {
       store.sync.apiKey = undefined;

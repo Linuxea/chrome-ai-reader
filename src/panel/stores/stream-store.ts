@@ -14,15 +14,21 @@
  * store; nothing here touches chrome.*.
  */
 import { create } from 'zustand';
-import type { FinishReason, TokenUsage } from '@/shared/protocol';
+import type { FinishReason, TokenUsage, WebCallEvent } from '@/shared/protocol';
 import { genId } from '@/shared/ids';
-import type { ChatMessage, ToolCall } from '@/shared/types';
+import type { ChatMessage, ToolCall, WebStep } from '@/shared/types';
 
 export interface AgentRound {
   /** 1-based round index (matches the `agent_round` wire message). */
   round: number;
   calls: (ToolCall & { result?: string })[];
 }
+
+/**
+ * F15: one web search call as the live trace shows it — `running` from its
+ * `call_started` event until its `call_completed` event lands.
+ */
+export type LiveWebStep = Omit<WebStep, 'status'> & { status: 'running' | WebStep['status'] };
 
 export interface LiveStream {
   tabId: number;
@@ -34,6 +40,8 @@ export interface LiveStream {
   answer: string;
   /** Agent-mode tool rounds, in order. */
   rounds: AgentRound[];
+  /** F15: server-side web search calls, in the order they started. */
+  webSteps: LiveWebStep[];
   status: 'streaming' | 'done' | 'error' | 'aborted';
   finishReason?: FinishReason;
   /** `limit:'steps'` qualifies finishReason 'length' as the agent round cap. */
@@ -67,6 +75,20 @@ interface StreamStore {
   addToolCall: (tabId: number, call: ToolCall) => void;
   /** Attach a finished tool execution's excerpt to its live step line. */
   setToolResult: (tabId: number, callId: string, result: string) => void;
+  /**
+   * F15: apply one web search event to the live trace. `call_started` appends
+   * a running step; `call_completed` fills in the step with that call id —
+   * completions arrive out of order, so they are matched by id, never
+   * appended. A completion whose start was never seen is ignored.
+   */
+  addSearchEvent: (tabId: number, event: WebCallEvent) => void;
+  /**
+   * The worker restarted the request (`retry` on the port): forget what the
+   * dead attempt streamed — reasoning, text and search events — and keep the
+   * entry (same assistant id, still streaming). No answer text exists at that
+   * point, by the worker's contract.
+   */
+  restart: (tabId: number) => void;
   /** Normal end: keep the accumulated text visible until folded into history. */
   finish: (tabId: number, outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }) => void;
   /** Abnormal end (port error / provider error). Keeps the failed user message for retry. */
@@ -83,7 +105,7 @@ export const useStreamStore = create<StreamStore>()(set => ({
   start: tabId => {
     const assistantId = genId();
     set(s => ({
-      streams: { ...s.streams, [tabId]: { tabId, assistantId, thinking: '', answer: '', rounds: [], status: 'streaming' } },
+      streams: { ...s.streams, [tabId]: { tabId, assistantId, thinking: '', answer: '', rounds: [], webSteps: [], status: 'streaming' } },
     }));
     return assistantId;
   },
@@ -135,6 +157,31 @@ export const useStreamStore = create<StreamStore>()(set => ({
       }));
       if (!found) return s;
       return { streams: { ...s.streams, [tabId]: { ...cur, rounds } } };
+    }),
+
+  addSearchEvent: (tabId, event) =>
+    set(s => {
+      const cur = s.streams[tabId];
+      if (!cur || cur.status !== 'streaming') return s;
+      const steps = cur.webSteps.slice();
+      const at = steps.findIndex(step => step.id === event.call.id);
+      if (event.type === 'call_started') {
+        if (at !== -1) return s;
+        const { id, kind, action } = event.call;
+        steps.push({ id, kind, action, status: 'running' });
+      } else {
+        if (at === -1) return s;
+        const { status, sources, page, error } = event.call;
+        steps[at] = { ...steps[at]!, status, ...(sources ? { sources } : {}), ...(page ? { page } : {}), ...(error ? { error } : {}) };
+      }
+      return { streams: { ...s.streams, [tabId]: { ...cur, webSteps: steps } } };
+    }),
+
+  restart: tabId =>
+    set(s => {
+      const cur = s.streams[tabId];
+      if (!cur || cur.status !== 'streaming') return s;
+      return { streams: { ...s.streams, [tabId]: { ...cur, thinking: '', answer: '', rounds: [], webSteps: [] } } };
     }),
 
   finish: (tabId, outcome) =>

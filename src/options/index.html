@@ -99,6 +99,11 @@
             <input type="checkbox" id="citations" checked>
           </label>
           <label class="toggle-row">
+            <span data-i18n="settings.llm.webSearch">联网搜索（默认开启；是否搜索由模型判断）</span>
+            <input type="checkbox" id="webSearch" checked>
+          </label>
+          <p class="hint" data-i18n="settings.llm.webSearch.hint">搜索由 DeepSeek 在服务端完成，需要 DeepSeek 官方接口的 deepseek-flash 模型。文章足以回答时模型不会搜索；涉及文章之外的信息或最新进展时才联网，并附上来源。</p>
+          <label class="toggle-row">
             <span data-i18n="settings.llm.agentMode">智能体模式（模型可自行搜索页面、查看选区、读取其他标签页，实验）</span>
             <input type="checkbox" id="agentMode">
           </label>

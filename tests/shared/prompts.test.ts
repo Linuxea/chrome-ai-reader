@@ -5,7 +5,7 @@
  * limit, zh-only podcast), so a future careless edit regresses loudly.
  */
 import { describe, it, expect } from 'vitest';
-import { getPrompt } from '../../src/shared/prompts';
+import { getPrompt, REMINDER_LANGUAGE } from '../../src/shared/prompts';
 
 describe('shared/prompts', () => {
   describe('getPrompt', () => {
@@ -200,6 +200,34 @@ describe('shared/prompts', () => {
       const en = getPrompt('translate.full', 'en');
       expect(en).toMatch(/English/i);
       expect(en).toMatch(/Chinese/i);
+    });
+  });
+
+  // F15: sent by the worker as its own system message next to the
+  // `deepseek_web_search` declaration — the rule that keeps the model from
+  // searching when the article already answers.
+  describe('web search rule', () => {
+    it('exists in both languages and tells the model to prefer the article', () => {
+      const zh = getPrompt('websearch.rule', 'zh');
+      expect(zh).toContain('联网搜索');
+      expect(zh).toMatch(/优先依据文章内容回答/);
+      expect(zh).toMatch(/不要联网/);
+      expect(zh).toMatch(/最新进展|已过时/);
+      expect(zh).toMatch(/哪些内容来自文章/);
+
+      const en = getPrompt('websearch.rule', 'en');
+      expect(en).toMatch(/search the web/i);
+      expect(en).toMatch(/answer from it first/i);
+      expect(en).toMatch(/do not search when it is enough/i);
+      expect(en).toMatch(/which parts come from the article/i);
+    });
+
+    it('holds no placeholder (it is a standalone message, not a template)', () => {
+      for (const lang of ['zh', 'en'] as const) expect(getPrompt('websearch.rule', lang)).not.toMatch(/\{\w+\}/);
+    });
+
+    it('names the UI language in that language for the date reminder', () => {
+      expect(REMINDER_LANGUAGE).toEqual({ zh: '中文', en: 'English' });
     });
   });
 });

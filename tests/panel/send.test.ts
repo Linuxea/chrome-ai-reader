@@ -75,6 +75,7 @@ const { store, connectMock, getPort } = vi.hoisted(() => {
 });
 
 import * as core from '@/panel/state';
+import type { WebResult } from '@/shared/types';
 import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useComposerStore } from '@/panel/stores/composer-store';
 import { useStreamStore } from '@/panel/stores/stream-store';
@@ -248,5 +249,131 @@ describe('panel send pipeline', () => {
     const live = useStreamStore.getState().streams[42]!;
     expect(live.status).toBe('error');
     expect(live.failedUserMessage).toMatchObject({ content: 'q' });
+  });
+
+  // F15 web search
+  it('web search is on by default: the request asks for it and does not offer the agent tools', async () => {
+    // Even with agent mode enabled in settings: search wins (design F15 §5.7).
+    store.sync.agentMode = true;
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+
+    const sent = getPort().postMessage.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent).toMatchObject({ type: 'chat', webSearch: true });
+    expect(sent).not.toHaveProperty('purpose');
+    expect(sent).not.toHaveProperty('tools');
+  });
+
+  it('with web search switched off the request carries no webSearch', async () => {
+    store.sync.webSearch = false;
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+
+    expect(getPort().postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat' }));
+    const sent = getPort().postMessage.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent).not.toHaveProperty('webSearch');
+    expect(sent).not.toHaveProperty('purpose');
+  });
+
+  it('with web search off, agent mode applies again', async () => {
+    store.sync.webSearch = false;
+    store.sync.agentMode = true;
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+
+    expect(getPort().postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat', purpose: 'agent' }));
+  });
+
+  const SEARCH_STARTED = { type: 'call_started', step: 0, call: { id: 'c1', index: 0, kind: 'deep_search', action: { type: 'search', queries: ['q1'] } } } as const;
+  const SEARCH_DONE = { type: 'call_completed', step: 0, call: { id: 'c1', index: 0, status: 'completed', sources: [{ url: 'https://a.test/', title: 'A', siteName: 'A' }] } } as const;
+
+  it('web search: progress builds the live trace, and done.web is saved with the answer', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_STARTED });
+    expect(useStreamStore.getState().streams[42]!.webSteps).toMatchObject([{ id: 'c1', status: 'running' }]);
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_DONE });
+    getPort()._simulateMessage({ type: 'chunk', content: 'answer' });
+    const web: WebResult = {
+      steps: [{ id: 'c1', kind: 'deep_search', action: { type: 'search', queries: ['q1'] }, status: 'completed', sources: [{ url: 'https://a.test/', title: 'A', siteName: 'A' }] }],
+      sources: [{ url: 'https://a.test/', title: 'A', siteName: 'A' }],
+      citations: [{ start: 0, end: 6, source: 0 }],
+      searches: 1, pages: 0,
+    };
+    getPort()._simulateMessage({ type: 'done', finishReason: 'stop', web });
+
+    const answer = core.getConversationHistory()[1]!;
+    expect(answer).toMatchObject({ role: 'assistant', content: 'answer', web });
+    // …and it is in the session snapshot the panel restores from (stored as
+    // a structured clone, not a JSON string).
+    const saved = store.session.tabState_42 as { conversationHistory: { web?: WebResult }[] };
+    expect(saved.conversationHistory.at(-1)!.web).toEqual(web);
+  });
+
+  it('web search: an answer that did not search carries no web field', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'chunk', content: 'plain' });
+    getPort()._simulateMessage({ type: 'done', finishReason: 'stop' });
+
+    expect(core.getConversationHistory()[1]).toMatchObject({ role: 'assistant', content: 'plain' });
+    expect(core.getConversationHistory()[1]).not.toHaveProperty('web');
+  });
+
+  it('web search: stopped mid-search after some text keeps the finished calls as the trace', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_STARTED });
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_DONE });
+    getPort()._simulateMessage({ type: 'search_event', event: { type: 'call_started', step: 1, call: { id: 'c2', index: 0, kind: 'deep_search', action: { type: 'open_page', url: 'https://a.test/' } } } });
+    getPort()._simulateMessage({ type: 'chunk', content: 'partial' });
+    abortGeneration(42);
+
+    // The still-running call is dropped; citations never arrived, so there are none.
+    expect(core.getConversationHistory()[1]!.web).toEqual({
+      steps: [{ id: 'c1', kind: 'deep_search', action: { type: 'search', queries: ['q1'] }, status: 'completed', sources: [{ url: 'https://a.test/', title: 'A', siteName: 'A' }] }],
+      sources: [], citations: [], searches: 1, pages: 0,
+    });
+  });
+
+  it('web search: stopped before any text leaves no web record at all', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_STARTED });
+    abortGeneration(42);
+
+    expect(core.getConversationHistory()).toHaveLength(0);
+  });
+
+  it('retry: the dead attempt\'s reasoning and search events are dropped; the turn keeps generating and then completes', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    const assistantId = useStreamStore.getState().streams[42]!.assistantId;
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_STARTED });
+    getPort()._simulateMessage({ type: 'thinking', content: 'half a thought' });
+    getPort()._simulateMessage({ type: 'retry', attempt: 1 });
+
+    expect(useStreamStore.getState().streams[42]).toMatchObject({ assistantId, status: 'streaming', thinking: '', answer: '', webSteps: [] });
+    expect(core.getIsGenerating()).toBe(true);                       // still generating
+    expect(core.getConversationHistory()).toHaveLength(1);            // the user message stays
+    expect(useUIStore.getState().toasts.at(-1)?.message).toBe('连接中断，正在自动重试…');
+    expect(getPort().disconnect).not.toHaveBeenCalled();
+
+    // The retried attempt streams normally (and its `done` carries the web record).
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_STARTED });
+    getPort()._simulateMessage({ type: 'search_event', event: SEARCH_DONE });
+    getPort()._simulateMessage({ type: 'chunk', content: 'answer' });
+    getPort()._simulateMessage({ type: 'done', finishReason: 'stop', web: { steps: [], sources: [], citations: [], searches: 1, pages: 0 } });
+    const hist = core.getConversationHistory();
+    expect(hist).toHaveLength(2);
+    expect(hist[1]).toMatchObject({ id: assistantId, role: 'assistant', content: 'answer', web: { searches: 1 } });
   });
 });

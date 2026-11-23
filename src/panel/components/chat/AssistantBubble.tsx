@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import type { ChatMessage } from '@/shared/types';
 import { MarkdownView } from './MarkdownView';
 import { AgentTraceView } from './AgentTraceView';
+import { WebTraceView } from './WebTraceView';
 import { AnswerActions } from './AnswerActions';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { t } from '@/shared/i18n.js';
@@ -13,7 +14,9 @@ export const AssistantBubble = memo(function AssistantBubble({ msg, tabId }: { m
   return (
     <div className="ai-msg" data-msg-id={msg.id}>
       {msg.agentTrace && msg.agentTrace.length > 0 && <AgentTraceView steps={msg.agentTrace} />}
-      <MarkdownView text={text} />
+      {/* F15: the searches this answer used, and its cited sources as chips. */}
+      {msg.web && <WebTraceView steps={msg.web.steps} />}
+      <MarkdownView text={text} web={msg.web} />
       {msg.finish?.reason === 'length' && (
         <div className="msg-note">
           {msg.finish.limit === 'steps' ? t('agent.stepLimit') : t('ai.truncatedByLimit')}

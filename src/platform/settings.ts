@@ -23,6 +23,13 @@ export interface Settings {
   systemPrompt: string;
   agentMode: boolean;
   citations: boolean;
+  /**
+   * F15: web search on the chat mainline — DeepSeek's server-side
+   * `deepseek_web_search` tool. ON by default: search is the norm, and
+   * declaring the tool does not force a search (the model decides per
+   * question). This is the opt-out.
+   */
+  webSearch: boolean;
   // UI
   language: string;
   darkMode: boolean;
@@ -65,6 +72,7 @@ export const SETTING_DEFAULTS: Partial<Settings> = {
   apiBase: DEFAULT_API_BASE,
   agentMode: false,
   citations: true,
+  webSearch: true,
   suggestQuestions: true,
   composerTools: [...COMPOSER_TOOL_IDS],
   ttsResourceId: 'seed-tts-2.0',

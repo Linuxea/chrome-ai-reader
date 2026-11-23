@@ -74,6 +74,14 @@ export interface ChatMessage {
    */
   agentTrace?: AgentTraceStep[];
   /**
+   * Assistant messages only (F15 web search): the server-side searches this
+   * answer used, the sources it cites and where. Recorded when the stream
+   * ends and persisted with the chat so a reload can rebuild the trace line
+   * and the citation chips. Never sent to the API (toApiMessage copies only
+   * the wire fields).
+   */
+  web?: WebResult;
+  /**
    * Assistant messages only: how the answer ended + token usage — drives
    * the usage footer and the truncation / step-limit notes. Local-only,
    * stripped by toApiMessage; duplicated literals (not imported from
@@ -86,6 +94,65 @@ export interface ChatMessage {
     usage?: { inputTokens: number; outputTokens: number };
     model?: string;
   };
+}
+
+// --- F15 web search (DeepSeek's server-side `deepseek_web_search` tool) -------
+
+/** A web page the answer drew on. */
+export interface WebSource {
+  url: string;
+  /** Page title; falls back to the URL when the API gave none. */
+  title: string;
+  siteName?: string;
+}
+
+/** What one server-side call did. */
+export type WebStepAction =
+  | { type: 'search'; queries: string[] }
+  | { type: 'open_page'; url: string }
+  | { type: 'find_in_page'; url: string; pattern: string };
+
+/**
+ * One server-side tool call. The search runs on DeepSeek's side — the
+ * extension only displays these.
+ */
+export interface WebStep {
+  /** The call's id on the wire (`srvtoolu_…`); completion events are matched by it (they arrive out of order). */
+  id: string;
+  /** `deep_search` / `deep_image_search` when the model thinks between calls. */
+  kind: 'search' | 'deep_search' | 'image_search' | 'deep_image_search';
+  action: WebStepAction;
+  status: 'completed' | 'failed';
+  /** Search calls: the results this call returned. */
+  sources?: WebSource[];
+  /** open_page / find_in_page: the page that was opened. */
+  page?: { url: string; title: string | null };
+  /** Error code of a failed call (e.g. `url_not_accessible`). */
+  error?: string;
+}
+
+/**
+ * A citation into the answer. `start` / `end` are Unicode CODE POINT offsets
+ * into the answer's Markdown (that is how the API counts), `source` indexes
+ * `WebResult.sources`.
+ */
+export interface WebCitation {
+  start: number;
+  end: number;
+  source: number;
+}
+
+/** Everything an answer's web search produced, for display only. */
+export interface WebResult {
+  /** Calls in execution order. */
+  steps: WebStep[];
+  /** Cited sources, de-duplicated by URL in first-cited order. */
+  sources: WebSource[];
+  citations: WebCitation[];
+  /** Number of search calls (NOT `usage.server_tool_use.tool_search`, which counts queries). */
+  searches: number;
+  /** Number of distinct pages opened. */
+  pages: number;
 }
 
 /** One tool execution recorded for an answer's agent trace. */

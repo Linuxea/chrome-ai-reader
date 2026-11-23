@@ -128,6 +128,16 @@ describe('options/llm-settings', () => {
       expect(result.set!.apiBase).toBe('https://api.test.com');
       expect(result.set!.modelName).toBe('gpt-4');
     });
+
+    // F15: web search is on by default.
+    it('saves webSearch from its checkbox, which is on when nothing was ever stored', () => {
+      apiKeyInput.value = 'sk-test';
+      const box = document.getElementById('webSearch') as HTMLInputElement;
+      expect(box.checked).toBe(true);
+      expect(mod.collectLlmSaveData().set!.webSearch).toBe(true);
+      box.checked = false;
+      expect(mod.collectLlmSaveData().set!.webSearch).toBe(false);
+    });
   });
 
   describe('loadLlmValues()', () => {
@@ -148,6 +158,15 @@ describe('options/llm-settings', () => {
       apiKeyInput.value = 'existing';
       mod.loadLlmValues({});
       expect(apiKeyInput.value).toBe('existing');
+    });
+
+    it('F15: loads a stored webSearch value and keeps the default (on) when the key is missing', () => {
+      const box = document.getElementById('webSearch') as HTMLInputElement;
+      mod.loadLlmValues({ webSearch: false });
+      expect(box.checked).toBe(false);
+      box.checked = true;
+      mod.loadLlmValues({});
+      expect(box.checked).toBe(true);
     });
   });
 });

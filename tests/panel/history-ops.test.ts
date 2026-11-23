@@ -22,7 +22,7 @@ import {
   stripImagesForPersistence,
 } from '../../src/panel/lib/history-ops';
 import * as stateMock from '../../src/panel/state.js';
-import type { TabState, ChatMessage } from '../../src/shared/types';
+import type { TabState, ChatMessage, WebResult } from '../../src/shared/types';
 
 function makeTabState(history: ChatMessage[]): TabState {
   // Minimal TabState with just conversationHistory populated; other fields
@@ -291,6 +291,14 @@ describe('services/chat/history-ops', () => {
       const out = stripImagesForPersistence(msg);
       expect(out.content).toBe('');
     });
+
+    // F15: the web search record must survive the chat save (IndexedDB).
+    it('keeps the web search record of an assistant message', () => {
+      const web: WebResult = { steps: [], sources: [{ url: 'https://a.test/', title: 'A' }], citations: [{ start: 0, end: 1, source: 0 }], searches: 1, pages: 0 };
+      const out = stripImagesForPersistence({ role: 'assistant', content: [{ type: 'text', text: 'answer' }], web });
+      expect(out.content).toBe('answer');
+      expect(out.web).toEqual(web);
+    });
   });
 
   // ==========================================================================
@@ -328,6 +336,15 @@ describe('toApiMessage', () => {
       meta: { rawText: 'hi', displayText: 'hi' },
     });
     expect(out).toEqual({ role: 'user', content: 'hi' });
+  });
+
+  // F15: display-only record — the API neither needs nor accepts it back
+  // (measured live: a history of plain content is accepted next to the tool).
+  it('keeps the web search record out of the request', async () => {
+    const { toApiMessage } = await import('../../src/panel/lib/history-ops');
+    const web: WebResult = { steps: [], sources: [{ url: 'https://a.test/', title: 'A' }], citations: [], searches: 1, pages: 0 };
+    const out = toApiMessage({ role: 'assistant', content: 'answer', web, finish: { reason: 'stop' }, agentTrace: [] });
+    expect(out).toEqual({ role: 'assistant', content: 'answer' });
   });
 });
 

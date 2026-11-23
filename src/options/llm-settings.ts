@@ -9,6 +9,7 @@ const systemPromptInput = document.getElementById('systemPrompt') as HTMLTextAre
 const refreshModelsBtn = document.getElementById('refreshModelsBtn') as HTMLButtonElement;
 const providerSelect = document.getElementById('provider') as HTMLSelectElement | null;
 const citationsBox = document.getElementById('citations') as HTMLInputElement | null;
+const webSearchBox = document.getElementById('webSearch') as HTMLInputElement | null;
 const agentModeBox = document.getElementById('agentMode') as HTMLInputElement | null;
 
 const currentProvider = (): 'openai' | 'anthropic' => (providerSelect?.value === 'anthropic' ? 'anthropic' : 'openai');
@@ -49,6 +50,9 @@ export function loadLlmValues(data: Record<string, unknown>): void {
   if (data.systemPrompt) systemPromptInput.value = data.systemPrompt as string;
   if (providerSelect && data.provider) providerSelect.value = data.provider as string;
   if (citationsBox && data.citations !== undefined) citationsBox.checked = data.citations as boolean;
+  // webSearch is on by default: the checkbox's own `checked` attribute stands
+  // in when the setting was never saved (readStoredSettings applies no defaults).
+  if (webSearchBox && data.webSearch !== undefined) webSearchBox.checked = data.webSearch as boolean;
   if (agentModeBox && data.agentMode !== undefined) agentModeBox.checked = data.agentMode as boolean;
   syncProviderHints();
 }
@@ -66,6 +70,7 @@ export function collectLlmSaveData(): { error?: string; set?: Record<string, str
   if (systemPrompt) set.systemPrompt = systemPrompt; else remove.push('systemPrompt');
   set.provider = currentProvider();
   if (citationsBox) set.citations = citationsBox.checked;
+  if (webSearchBox) set.webSearch = webSearchBox.checked;
   if (agentModeBox) set.agentMode = agentModeBox.checked;
   return { set, remove };
 }
