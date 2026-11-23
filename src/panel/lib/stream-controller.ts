@@ -203,6 +203,10 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
         id: assistantId,
         role: 'assistant',
         content: text,
+        // The reasoning that preceded the answer stays with it — without
+        // this it vanished the moment the stream entry was folded into
+        // history. Display only (toApiMessage never sends it back).
+        ...(live?.thinking ? { reasoning: live.thinking } : {}),
         // F11: persist the evidence trail with the answer (only when the
         // model actually used tools) so reloads can rebuild the trace block.
         ...(agentTrace.length ? { agentTrace } : {}),

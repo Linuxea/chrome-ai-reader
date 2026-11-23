@@ -54,7 +54,10 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
     <div className="ai-msg">
       <AgentTraceView rounds={live.rounds} />
       <WebTraceView steps={live.webSteps} live />
-      {live.answer === '' && <ThinkingBlock text={live.thinking} />}
+      {/* One slot for the whole stream: the block must stay mounted when the
+          answer starts — a remount would reset its state and re-open what the
+          auto-collapse just closed. It collapses once the answer text begins. */}
+      {live.thinking !== '' && <ThinkingBlock text={live.thinking} live answerStarted={live.answer !== ''} />}
       {!started && (
         <div className="ai-msg-pending">
           <TypingIndicator />
@@ -62,7 +65,6 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
       )}
       {throttled !== '' && (
         <>
-          {live.answer !== '' && live.thinking !== '' && <ThinkingBlock text={live.thinking} />}
           <MarkdownView text={throttled} />
           {streaming && <span className="stream-cursor" aria-hidden />}
         </>

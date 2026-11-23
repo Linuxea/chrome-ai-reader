@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const { store, connectMock } = vi.hoisted(() => {
   const store = { sync: {}, session: {}, local: {} };
@@ -240,6 +240,103 @@ describe('MessageList rendering', () => {
     expect(trace.querySelector('summary')!.textContent).toContain('已联网搜索 · 1 次搜索');
     expect(trace.textContent).toContain('1 条结果');
     expect(container.querySelector('.md-body')!.textContent).toContain('partial answer');
+  });
+
+  // The reasoning block: live while streaming, a collapsed summary afterwards.
+  // It used to vanish the moment the answer completed (the reasoning was never
+  // saved with the answer).
+  it('a saved answer keeps its reasoning as a collapsed block above the answer', () => {
+    useTabsStore.getState().setConversationHistory([
+      { id: 'u1', role: 'user', content: 'q' },
+      { id: 'a1', role: 'assistant', content: 'the answer', reasoning: '**先想一下**，再回答。' },
+      { id: 'a2', role: 'assistant', content: 'answered without thinking' },
+    ]);
+    const { container } = render(<MessageList />);
+
+    const bubble = container.querySelector('[data-msg-id="a1"]')!;
+    const block = bubble.querySelector('.thinking-block') as HTMLDetailsElement;
+    expect(block).not.toBeNull();
+    expect(block).not.toHaveAttribute('open'); // a collapsed summary, not a wall of text
+    expect(block.querySelector('.thinking-summary')!.textContent).toBe('思考过程');
+    expect(block.querySelector('.thinking-content strong')!.textContent).toBe('先想一下'); // rendered as markdown
+    // Above the answer, inside the same bubble.
+    const kids = [...bubble.children];
+    expect(kids.indexOf(block)).toBeLessThan(kids.indexOf(bubble.querySelector(':scope > .md-body')));
+    // Clicking the summary opens it (the browser toggles the element, then reports it).
+    block.open = true;
+    fireEvent(block, new Event('toggle'));
+    expect(container.querySelector('[data-msg-id="a1"] .thinking-block')).toHaveAttribute('open');
+
+    expect(container.querySelector('[data-msg-id="a2"] .thinking-block')).toBeNull();
+  });
+
+  it('live: the reasoning block is open while the model is only thinking', () => {
+    useStreamStore.getState().start(42);
+    useStreamStore.getState().appendThinking(42, '还在想');
+    const { container } = render(<MessageList />);
+    const block = container.querySelector('.thinking-block') as HTMLDetailsElement;
+    expect(block).toHaveAttribute('open');
+    expect(block.querySelector('.thinking-content')!.textContent).toContain('还在想');
+    expect(container.querySelector('.typing-indicator')).toBeNull();
+  });
+
+  it('live: it collapses once the answer text starts, and stays collapsed as the answer grows', () => {
+    useStreamStore.getState().start(42);
+    useStreamStore.getState().appendThinking(42, '想好了');
+    const { container } = render(<MessageList />);
+    expect(container.querySelector('.thinking-block')).toHaveAttribute('open');
+
+    act(() => { useStreamStore.getState().appendAnswer(42, '答'); });
+    // The block itself is still there (same element — no remount)…
+    expect(container.querySelectorAll('.thinking-block')).toHaveLength(1);
+    expect(container.querySelector('.thinking-block')).not.toHaveAttribute('open');
+    // …above the answer that began.
+    expect(container.querySelector('.ai-msg > .md-body')!.textContent).toContain('答');
+
+    act(() => { useStreamStore.getState().appendAnswer(42, '案'); });
+    expect(container.querySelector('.thinking-block')).not.toHaveAttribute('open');
+  });
+
+  it('live: the user may re-open it while the answer streams, and it then stays open', () => {
+    useStreamStore.getState().start(42);
+    useStreamStore.getState().appendThinking(42, '想好了');
+    const { container } = render(<MessageList />);
+    act(() => { useStreamStore.getState().appendAnswer(42, '答'); });
+    const block = container.querySelector('.thinking-block') as HTMLDetailsElement;
+    expect(block).not.toHaveAttribute('open');
+
+    block.open = true;
+    fireEvent(block, new Event('toggle'));
+    expect(container.querySelector('.thinking-block')).toHaveAttribute('open');
+
+    // Later chunks must not re-apply the one-time collapse.
+    act(() => { useStreamStore.getState().appendAnswer(42, '案'); });
+    expect(container.querySelector('.thinking-block')).toHaveAttribute('open');
+  });
+
+  it('live → saved: the block survives the answer completing, collapsed', () => {
+    useStreamStore.getState().start(42);
+    useStreamStore.getState().appendThinking(42, '想好了');
+    useStreamStore.getState().appendAnswer(42, 'answer');
+    const { container } = render(<MessageList />);
+    act(() => { useStreamStore.getState().appendAnswer(42, '!'); }); // flush the throttled text
+    // The user re-opened it mid-answer…
+    const live = container.querySelector('.thinking-block') as HTMLDetailsElement;
+    live.open = true;
+    fireEvent(live, new Event('toggle'));
+    expect(container.querySelector('.thinking-block')).toHaveAttribute('open');
+
+    // …what finalize() does: the answer, with its reasoning, into history; the live entry dropped.
+    act(() => {
+      useTabsStore.getState().appendMessage({ id: 'a1', role: 'assistant', content: 'answer!', reasoning: '想好了' });
+      useStreamStore.getState().clear(42);
+    });
+    const saved = container.querySelector('[data-msg-id="a1"] .thinking-block') as HTMLDetailsElement;
+    expect(saved).not.toBeNull();
+    expect(saved).not.toHaveAttribute('open');
+    expect(saved.querySelector('.thinking-content')!.textContent).toContain('想好了');
+    expect(container.querySelector('[data-msg-id="a1"] > .md-body')!.textContent).toContain('answer!');
+    expect(container.querySelector('.stream-cursor')).toBeNull();
   });
 });
 

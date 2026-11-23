@@ -346,6 +346,14 @@ describe('toApiMessage', () => {
     const out = toApiMessage({ role: 'assistant', content: 'answer', web, finish: { reason: 'stop' }, agentTrace: [] });
     expect(out).toEqual({ role: 'assistant', content: 'answer' });
   });
+
+  // The thinking block is display-only: strict providers reject reasoning in
+  // input messages, so it never rides along with a saved answer.
+  it('keeps saved reasoning (and the message id) out of the request', async () => {
+    const { toApiMessage } = await import('../../src/panel/lib/history-ops');
+    const out = toApiMessage({ id: 'a1', role: 'assistant', content: 'answer', reasoning: '先想一下。' });
+    expect(out).toEqual({ role: 'assistant', content: 'answer' });
+  });
 });
 
 import { branchFromId, branchInfo, switchBranch, anchorAt, ROOT_BRANCH } from '../../src/panel/lib/history-ops';

@@ -82,6 +82,15 @@ export interface ChatMessage {
    */
   web?: WebResult;
   /**
+   * Assistant messages only: the model's reasoning (`reasoning_content`)
+   * that preceded `content`. Recorded when the stream ends and persisted
+   * with the chat, so the collapsed "thinking" block survives the answer's
+   * completion, tab switches and reloads. Never sent to the API — strict
+   * providers reject reasoning in input messages (toApiMessage copies only
+   * the wire fields).
+   */
+  reasoning?: string;
+  /**
    * Assistant messages only: how the answer ended + token usage — drives
    * the usage footer and the truncation / step-limit notes. Local-only,
    * stripped by toApiMessage; duplicated literals (not imported from

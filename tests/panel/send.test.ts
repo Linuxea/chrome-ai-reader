@@ -193,8 +193,68 @@ describe('panel send pipeline', () => {
     const hist = core.getConversationHistory();
     expect(hist).toHaveLength(2);
     expect(hist[1]).toMatchObject({ role: 'assistant', content: 'Hello' });
+    expect(hist[1]).not.toHaveProperty('reasoning'); // no thinking streamed → no field
     expect(useStreamStore.getState().streams[42]).toBeUndefined();
     expect(core.getIsGenerating()).toBe(false);
+  });
+
+  // The thinking block used to vanish the moment the answer completed: the
+  // reasoning lived only on the live stream entry, which finalize() drops.
+  it('the reasoning that preceded the answer is saved with it (history + session snapshot)', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'thinking', content: '先想一下。' });
+    getPort()._simulateMessage({ type: 'thinking', content: '再想一步。' });
+    getPort()._simulateMessage({ type: 'chunk', content: 'answer' });
+    getPort()._simulateMessage({ type: 'done', finishReason: 'stop' });
+
+    const answer = core.getConversationHistory()[1]!;
+    expect(answer).toMatchObject({ role: 'assistant', content: 'answer', reasoning: '先想一下。再想一步。' });
+    const saved = store.session.tabState_42 as { conversationHistory: { reasoning?: string }[] };
+    expect(saved.conversationHistory.at(-1)!.reasoning).toBe('先想一下。再想一步。');
+  });
+
+  it('saved reasoning never goes back to the model', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'thinking', content: '先想一下。' });
+    getPort()._simulateMessage({ type: 'chunk', content: 'answer' });
+    getPort()._simulateMessage({ type: 'done', finishReason: 'stop' });
+
+    useComposerStore.getState().setDraftText('and now?');
+    await submit();
+    await flush();
+
+    const sent = getPort().postMessage.mock.calls[0][0] as { messages: Record<string, unknown>[] };
+    const earlier = sent.messages.find(m => m.role === 'assistant')!;
+    expect(earlier.content).toBe('answer');
+    // Strict providers reject reasoning in input messages: wire fields only.
+    expect(Object.keys(earlier).sort()).toEqual(['content', 'role']);
+  });
+
+  it('stop AFTER partial text keeps the reasoning with the partial answer', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'thinking', content: '先想一下。' });
+    getPort()._simulateMessage({ type: 'chunk', content: 'partial answer' });
+    abortGeneration(42);
+
+    expect(core.getConversationHistory()[1]).toMatchObject({ role: 'assistant', content: 'partial answer', reasoning: '先想一下。' });
+  });
+
+  it('a failed turn saves no reasoning (the turn is rolled back whole)', async () => {
+    useComposerStore.getState().setDraftText('q');
+    await submit();
+    await flush();
+    getPort()._simulateMessage({ type: 'thinking', content: 'a thought that led nowhere' });
+    getPort()._simulateMessage({ type: 'error', error: 'boom' });
+
+    expect(core.getConversationHistory()).toHaveLength(0);
+    const saved = store.session.tabState_42 as { conversationHistory: unknown[] };
+    expect(saved.conversationHistory).toHaveLength(0);
   });
 
   it('error outcome rolls the user turn back and keeps it retryable on the stream entry', async () => {
@@ -370,10 +430,13 @@ describe('panel send pipeline', () => {
     // The retried attempt streams normally (and its `done` carries the web record).
     getPort()._simulateMessage({ type: 'search_event', event: SEARCH_STARTED });
     getPort()._simulateMessage({ type: 'search_event', event: SEARCH_DONE });
+    getPort()._simulateMessage({ type: 'thinking', content: 'a fresh thought' });
     getPort()._simulateMessage({ type: 'chunk', content: 'answer' });
     getPort()._simulateMessage({ type: 'done', finishReason: 'stop', web: { steps: [], sources: [], citations: [], searches: 1, pages: 0 } });
     const hist = core.getConversationHistory();
     expect(hist).toHaveLength(2);
     expect(hist[1]).toMatchObject({ id: assistantId, role: 'assistant', content: 'answer', web: { searches: 1 } });
+    // …and only ITS reasoning is saved with it — the dead attempt's is gone.
+    expect(hist[1]!.reasoning).toBe('a fresh thought');
   });
 });

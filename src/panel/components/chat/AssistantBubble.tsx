@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { ChatMessage } from '@/shared/types';
 import { MarkdownView } from './MarkdownView';
 import { AgentTraceView } from './AgentTraceView';
@@ -16,6 +16,8 @@ export const AssistantBubble = memo(function AssistantBubble({ msg, tabId }: { m
       {msg.agentTrace && msg.agentTrace.length > 0 && <AgentTraceView steps={msg.agentTrace} />}
       {/* F15: the searches this answer used, and its cited sources as chips. */}
       {msg.web && <WebTraceView steps={msg.web.steps} />}
+      {/* The answer's reasoning, kept as a collapsed summary the user can open. */}
+      {msg.reasoning && <ThinkingBlock text={msg.reasoning} />}
       <MarkdownView text={text} web={msg.web} />
       {msg.finish?.reason === 'length' && (
         <div className="msg-note">
@@ -37,9 +39,22 @@ export const AssistantBubble = memo(function AssistantBubble({ msg, tabId }: { m
   );
 });
 
-/** Collapsible reasoning block — live while streaming, collapsed summary after. */
-export function ThinkingBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(true);
+/**
+ * Collapsible reasoning block.
+ *
+ * Live: open while the reasoning is the only thing streaming, collapsed
+ * ONCE the answer text starts (`answerStarted`) — the user may re-open it
+ * while the answer streams. Saved: a collapsed summary above the answer
+ * (it used to vanish the moment the answer completed).
+ *
+ * `open` is state rather than just the <details> attribute so that the
+ * one-time collapse cannot re-close a block the user re-opened later.
+ */
+export function ThinkingBlock({ text, live = false, answerStarted = false }: { text: string; live?: boolean; answerStarted?: boolean }) {
+  const [open, setOpen] = useState(live && !answerStarted);
+  useEffect(() => {
+    if (answerStarted) setOpen(false);
+  }, [answerStarted]);
   if (!text) return null;
   return (
     <details className="thinking-block" open={open} onToggle={e => setOpen((e.target as HTMLDetailsElement).open)}>
