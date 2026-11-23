@@ -163,6 +163,17 @@ export function setFullStopFn(fn: (() => void) | null): void {
   _fullStopFn = fn;
 }
 
+let _errorFn: ((message: string, errorKey?: string) => void) | null = null;
+
+/**
+ * Reports a synthesis failure (the engine already retried once). The player
+ * stops itself; this is how the user learns WHY — a missing credential and
+ * an upstream refusal otherwise look the same: sound that never starts.
+ */
+export function setTTSErrorFn(fn: ((message: string, errorKey?: string) => void) | null): void {
+  _errorFn = fn;
+}
+
 export function setTTSAutoPlay(val: boolean): void {
   ttsAutoPlayEnabled = val;
 }
@@ -326,12 +337,13 @@ export function initTTSPlayback(btn: Element | null = null, origin?: Partial<TTS
       _drainedAll = true;
       maybeFinished(); // covers the zero-segment case (nothing to play) too
     },
-    onError: (msg) => {
+    onError: (msg, errorKey) => {
       // A segment failing (the engine already retried once) must not kill the
       // audio that is already playing: log it, let the scheduled audio play
       // out and finish naturally. Stop immediately only when nothing ever
       // started (no zombie "loading").
       console.error('[TTS] error:', msg);
+      _errorFn?.(msg, errorKey);
       if (!_audioStarted) {
         _fullStopFn?.();
         return;

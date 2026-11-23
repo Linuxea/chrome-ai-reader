@@ -22,6 +22,7 @@ import {
   initTTSPlayback as playerStart,
   stopTTSPlayback,
   setFullStopFn,
+  setTTSErrorFn,
   subscribeTTSState,
   subscribeTTSProgress,
   getTTSOrigin,
@@ -74,10 +75,10 @@ function startDownload(origin: { tabId: number | null; msgId: string | null }, m
       }
       stopTTSDownload();
     },
-    onError: msg => {
+    onError: (msg, errorKey) => {
       console.error('[TTS Download] error:', msg);
       stopTTSDownload();
-      useUIStore.getState().pushToast(t('error.apiFailed'), 'error');
+      reportTTSError(msg, errorKey);
     },
   });
   for (const seg of segments) _downloadEngine.enqueue(seg);
@@ -88,6 +89,21 @@ function startDownload(origin: { tabId: number | null; msgId: string | null }, m
 
 let _initialized = false;
 
+/**
+ * Tell the user why synthesis failed. Playback (or the download) stops when
+ * it does, and it used to stop silently — the reason only reached the
+ * console, so a missing credential and an upstream refusal both looked like
+ * a button that did nothing. The key names the failure in the UI language;
+ * the raw message adds the API's own detail where there is one.
+ */
+function reportTTSError(message: string, errorKey?: string): void {
+  const detail = message && message !== errorKey ? message : '';
+  useUIStore.getState().pushToast(
+    errorKey ? `${t(errorKey)}${detail ? `：${detail}` : ''}` : (message || t('error.ttsSynthFailed')),
+    'error',
+  );
+}
+
 export function initTTS(): void {
   if (_initialized) return;
   _initialized = true;
@@ -97,6 +113,8 @@ export function initTTS(): void {
   // never stops itself: ttsPlaying stays true forever and the indicator
   // strip never disappears ("播放完组件一直停在那里" bug).
   setFullStopFn(stopAllTTS);
+  // …and a failed synthesis is said out loud instead of only logged.
+  setTTSErrorFn(reportTTSError);
 
   chrome.storage.sync.get(['ttsAutoPlay'], data => {
     setTTSAutoPlay(data.ttsAutoPlay === true);
@@ -158,6 +176,18 @@ export function ttsAutoplayChunk(content: string): void {
 export function ttsAutoplayFinish(): void {
   if (!isTTSPlaying()) return;
   ttsFlushRemaining();
+}
+
+/**
+ * The answer was not kept (an error, or stopped before any text): end its
+ * autoplay. Nothing was ever fed to it, so left alone it sits on "reading"
+ * forever — and the next play click only stops that zombie instead of
+ * playing. A playback that took the resource meanwhile is not this one's to
+ * stop (the msgId is the stream's own assistant message id).
+ */
+export function ttsAutoplayAbort(msgId: string): void {
+  if (!isTTSPlaying() || getTTSOrigin().msgId !== msgId) return;
+  stopTTSPlayback();
 }
 
 // --- Rate cycle (global indicator) ---------------------------------------------

@@ -40,8 +40,13 @@ export interface TTSEngineOptions {
   onSegmentAudio: (bytes: ArrayBuffer) => void;
   /** All segments delivered AND input ended — nothing more will arrive. */
   onDrained: () => void;
-  /** Unrecoverable failure (retry exhausted) — caller should stop everything. */
-  onError: (message: string) => void;
+  /**
+   * Unrecoverable failure (retry exhausted) — caller should stop everything.
+   * `errorKey`, when set, is an i18n key naming the failure class (e.g. the
+   * TTS credentials are missing) — the raw `message` alone cannot tell that
+   * apart from an upstream refusal.
+   */
+  onError: (message: string, errorKey?: string) => void;
 }
 
 type SegState = 'pending' | 'synthesizing' | 'ready' | 'delivered';
@@ -155,7 +160,7 @@ export class TTSSynthEngine {
       s.port = null;
       this.failSegment(s, 'TTS connection closed');
     });
-    port.onMessage.addListener((msg: { type: string; data?: string; error?: string }) => {
+    port.onMessage.addListener((msg: { type: string; data?: string; error?: string; errorKey?: string }) => {
       if (stale()) return;
       if (msg.type === 'chunk' && msg.data) {
         s.bytes.push(decodeBase64(msg.data));
@@ -169,7 +174,8 @@ export class TTSSynthEngine {
       } else if (msg.type === 'error') {
         s.port = null;
         safePortDisconnect(port);
-        this.failSegment(s, msg.error || 'TTS synthesis failed');
+        // A key-only error (no text) still leaves a trace in the log.
+        this.failSegment(s, msg.error || msg.errorKey || 'TTS synthesis failed', msg.errorKey);
       }
     });
     port.postMessage({ type: 'tts', text: s.text } satisfies TTSRequest);
@@ -206,7 +212,7 @@ export class TTSSynthEngine {
 
   // --- failures ----------------------------------------------------------------
 
-  private failSegment(s: Segment, message: string): void {
+  private failSegment(s: Segment, message: string, errorKey?: string): void {
     safePortDisconnect(s.port);
     s.port = null;
     if (this.aborted) return;
@@ -225,7 +231,7 @@ export class TTSSynthEngine {
       return;
     }
     this.abort();
-    this.opts.onError(message);
+    this.opts.onError(message, errorKey);
   }
 }
 

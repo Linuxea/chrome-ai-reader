@@ -82,6 +82,7 @@ import { useStreamStore } from '@/panel/stores/stream-store';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { submit } from '@/panel/lib/send';
 import { abortGeneration } from '@/panel/lib/stream-controller';
+import { setTTSAutoPlay, isTTSPlaying, stopTTSPlayback } from '@/panel/lib/tts/player';
 
 async function flush(): Promise<void> {
   await Promise.resolve();
@@ -297,6 +298,50 @@ describe('panel send pipeline', () => {
     expect(hist[1]).toMatchObject({ role: 'assistant', content: 'partial answer' });
     expect(useStreamStore.getState().streams[42]).toBeUndefined();
     expect(core.getIsGenerating()).toBe(false);
+  });
+
+  // Autoplay claims the window-global audio resource the moment the stream
+  // starts. A turn that then ends WITHOUT an answer must give it back — it
+  // used to stay on "reading" forever, and the next play click only cleared it.
+  describe('autoplay x turn outcome', () => {
+    afterEach(() => {
+      setTTSAutoPlay(false);
+      stopTTSPlayback();
+    });
+
+    it('a failed turn releases the playback it claimed', async () => {
+      setTTSAutoPlay(true);
+      useComposerStore.getState().setDraftText('q');
+      await submit();
+      await flush();
+      expect(isTTSPlaying()).toBe(true); // claimed at stream start, before any text
+
+      getPort()._simulateMessage({ type: 'thinking', content: '先想一下。' });
+      getPort()._simulateMessage({ type: 'error', error: 'boom' });
+      expect(isTTSPlaying()).toBe(false);
+    });
+
+    it('stopped during the thinking phase releases it too', async () => {
+      setTTSAutoPlay(true);
+      useComposerStore.getState().setDraftText('q');
+      await submit();
+      await flush();
+      getPort()._simulateMessage({ type: 'thinking', content: '先想一下。' });
+
+      abortGeneration(42);
+      expect(isTTSPlaying()).toBe(false);
+    });
+
+    it('stopped AFTER text keeps reading the partial answer', async () => {
+      setTTSAutoPlay(true);
+      useComposerStore.getState().setDraftText('q');
+      await submit();
+      await flush();
+      getPort()._simulateMessage({ type: 'chunk', content: 'partial answer' });
+
+      abortGeneration(42);
+      expect(isTTSPlaying()).toBe(true);
+    });
   });
 
   it('worker disconnect with no text is an error with the user message kept retryable', async () => {

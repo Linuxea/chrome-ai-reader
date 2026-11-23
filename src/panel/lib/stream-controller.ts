@@ -31,7 +31,7 @@ import { useStreamStore } from '@/panel/stores/stream-store';
 import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
 import * as core from '@/panel/state';
-import { ttsAutoplayStart, ttsAutoplayChunk, ttsAutoplayFinish } from './tts-controller';
+import { ttsAutoplayStart, ttsAutoplayChunk, ttsAutoplayFinish, ttsAutoplayAbort } from './tts-controller';
 import { saveCurrentChat } from './chat-save';
 import { generateSuggestionsFor } from './suggest';
 
@@ -233,6 +233,10 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
       void saveCurrentChat(tabId).catch(() => {});
       return;
     }
+
+    // The answer was not kept: nothing was ever fed to its autoplay —
+    // release it, or the indicator keeps "reading" a stream that is over.
+    ttsAutoplayAbort(assistantId);
 
     if (outcome.kind === 'aborted') {
       // Stopped before any answer text: drop the unanswered turn from

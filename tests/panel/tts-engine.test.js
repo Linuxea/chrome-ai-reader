@@ -32,13 +32,13 @@ function freshPorts() {
 
 function makeEngine(overrides = {}) {
   const delivered = [];
-  const events = { drained: false, error: null };
+  const events = { drained: false, error: null, errorKey: undefined };
   const engine = new TTSSynthEngine({
     voice,
     getBufferedAheadMs: () => 0,
     onSegmentAudio: (bytes) => delivered.push(bytes),
     onDrained: () => { events.drained = true; },
-    onError: (m) => { events.error = m; },
+    onError: (m, key) => { events.error = m; events.errorKey = key; },
     ...overrides,
   });
   return { engine, delivered, events };
@@ -159,6 +159,39 @@ describe('TTSSynthEngine', () => {
     ports[1]._simulateMessage({ type: 'error', error: 'second' });
 
     expect(events.error).toBe('second');
+  });
+
+  it('a key-only worker error (missing credentials) reaches onError with its key', async () => {
+    // The worker posts `{ type: 'error', errorKey }` with no text for a
+    // missing App ID / access key. Without the key the caller cannot tell
+    // that apart from any other synthesis failure (it was logged as a bare
+    // "TTS synthesis failed" and the user saw nothing).
+    const ports = freshPorts();
+    const { engine, events } = makeEngine();
+    engine.enqueue('unconfigured');
+    engine.endInput();
+    await vi.waitFor(() => expect(ports.length).toBe(1));
+
+    ports[0]._simulateMessage({ type: 'error', errorKey: 'error.noTtsConfig' });
+    await vi.waitFor(() => expect(ports.length).toBe(2), { timeout: 2000 }); // retried once
+    ports[1]._simulateMessage({ type: 'error', errorKey: 'error.noTtsConfig' });
+
+    expect(events.error).toBe('error.noTtsConfig');
+    expect(events.errorKey).toBe('error.noTtsConfig');
+  });
+
+  it('an upstream refusal keeps both the API message and its error key', async () => {
+    const ports = freshPorts();
+    const { engine, events } = makeEngine();
+    engine.enqueue('doomed');
+    engine.endInput();
+    await vi.waitFor(() => expect(ports.length).toBe(1));
+    ports[0]._simulateMessage({ type: 'error', errorKey: 'error.ttsError', error: 'speaker not found' });
+    await vi.waitFor(() => expect(ports.length).toBe(2), { timeout: 2000 });
+    ports[1]._simulateMessage({ type: 'error', errorKey: 'error.ttsError', error: 'speaker not found' });
+
+    expect(events.error).toBe('speaker not found');
+    expect(events.errorKey).toBe('error.ttsError');
   });
 
   it('abort closes live ports and suppresses every later callback', async () => {

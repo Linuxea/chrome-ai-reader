@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Mock chrome.runtime.connect with programmable port
 const { createMockPort } = await import('../helpers/chrome-mock.js');
@@ -48,6 +48,7 @@ import {
   ttsFlushRemaining,
   ttsFinishInput,
   setFullStopFn,
+  setTTSErrorFn,
   getTTSButton,
   setTTSButton,
   setTTSOrigin,
@@ -386,6 +387,43 @@ describe('TTS Player', () => {
       ctx.currentTime = 10;
       sources.forEach((s) => s.onended?.());
       await vi.waitFor(() => expect(fn).toHaveBeenCalled(), { timeout: 4000 });
+    });
+  });
+
+  describe('setTTSErrorFn (why playback stopped)', () => {
+    afterEach(() => { setTTSErrorFn(null); });
+
+    it('reports a synthesis failure with the engine\'s message and error key — once the retry is exhausted', async () => {
+      const report = vi.fn();
+      setTTSErrorFn(report);
+      initTTSPlayback();
+      ttsEnqueue('unconfigured');
+      ttsFinishInput();
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled(), { timeout: 4000 });
+      const p1 = chrome.runtime.connect.mock.results[0].value;
+      p1._simulateMessage({ type: 'error', errorKey: 'error.noTtsConfig' });
+      expect(report).not.toHaveBeenCalled(); // first failure → retry, not a dead end yet
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 2000 });
+      const p2 = chrome.runtime.connect.mock.results[1].value;
+      p2._simulateMessage({ type: 'error', errorKey: 'error.noTtsConfig' });
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(report).toHaveBeenCalledWith('error.noTtsConfig', 'error.noTtsConfig');
+    });
+
+    it('reports before the full stop, so a failure with no audio still reaches the user', async () => {
+      const order = [];
+      setTTSErrorFn(() => order.push('error'));
+      setFullStopFn(() => order.push('stop'));
+      initTTSPlayback();
+      ttsEnqueue('doomed');
+      ttsFinishInput();
+      await vi.waitFor(() => expect(chrome.runtime.connect).toHaveBeenCalled(), { timeout: 4000 });
+      const p1 = chrome.runtime.connect.mock.results[0].value;
+      p1._simulateMessage({ type: 'error', error: 'no config' });
+      await vi.waitFor(() => expect(chrome.runtime.connect.mock.calls.length).toBe(2), { timeout: 2000 });
+      const p2 = chrome.runtime.connect.mock.results[1].value;
+      p2._simulateMessage({ type: 'error', error: 'no config' });
+      expect(order).toEqual(['error', 'stop']);
     });
   });
 
