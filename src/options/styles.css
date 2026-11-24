@@ -366,3 +366,197 @@ select.field-input {
     transform: translate(-50%, 0);
   }
 }
+
+/* ===== Theme picker ===== */
+
+.theme-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.theme-card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.theme-card:hover {
+  background: var(--bg-secondary);
+}
+.theme-card.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.theme-card-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.theme-card-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--primary);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.theme-card.active .theme-card-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ===== Quick commands ===== */
+
+.quick-commands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-commands-empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  padding: 12px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.quick-command-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+
+.quick-command-item.edit {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.quick-command-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quick-command-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.quick-command-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-command-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.refresh-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--user-text);
+}
+.refresh-btn.primary:hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--user-text);
+  opacity: 0.9;
+}
+
+.add-command-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  align-self: flex-start;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.add-command-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* ===== Usage ===== */
+
+.usage-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.usage-controls .field-input {
+  width: auto;
+  min-width: 140px;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.usage-table th,
+.usage-table td {
+  text-align: right;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.usage-table th:first-child,
+.usage-table td:first-child {
+  text-align: left;
+}
+.usage-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.usage-table tr.usage-total td {
+  font-weight: 700;
+  border-bottom: none;
+  border-top: 1px solid var(--border);
+}
+
+/* ===== Import / export ===== */
+
+.import-export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

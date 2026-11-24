@@ -22,7 +22,10 @@ describe('buildLatestReminder', () => {
   });
 
   it('defaults to zh for any non-en language, like getPrompt', () => {
-    expect(buildLatestReminder(monday)).toBe('2026-11-23,星期一,,Web,中文');
+    // Explicit `undefined` lang: passing the Date as the first arg would
+    // hit the lang parameter (no date overload) and silently use "now" —
+    // this only passed on 2026-11-23 because that Monday WAS "now".
+    expect(buildLatestReminder(undefined, monday)).toBe('2026-11-23,星期一,,Web,中文');
     expect(buildLatestReminder('fr', monday)).toBe('2026-11-23,星期一,,Web,中文');
   });
 

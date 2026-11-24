@@ -47,7 +47,7 @@ export interface OptionsStatus {
   n: number;
 }
 
-interface SettingsStore {
+export interface SettingsStore {
   loaded: boolean;
   // form values (persisted per the timing rules above)
   provider: 'openai' | 'anthropic';
