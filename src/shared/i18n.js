@@ -186,6 +186,9 @@ const TRANSLATIONS = {
     'status.modelsLoaded': '已获取 {n} 个模型',
     'status.settingsSaved': '设置已保存',
     'status.saveFailed': '保存设置失败',
+
+    'settings.language.zh': '中文',
+    'settings.language.en': 'English',
     'status.commandEmpty': '指令名称和内容不能为空',
     'status.commandInvalid': '指令名称不能包含空格或 /',
     'status.commandDuplicate': '指令名称已存在',
@@ -540,6 +543,9 @@ const TRANSLATIONS = {
     'status.modelsLoaded': '{n} models loaded',
     'status.settingsSaved': 'Settings saved',
     'status.saveFailed': 'Failed to save settings',
+
+    'settings.language.zh': '中文',
+    'settings.language.en': 'English',
     'status.commandEmpty': 'Command name and content cannot be empty',
     'status.commandInvalid': 'Command name cannot contain spaces or /',
     'status.commandDuplicate': 'Command name already exists',

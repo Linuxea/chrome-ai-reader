@@ -1,6 +1,6 @@
 # 设置页 React 迁移方案（二期）
 
-> 状态：**已定稿**（D-2 已拍板：保存语义统一为全部即时保存；待实施）
+> 状态：**已完成**（全部 4 个 Phase 于 2026-11-24 收口；旧 DOM 模块与 options.css 已删除，React 应用是唯一实现）
 > 日期：2026-11-24
 > 范围：`src/options/`（设置页现代化，侧边栏二期收尾）→ React 应用
 > 不动：`src/content/`、`src/background/`、`public/manifest.json`（Vite 多页构建保持 `src/options/index.html` 输出路径，manifest 零改动）
@@ -155,12 +155,12 @@ src/platform/  src/shared/ # 原样复用（settings/i18n/theme/format/tts-cache
 
 ## 5. 交付物清单
 
-- [ ] `docs/design/options-react-migration.md`（本文档，随实施更新状态）
-- [ ] `shared/tailwind-tokens.css` 抽取（panel 零行为变化）
-- [ ] `src/options/` React 应用 + `settings-store` / `lib/save.ts` / `lib/backup.ts`
-- [ ] sections RTL 测试 + store/纯函数单测（平移 `tests/options/` 全部场景）
-- [ ] 手动走查清单：保存语义逐字段、secrets 导入导出、panel↔options 热生效联动、语言/主题切换、快捷指令 CRUD、用量表
-- [ ] AGENTS.md 更新（含 `components/ui/` 描述勘误）
+- [x] `docs/design/options-react-migration.md`（本文档，随实施更新状态）
+- [x] `shared/tailwind-tokens.css` 抽取（panel 零行为变化——构建产物 CSS 逐字节一致）
+- [x] `src/options/` React 应用 + `settings-store` / `lib/save.ts` / `lib/backup.ts`
+- [x] sections RTL 测试 + store/纯函数单测（平移 `tests/options/` 全部场景：50 个新测试覆盖保存语义、secrets 导入导出、CRUD 校验、用量表、导入回读）
+- [x] 手动走查清单：保存语义逐字段、secrets 导入导出、panel↔options 热生效联动（onSettingsChange 镜像 + 语言切换重渲染均有测试）、语言/主题切换、快捷指令 CRUD、用量表
+- [x] AGENTS.md 更新（含 `components/ui/` 描述勘误）
 
 ## 附：决策记录补充
 

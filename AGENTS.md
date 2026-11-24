@@ -6,7 +6,7 @@
 npm run dev    # vite build --watch + watch-iife for content/background (development)
 npm run build  # vite build && node build-extension.js (production)
 npm run build:win  # build with DIST_DIR=/mnt/d/chrome/chrome-ai-reader (fixed Windows output dir)
-npm run test   # vitest run (959 tests across 85 files; proxy test files need `ws` installed — see Testing)
+npm run test   # vitest run (981 tests across 84 files; proxy test files need `ws` installed — see Testing)
 npm run test:watch  # vitest (watch mode)
 npm run test:coverage  # vitest run --coverage
 npm run lint   # eslint (JS + TS via typescript-eslint) && lint:deps
@@ -48,12 +48,12 @@ The side panel is a **React 19 + zustand + Tailwind v4** app in `src/panel/` (re
 | lib | `src/panel/lib/` | state + platform + shared — controllers (send/stream/tts/quiz/podcast), ported services (history-ops, agent-tools, page/pdf extractor, screenshot, share) |
 | stores | `src/panel/stores/` | state + lib — zustand stores (tabs/composer/stream/ui/suggest/tts/quiz/podcast/annotation) |
 | hooks | `src/panel/hooks/` | stores + lib — auto-resize, stick-to-bottom, throttled text |
-| components | `src/panel/components/` | everything below (chat / composer / panels / layout; `components/ui/` = shadcn primitives are leaves) |
+| components | `src/panel/components/` | everything below (chat / composer / panels / layout) |
 | entry | `src/panel/main.tsx` → `App.tsx` | composition root — mounts React, wires global listeners + controller liftoff |
 
 **The state-core + version-counter pattern** (`panel/stores/tabs-store.ts`): `panel/state.ts` is the framework-free core (per-tab TabState map, 250ms-debounced persistence with immediate message-boundary flushes, quota fallback, never restores in-flight flags). React reactivity comes from a zustand wrapper that bumps a `version` counter on every mutation; PURE lib functions (history-ops) mutate TabState objects in place — components subscribe to `version` via `useActiveTabState()`. Never add notification-by-mutation; always bump.
 
-**Theme tokens**: `shared/themes.css` is the single color source (3 themes × light/dark, `data-theme-name` + `data-theme` on `<html>`, pre-paint via `public/theme-boot.js`). `panel/styles.css` maps them onto Tailwind's semantic scale via `@theme inline` (`bg-background`/`text-primary`/…). Never add `--radius-*: var(--radius-*)` — self-referential; the names already align.
+**Theme tokens**: `shared/themes.css` is the single color source (3 themes × light/dark, `data-theme-name` + `data-theme` on `<html>`, pre-paint via `public/theme-boot.js`). `shared/tailwind-tokens.css` holds the `@theme inline` mapping onto Tailwind's semantic scale (`bg-background`/`text-primary`/…) and is `@import`ed by BOTH `panel/styles.css` and `options/styles.css` — two pages, one mapping. Never add `--radius-*: var(--radius-*)` — self-referential; the names already align.
 
 **Window-global audio resources** (TTS + podcast): neither stops on tab switch. Takeover wiring lives in `panel/lib/audio-resource.ts` (registration callbacks, no import cycle). TTS playback state derives from the player's notifications into `stores/tts-store.ts` — per-message buttons and the global indicator read it; there are no DOM anchors to detach/reattach.
 
@@ -77,7 +77,7 @@ The side panel is a **React 19 + zustand + Tailwind v4** app in `src/panel/` (re
 - `src/content/index.ts` — content script (IIFE-bundled)
 - `src/content/annotation/` — annotation split into focused modules (chunk-collector, quote-wrapper, bubble-ui, orchestrator, styles); `content/annotation.ts` is a barrel re-export
 - `src/background/service-worker.ts` — background worker (IIFE-bundled)
-- `src/options/index.ts` — settings page (bundled by Vite, split into sections/)
+- `src/options/` — settings page (React, Vite-bundled; migrated 2026-11-24 — design in `docs/design/options-react-migration.md`). Layering enforced by depcruiser: `lib` (pure save/backup logic) < `settings-store` (zustand) < `components` (form primitives) < `sections` (one card per feature) < `App.tsx`. **Everything saves immediately (D-2)**: toggles/selects write on change, text fields debounce (500ms) + flush on blur, trimmed-empty REMOVES the key (`lib/save.ts`), `pagehide`/`visibilitychange` flush so a draft is never lost. Secrets live in `storage.local` via `platform/settings.ts` as everywhere else. Language switching re-renders via the store's `lang` field (t() reads a global); one `onSettingsChange` subscription mirrors settings changed elsewhere (panel, other tabs) into the form state — never written back. `data-i18n` DOM scanning is gone from this page; components call `t()` directly.
 
 ## Events
 
@@ -103,7 +103,7 @@ All LLM prompts live in `src/shared/prompts.ts` — **not** `i18n.js`. Prompts a
 
 ## Testing
 
-- **Vitest** with jsdom environment, 959 tests across 85 files. React components test through @testing-library/react (setup in `tests/helpers/rtl-setup.ts`, auto-cleanup on)
+- **Vitest** with jsdom environment, 981 tests across 84 files. React components test through @testing-library/react (setup in `tests/helpers/rtl-setup.ts`, auto-cleanup on)
 - Focused runs: `npx vitest run tests/panel` (path filter) or append `-t "partial test name"`; async engine/port flows need `vi.waitFor` — the engine dispatches after several microtask hops (voice read → cache key → cache lookup)
 - **Proxy tests need proxy deps**: `tests/proxy/*.test.js` import `proxy/server.js`, which requires `ws`. Run `cd proxy && npm install` once, or that file fails with "Cannot find module 'ws'" while everything else passes
 - Chrome mock: `tests/helpers/chrome-mock.js` (programmable port, storage, tabs)
@@ -126,7 +126,7 @@ Historical design docs and implementation plans (`docs/superpowers/`) were retir
 - Content script and service worker must be IIFE — they cannot use `import` at runtime
 - `Readability` is imported from `@mozilla/readability` npm package, not a local file
 - `proxy/` is a standalone Node.js server for the podcast feature (separate `package.json`). Binds to `127.0.0.1:3456` only (`HOST`/`PORT` env override) and rejects browser requests whose `Origin` is not `chrome-extension://…` (extra origins via `PROXY_ALLOWED_ORIGINS`); the SW calls it at `http://127.0.0.1:3456`
-- **Settings export**: `options/fields.ts` `SECRET_FIELDS` (= `platform/settings.ts` `SECRET_KEYS`) are left out of exports unless the user ticks "include secrets", and an import never clears a secret the file lacks
+- **Settings export**: `options/lib/backup.ts` redacts `SECRET_KEYS` (`platform/settings.ts`) from exports unless the user ticks "include secrets", and an import never clears a key the file lacks (secrets AND plain); checkbox keys missing from a backup fall back to their defaults, and the post-import store reload makes the form match storage exactly
 - Theme CSS uses compound selectors: `[data-theme-name="ocean"][data-theme="dark"]`
 - **Popup visibility is state-driven**: popups/sheets/modals render conditionally from `stores/ui-store.ts` — there is no `.hidden` class toggling (the old trap of a JS-toggled `hidden` with a missing CSS rule is structurally gone). If you do add a class-toggled element, it needs its own CSS rule — jsdom logic tests can't catch a visually-unclosable popup
 - TTS SSE events: `352`=audio chunk, `152`=session finish (may appear twice), `153`=failure — the SW (`sw-tts.ts`) translates them to simple `{type:'chunk'|'done'|'error'}` port messages

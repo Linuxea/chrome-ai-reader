@@ -16,14 +16,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html'],
-      // 源码已迁移至 TypeScript，必须同时包含 .js 和 .ts
+      // 源码已迁移至 TypeScript，必须同时包含 .js 和 .ts。
+      // 注意 .tsx（React 组件）不在此模式内——与 panel 一致，组件逻辑
+      // 由 stores/lib 的 .ts 测试间接覆盖。
       include: ['src/**/*.{js,ts}', 'proxy/**/*.js'],
       exclude: [
         // 纯类型定义文件，无运行时代码
         'src/shared/types.ts',
         'src/shared/types.js',
         // 入口编排文件，仅调用 init() 组装，测试 ROI 极低
-        'src/options/index.ts',
         'src/content/index.ts',
       ],
       // 覆盖率门槛：阶段 3 完成后提升。
