@@ -1,0 +1,72 @@
+/* Options (React) styles — Tailwind v4 + the extension's theme tokens.
+ *
+ * The Tailwind semantic-token mapping lives in shared/tailwind-tokens.css
+ * (shared with the panel); themes.css remains the single source of truth
+ * for colors via `[data-theme-name][data-theme]` on <html>, applied
+ * pre-paint by public/theme-boot.js. Unlike the side panel, this is a
+ * normal scrolling page — html/body scroll freely (no 100vh pinning).
+ */
+@import "tailwindcss";
+@import "../shared/themes.css";
+@import "../shared/tailwind-tokens.css";
+
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC',
+      'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* ===== Layout shell ===== */
+
+.options-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.options-container {
+  width: 100%;
+  max-width: 760px;
+  padding: 24px 20px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.options-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.options-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text);
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.icon-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}

@@ -4,8 +4,9 @@
  * specifiers), so a rule can't be dodged by how an import is spelled.
  *
  *   shared ← platform ← panel(state ← stores ← hooks/components ← App)
- *   background / content / options sit beside panel and share only
- *   shared/ + platform/.
+ *   options(lib ← settings-store ← components ← sections ← App) sits
+ *   beside panel; background / content are separate bundles. Pages share
+ *   code only through shared/ + platform/.
  */
 const layer = (name, from, to, comment) => ({ name, severity: 'error', comment, from: { path: from }, to: { path: to } });
 
@@ -47,6 +48,26 @@ module.exports = {
       comment: 'main.tsx is the panel entry; App.tsx is mounted only by it.',
       from: { path: '^src/', pathNot: '^src/panel/main\\.tsx$' },
       to: { path: '^src/panel/(main|App)\\.tsx$' },
+    },
+    layer('options-lib-below-all', '^src/options/lib/', '^src/options/(settings-store|components|sections)/',
+      'options lib/ holds pure save/backup logic; it must not know its consumers.'),
+    layer('options-store-below-consumers', '^src/options/settings-store\\.ts$', '^src/options/(components|sections)/',
+      'The settings store holds state; it must not know its consumers.'),
+    layer('options-components-below-sections', '^src/options/components/', '^src/options/sections/',
+      'Form primitives are leaves consumed by sections.'),
+    {
+      name: 'options-not-panel',
+      severity: 'error',
+      comment: 'The two pages share only shared/ + platform/ — no imports across.',
+      from: { path: '^src/options/' },
+      to: { path: '^src/panel/' },
+    },
+    {
+      name: 'options-entry-is-sacred',
+      severity: 'error',
+      comment: 'main.tsx is the options entry; App.tsx is mounted only by it.',
+      from: { path: '^src/', pathNot: '^src/options/main\\.tsx$' },
+      to: { path: '^src/options/(main|App)\\.tsx$' },
     },
   ],
   options: {
