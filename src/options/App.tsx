@@ -1,38 +1,63 @@
 /**
- * Options composition root: header (title + quick dark-mode toggle) and
- * the settings sections (mounted per migration phase).
+ * Options composition root: header (title + quick dark-mode toggle), the
+ * settings sections, and the global status toast. Mounts the store's
+ * load() once and flushes any pending debounced persist on page hide.
  */
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Moon, Sun } from 'lucide-react';
-import { applyTheme, getThemeState } from '@/shared/theme';
-import { writeSettings } from '@/platform/settings';
 import { t } from '@/shared/i18n.js';
+import { useSettingsStore } from './settings-store';
+import { StatusToast } from './components/StatusToast';
+import { LlmSection } from './sections/LlmSection';
 
 export default function App() {
-  // theme-boot.js has already applied data-theme* pre-paint; read it back
-  // synchronously for the initial icon (reconciled via storage in Phase 2).
-  const [dark, setDark] = useState(() => getThemeState().isDark);
+  const lang = useSettingsStore(s => s.lang);
+  const darkMode = useSettingsStore(s => s.darkMode);
+  const loaded = useSettingsStore(s => s.loaded);
+  const toggleDarkMode = useSettingsStore(s => s.toggleDarkMode);
+
+  useEffect(() => {
+    void useSettingsStore.getState().load();
+  }, []);
+
+  // Never lose a draft to the debounce window: flush pending text
+  // persists the moment the page goes away / to the background.
+  useEffect(() => {
+    const flush = () => useSettingsStore.getState().flushPendingPersists();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     document.title = t('app.settingsTitle');
-  }, []);
-
-  const toggleDark = () => {
-    const { isDark, themeName } = getThemeState();
-    applyTheme(!isDark, themeName, null);
-    setDark(!isDark);
-    void writeSettings({ darkMode: !isDark });
-  };
+  }, [lang]);
 
   return (
     <div className="options-root">
       <div className="options-container">
         <header className="options-header">
           <h1 className="options-title">{t('settings.heading')}</h1>
-          <button type="button" className="icon-btn" onClick={toggleDark} title={t('settings.toggleDark')} aria-label={t('settings.toggleDark')}>
-            {dark ? <Sun size={18} /> : <Moon size={18} />}
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={toggleDarkMode}
+            title={t('settings.toggleDark')}
+            aria-label={t('settings.toggleDark')}
+          >
+            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </header>
+
+        {loaded ? <LlmSection /> : <p className="options-loading">…</p>}
+
+        <StatusToast />
       </div>
     </div>
   );

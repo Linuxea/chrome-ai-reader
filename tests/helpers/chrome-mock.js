@@ -43,6 +43,8 @@ export function createChromeMock(overrides = {}) {
 
   function createStorageArea(storeKey) {
     return {
+      // Callback AND promise styles (chrome.storage supports both; the
+      // promise style is what platform/settings.ts uses).
       get(keys, cb) {
         const result = {};
         // Handle null/undefined keys — return full store contents per Chrome API
@@ -54,7 +56,11 @@ export function createChromeMock(overrides = {}) {
             if (store[storeKey][k] !== undefined) result[k] = store[storeKey][k];
           });
         }
-        cb?.(result);
+        if (cb) {
+          cb(result);
+          return;
+        }
+        return Promise.resolve(result);
       },
       set(items, cb) {
         const changes = {};
@@ -63,12 +69,20 @@ export function createChromeMock(overrides = {}) {
           store[storeKey][k] = v;
         }
         storageListeners[storeKey].forEach(fn => fn(changes, storeKey));
-        cb?.();
+        if (cb) {
+          cb();
+          return;
+        }
+        return Promise.resolve();
       },
       remove(keys, cb) {
         const keyList = Array.isArray(keys) ? keys : [keys];
         keyList.forEach(k => delete store[storeKey][k]);
-        cb?.();
+        if (cb) {
+          cb();
+          return;
+        }
+        return Promise.resolve();
       },
     };
   }
