@@ -1,0 +1,40 @@
+/* Tailwind v4 semantic-token mapping — shared by every Tailwind entry
+ * (panel/styles.css, options/styles.css).
+ *
+ * themes.css stays the single source of truth for colors: it defines
+ * tokens per `[data-theme-name][data-theme]` combination on <html>. This
+ * file maps those tokens onto Tailwind's semantic color scale, so
+ * utilities like `bg-background`, `text-primary` or `border-border`
+ * resolve the theme vars at use time — theme switching keeps working
+ * with zero React involvement (theme-boot.js pre-paint + data
+ * attributes).
+ *
+ * NOTE on radius: themes.css already defines --radius-sm/md/lg/xl with
+ * the exact Tailwind v4 names, and unlayered CSS beats Tailwind's
+ * @layer theme, so rounded-* utilities pick the theme values up
+ * automatically. Never add `--radius-sm: var(--radius-sm)` here — that
+ * is self-referential.
+ */
+
+@theme inline {
+  /* shadcn/ui semantic scale ← extension theme tokens. */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--card-bg);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--card-bg);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--user-text);
+  --color-secondary: var(--bg-secondary);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--summary-bg);
+  --color-muted-foreground: var(--text-secondary);
+  --color-accent: var(--primary-light);
+  --color-accent-foreground: var(--primary);
+  --color-destructive: var(--error-text);
+  --color-destructive-foreground: var(--card-bg);
+  --color-border: var(--border);
+  --color-input: var(--input-bg);
+  --color-ring: var(--primary);
+}
