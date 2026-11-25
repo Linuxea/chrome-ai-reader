@@ -12,13 +12,9 @@
  * Port name constants live in `PORT_NAMES` below; pair each with its
  * request/response message types. Background handlers and clients must both
  * import from here.
- *
- * Agent wire (see background/agent-runner.ts): `agent_round` + `tool_call`
- * (worker → panel, once per LLM step that requests tools / once per call)
- * and `tool_result` (panel → worker, one per call).
  */
 
-import type { ChatMessage, ToolCall, WebResult, WebSource, WebStep, WebStepAction } from './types';
+import type { ChatMessage, WebResult, WebSource, WebStep, WebStepAction } from './types';
 
 // ---------------------------------------------------------------------------
 // Port names — the single registry of long-lived `chrome.runtime.connect` ports
@@ -53,13 +49,6 @@ export interface AIChatRequest {
   messages: ChatMessage[];
   response_format?: ResponseFormat;
   temperature?: number;
-  /**
-   * What the request is for. 'agent' enables tool calling with the panel's
-   * tools; 'chat' (the default) is a plain completion.
-   */
-  purpose?: 'chat' | 'agent';
-  /** Agent mode: tool definitions the panel can execute. */
-  tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
   /**
    * F15: allow web search for this request. The worker then declares
    * DeepSeek's server-side `deepseek_web_search` tool (and nothing else
@@ -98,7 +87,7 @@ export type ServerToolEvent = WebCallStarted | WebCallCompleted | { type: 'step_
 export type WebCallEvent = WebCallStarted | WebCallCompleted;
 
 /** Why generation ended, normalized across providers. */
-export type FinishReason = 'stop' | 'length' | 'tool_calls' | 'refusal' | 'other';
+export type FinishReason = 'stop' | 'length' | 'refusal' | 'other';
 
 export interface TokenUsage {
   inputTokens: number;
@@ -111,15 +100,13 @@ export type StreamMessage =
   | { type: 'thinking'; content: string }
   | { type: 'chunk'; content: string }
   /**
-   * `finishReason: 'length'` = the answer was cut off by the output limit;
-   * `limit: 'steps'` qualifies it as the agent tool-round limit (not tokens)
-   * so the panel can word the note correctly.
+   * `finishReason: 'length'` = the answer was cut off by the output limit.
    */
   /**
    * `web` (F15) is present only when the answer used the web: the search
    * steps, the cited sources and where they are cited.
    */
-  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps'; web?: WebResult }
+  | { type: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; web?: WebResult }
   | { type: 'error'; error?: string; errorKey?: string }
   /**
    * F15 web search: a server-side call started or completed, forwarded as it
@@ -132,26 +119,7 @@ export type StreamMessage =
    * search events) is void — the panel resets the live entry; `attempt` is
    * the 1-based number of the new attempt.
    */
-  | { type: 'retry'; attempt: number }
-  /**
-   * Agent mode: a new round (LLM step) is requesting tools. Sent once per
-   * round, before that round's `tool_call` messages; `round` is 1-based.
-   */
-  | { type: 'agent_round'; round: number }
-  /**
-   * Agent mode: the model asked for one tool. The panel runs it and answers
-   * on the same port with a ToolResultMessage. One message per call — calls
-   * of a round arrive (and may complete) in any order.
-   */
-  | { type: 'tool_call'; call: ToolCall };
-
-/** Panel → worker on the ai-chat port: the result of one `tool_call`. */
-export interface ToolResultMessage {
-  type: 'tool_result';
-  toolCallId: string;
-  name: string;
-  content: string;
-}
+  | { type: 'retry'; attempt: number };
 
 // ---------------------------------------------------------------------------
 // suggest-questions port

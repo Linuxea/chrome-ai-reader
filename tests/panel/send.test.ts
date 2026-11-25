@@ -357,17 +357,13 @@ describe('panel send pipeline', () => {
   });
 
   // F15 web search
-  it('web search is on by default: the request asks for it and does not offer the agent tools', async () => {
-    // Even with agent mode enabled in settings: search wins (design F15 §5.7).
-    store.sync.agentMode = true;
+  it('web search is on by default: the request asks for it', async () => {
     useComposerStore.getState().setDraftText('q');
     await submit();
     await flush();
 
     const sent = getPort().postMessage.mock.calls[0][0] as Record<string, unknown>;
     expect(sent).toMatchObject({ type: 'chat', webSearch: true });
-    expect(sent).not.toHaveProperty('purpose');
-    expect(sent).not.toHaveProperty('tools');
   });
 
   it('with web search switched off the request carries no webSearch', async () => {
@@ -379,17 +375,6 @@ describe('panel send pipeline', () => {
     expect(getPort().postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat' }));
     const sent = getPort().postMessage.mock.calls[0][0] as Record<string, unknown>;
     expect(sent).not.toHaveProperty('webSearch');
-    expect(sent).not.toHaveProperty('purpose');
-  });
-
-  it('with web search off, agent mode applies again', async () => {
-    store.sync.webSearch = false;
-    store.sync.agentMode = true;
-    useComposerStore.getState().setDraftText('q');
-    await submit();
-    await flush();
-
-    expect(getPort().postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat', purpose: 'agent' }));
   });
 
   const SEARCH_STARTED = { type: 'call_started', step: 0, call: { id: 'c1', index: 0, kind: 'deep_search', action: { type: 'search', queries: ['q1'] } } } as const;

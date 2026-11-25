@@ -1,7 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 import type { ChatMessage } from '@/shared/types';
 import { MarkdownView } from './MarkdownView';
-import { AgentTraceView } from './AgentTraceView';
 import { WebTraceView } from './WebTraceView';
 import { AnswerActions } from './AnswerActions';
 import { useUIStore } from '@/panel/stores/ui-store';
@@ -13,16 +12,13 @@ export const AssistantBubble = memo(function AssistantBubble({ msg, tabId }: { m
   const openShare = useUIStore(s => s.openShare);
   return (
     <div className="ai-msg" data-msg-id={msg.id}>
-      {msg.agentTrace && msg.agentTrace.length > 0 && <AgentTraceView steps={msg.agentTrace} />}
       {/* F15: the searches this answer used, and its cited sources as chips. */}
       {msg.web && <WebTraceView steps={msg.web.steps} />}
       {/* The answer's reasoning, kept as a collapsed summary the user can open. */}
       {msg.reasoning && <ThinkingBlock text={msg.reasoning} />}
       <MarkdownView text={text} web={msg.web} />
       {msg.finish?.reason === 'length' && (
-        <div className="msg-note">
-          {msg.finish.limit === 'steps' ? t('agent.stepLimit') : t('ai.truncatedByLimit')}
-        </div>
+        <div className="msg-note">{t('ai.truncatedByLimit')}</div>
       )}
       {msg.finish?.reason === 'refusal' && <div className="msg-note">{t('ai.refusedPartway')}</div>}
       {msg.finish?.usage && (

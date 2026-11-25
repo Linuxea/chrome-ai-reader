@@ -4,7 +4,7 @@
  * React counterpart of the legacy stream-handler's DOM half: there, the
  * streaming answer lived in an appended bubble node kept alive across tab
  * switches by reattachment tricks (msgEl.isConnected, CHAT_RERENDERED).
- * Here the accumulated text/thinking/agent rounds are store state keyed by
+ * Here the accumulated text/thinking is store state keyed by
  * tab id — switching tabs or re-rendering the list can never lose or
  * duplicate the stream; the MessageList renders it wherever that tab is
  * active, and finalize() folds it into conversationHistory (tabs-store).
@@ -16,13 +16,7 @@
 import { create } from 'zustand';
 import type { FinishReason, TokenUsage, WebCallEvent } from '@/shared/protocol';
 import { genId } from '@/shared/ids';
-import type { ChatMessage, ToolCall, WebStep } from '@/shared/types';
-
-export interface AgentRound {
-  /** 1-based round index (matches the `agent_round` wire message). */
-  round: number;
-  calls: (ToolCall & { result?: string })[];
-}
+import type { ChatMessage, WebStep } from '@/shared/types';
 
 /**
  * F15: one web search call as the live trace shows it — `running` from its
@@ -38,14 +32,10 @@ export interface LiveStream {
   thinking: string;
   /** Accumulated answer text. */
   answer: string;
-  /** Agent-mode tool rounds, in order. */
-  rounds: AgentRound[];
   /** F15: server-side web search calls, in the order they started. */
   webSteps: LiveWebStep[];
   status: 'streaming' | 'done' | 'error' | 'aborted';
   finishReason?: FinishReason;
-  /** `limit:'steps'` qualifies finishReason 'length' as the agent round cap. */
-  limit?: 'steps';
   usage?: TokenUsage;
   model?: string;
   error?: string;
@@ -70,11 +60,6 @@ interface StreamStore {
   start: (tabId: number) => string;
   appendThinking: (tabId: number, text: string) => void;
   appendAnswer: (tabId: number, text: string) => void;
-  /** A new agent round starts (1-based); ignored if that round already exists. */
-  startRound: (tabId: number, round: number) => void;
-  addToolCall: (tabId: number, call: ToolCall) => void;
-  /** Attach a finished tool execution's excerpt to its live step line. */
-  setToolResult: (tabId: number, callId: string, result: string) => void;
   /**
    * F15: apply one web search event to the live trace. `call_started` appends
    * a running step; `call_completed` fills in the step with that call id —
@@ -90,7 +75,7 @@ interface StreamStore {
    */
   restart: (tabId: number) => void;
   /** Normal end: keep the accumulated text visible until folded into history. */
-  finish: (tabId: number, outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps' }) => void;
+  finish: (tabId: number, outcome: { finishReason?: FinishReason; usage?: TokenUsage; model?: string }) => void;
   /** Abnormal end (port error / provider error). Keeps the failed user message for retry. */
   fail: (tabId: number, error: string, failedUserMessage?: ChatMessage, errorKey?: string) => void;
   /** User stopped before any answer text — keep the user turn retryable + a quiet note. */
@@ -105,7 +90,7 @@ export const useStreamStore = create<StreamStore>()(set => ({
   start: tabId => {
     const assistantId = genId();
     set(s => ({
-      streams: { ...s.streams, [tabId]: { tabId, assistantId, thinking: '', answer: '', rounds: [], webSteps: [], status: 'streaming' } },
+      streams: { ...s.streams, [tabId]: { tabId, assistantId, thinking: '', answer: '', webSteps: [], status: 'streaming' } },
     }));
     return assistantId;
   },
@@ -122,41 +107,6 @@ export const useStreamStore = create<StreamStore>()(set => ({
       const cur = s.streams[tabId];
       if (!cur || cur.status !== 'streaming') return s;
       return { streams: { ...s.streams, [tabId]: { ...cur, answer: cur.answer + text } } };
-    }),
-
-  startRound: (tabId, round) =>
-    set(s => {
-      const cur = s.streams[tabId];
-      if (!cur || cur.status !== 'streaming') return s;
-      if (cur.rounds.some(r => r.round === round)) return s;
-      return { streams: { ...s.streams, [tabId]: { ...cur, rounds: [...cur.rounds, { round, calls: [] }] } } };
-    }),
-
-  addToolCall: (tabId, call) =>
-    set(s => {
-      const cur = s.streams[tabId];
-      if (!cur || cur.status !== 'streaming' || cur.rounds.length === 0) return s;
-      const rounds = cur.rounds.slice();
-      const last = rounds[rounds.length - 1]!;
-      rounds[rounds.length - 1] = { ...last, calls: [...last.calls, { ...call }] };
-      return { streams: { ...s.streams, [tabId]: { ...cur, rounds } } };
-    }),
-
-  setToolResult: (tabId, callId, result) =>
-    set(s => {
-      const cur = s.streams[tabId];
-      if (!cur) return s;
-      let found = false;
-      const rounds = cur.rounds.map(r => ({
-        ...r,
-        calls: r.calls.map(c => {
-          if (c.id !== callId || c.result !== undefined) return c;
-          found = true;
-          return { ...c, result };
-        }),
-      }));
-      if (!found) return s;
-      return { streams: { ...s.streams, [tabId]: { ...cur, rounds } } };
     }),
 
   addSearchEvent: (tabId, event) =>
@@ -181,7 +131,7 @@ export const useStreamStore = create<StreamStore>()(set => ({
     set(s => {
       const cur = s.streams[tabId];
       if (!cur || cur.status !== 'streaming') return s;
-      return { streams: { ...s.streams, [tabId]: { ...cur, thinking: '', answer: '', rounds: [], webSteps: [] } } };
+      return { streams: { ...s.streams, [tabId]: { ...cur, thinking: '', answer: '', webSteps: [] } } };
     }),
 
   finish: (tabId, outcome) =>
@@ -191,7 +141,7 @@ export const useStreamStore = create<StreamStore>()(set => ({
       return {
         streams: {
           ...s.streams,
-          [tabId]: { ...cur, status: 'done', finishReason: outcome.finishReason, usage: outcome.usage, model: outcome.model, limit: outcome.limit },
+          [tabId]: { ...cur, status: 'done', finishReason: outcome.finishReason, usage: outcome.usage, model: outcome.model },
         },
       };
     }),

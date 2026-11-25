@@ -18,15 +18,16 @@ import {
 } from '@/platform/settings';
 
 /**
- * Retired with their features (vision / GLM-OCR / fast-model split) —
- * no longer part of the Settings interface, removed by raw key.
- * `fastModelName` is also removed by the SW at startup
- * (cleanupRemovedSettings); sweeping here is idempotent either way.
+ * Retired with their features (vision / GLM-OCR / fast-model split / the
+ * F11 agent tool loop) — no longer part of the Settings interface, removed
+ * by raw key. `fastModelName` and `agentMode` are also removed by the SW at
+ * startup (cleanupRemovedSettings); sweeping here is idempotent either way.
  */
 export const RETIRED_SAVE_KEYS: readonly string[] = [
   'visionEnabled',
   'ocrApiKey',
   'fastModelName',
+  'agentMode',
 ];
 
 /** One-time cleanup for retired settings, run at options load. */

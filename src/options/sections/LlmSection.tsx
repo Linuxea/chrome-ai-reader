@@ -25,7 +25,6 @@ export function LlmSection() {
   const systemPrompt = useSettingsStore(s => s.systemPrompt);
   const citations = useSettingsStore(s => s.citations);
   const webSearch = useSettingsStore(s => s.webSearch);
-  const agentMode = useSettingsStore(s => s.agentMode);
   const models = useSettingsStore(s => s.models);
   const modelsLoading = useSettingsStore(s => s.modelsLoading);
 
@@ -133,11 +132,6 @@ export function LlmSection() {
         checked={webSearch}
         onChange={v => setToggle('webSearch', v)}
         hint={t('settings.llm.webSearch.hint')}
-      />
-      <ToggleRow
-        label={t('settings.llm.agentMode')}
-        checked={agentMode}
-        onChange={v => setToggle('agentMode', v)}
       />
 
       <TextField

@@ -35,7 +35,6 @@ import {
 export type ToggleKey =
   | 'citations'
   | 'webSearch'
-  | 'agentMode'
   | 'ttsAutoPlay'
   | 'podcastDirect'
   | 'suggestQuestions';
@@ -57,7 +56,6 @@ export interface SettingsStore {
   systemPrompt: string;
   citations: boolean;
   webSearch: boolean;
-  agentMode: boolean;
   ttsAppId: string;
   ttsAccessKey: string;
   ttsResourceId: string;
@@ -127,7 +125,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   systemPrompt: '',
   citations: true,
   webSearch: true,
-  agentMode: false,
   ttsAppId: '',
   ttsAccessKey: '',
   ttsResourceId: '',
@@ -151,7 +148,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       'provider',
       'citations',
       'webSearch',
-      'agentMode',
       'ttsAutoPlay',
       'podcastDirect',
       'suggestQuestions',
@@ -186,7 +182,6 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       ttsSpeaker: text('ttsSpeaker'),
       citations: bool('citations', true),
       webSearch: bool('webSearch', true),
-      agentMode: bool('agentMode', false),
       ttsAutoPlay: bool('ttsAutoPlay', false),
       podcastDirect: bool('podcastDirect', false),
       suggestQuestions: bool('suggestQuestions', true),

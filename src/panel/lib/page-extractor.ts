@@ -107,12 +107,12 @@ export async function extractPageContent(expectTabId?: number | null): Promise<R
   return ok(data);
 }
 
-/** Characters of another tab's text kept for multi-tab context / agent reads. */
+/** Characters of another tab's text kept for multi-tab context. */
 export const OTHER_TAB_CHARS = 20_000;
 
 /**
  * Read another tab's article without touching any tab's cache (multi-tab
- * questions, the agent's read_tab). Long pages are truncated.
+ * questions). Long pages are truncated.
  */
 export async function extractTabContent(tabId: number): Promise<Result<ExtractResult & { url: string }>> {
   const read = await readTab(tabId);

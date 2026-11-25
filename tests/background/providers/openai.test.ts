@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { openaiProvider, toOpenAIMessages, withWebSearch, WEB_SEARCH_TOOL } from '../../../src/background/providers/openai';
+import { openaiProvider, withWebSearch } from '../../../src/background/providers/openai';
 import { __resetCapabilities } from '../../../src/background/providers/capabilities';
 import type { ChatDelta } from '../../../src/background/providers/types';
 
@@ -43,32 +43,6 @@ describe('providers/openai', () => {
     expect(body.stream_options).toEqual({ include_usage: true });
   });
 
-  it('assembles streamed tool calls', async () => {
-    fetchMock.mockResolvedValueOnce(sse(
-      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'search_page', arguments: '{"q' } }] } }] },
-      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '":"x"}' } }] }, finish_reason: 'tool_calls' }] },
-      '[DONE]',
-    ));
-    const out = await collect(openaiProvider.stream(CFG, { model: 'm', messages: [], tools: [{ name: 'search_page', description: 'd', parameters: {} }] }, new AbortController().signal));
-    expect(out).toContainEqual({ type: 'tool_call', call: { id: 'c1', name: 'search_page', arguments: '{"q":"x"}' } });
-    expect(out.at(-1)).toMatchObject({ type: 'finish', reason: 'tool_calls' });
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.tools[0]).toEqual({ type: 'function', function: { name: 'search_page', description: 'd', parameters: {} } });
-  });
-
-  it('falls back to a synthesized id/index when the server sends neither', async () => {
-    // Some OpenAI-compatible servers (older vLLM) omit the id, and single-call
-    // responses may omit the index — without a fallback the next round would
-    // carry an empty tool_call_id that strict providers reject.
-    fetchMock.mockResolvedValueOnce(sse(
-      { choices: [{ delta: { tool_calls: [{ function: { name: 'search_page', arguments: '{}' } }] } }] },
-      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-      '[DONE]',
-    ));
-    const out = await collect(openaiProvider.stream(CFG, { model: 'm', messages: [], tools: [{ name: 'search_page', description: 'd', parameters: {} }] }, new AbortController().signal));
-    expect(out).toContainEqual({ type: 'tool_call', call: { id: 'call_0', name: 'search_page', arguments: '{}' } });
-  });
-
   it('throws on an error payload delivered mid-stream', async () => {
     fetchMock.mockResolvedValueOnce(sse({ choices: [{ delta: { content: 'a' } }] }, { error: { message: 'overloaded' } }));
     await expect(collect(openaiProvider.stream(CFG, { model: 'm', messages: [] }, new AbortController().signal))).rejects.toThrow('overloaded');
@@ -90,16 +64,6 @@ describe('providers/openai', () => {
   it('surfaces other 4xx errors with their message', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 }));
     await expect(collect(openaiProvider.stream(CFG, { model: 'm', messages: [] }, new AbortController().signal))).rejects.toThrow('bad key');
-  });
-
-  it('serializes tool turns in the OpenAI wire shape', () => {
-    expect(toOpenAIMessages([
-      { role: 'assistant', content: '', tool_calls: [{ id: 'c1', name: 'f', arguments: '{}' }] },
-      { role: 'tool', content: 'result', tool_call_id: 'c1', name: 'f' },
-    ])).toEqual([
-      { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'f', arguments: '{}' } }] },
-      { role: 'tool', content: 'result', tool_call_id: 'c1', name: 'f' },
-    ]);
   });
 });
 
@@ -156,19 +120,11 @@ describe('providers/openai · F15 web search', () => {
     expect(withWebSearch(noSystem, WEB).map(m => [m.role, m.content])).toEqual([
       ['system', 'RULE'], ['latest_reminder', 'REM'], ['user', 'q'],
     ]);
-    // A trailing tool/assistant turn cannot host a reminder (the API wants one directly before a user message).
-    const trailingTool = [...MSGS, { role: 'tool' as const, content: 'result', tool_call_id: 'c1' }];
-    expect(withWebSearch(trailingTool, WEB).map(m => m.role)).toEqual(['system', 'system', 'system', 'user', 'assistant', 'user', 'tool']);
+    // A trailing assistant turn cannot host a reminder (the API wants one directly before a user message).
+    const trailingAssistant = [...MSGS, { role: 'assistant' as const, content: 'result' }];
+    expect(withWebSearch(trailingAssistant, WEB).map(m => m.role)).toEqual(['system', 'system', 'system', 'user', 'assistant', 'user', 'assistant']);
     // No web search → the same array, not a copy.
     expect(withWebSearch(MSGS, undefined)).toBe(MSGS);
-  });
-
-  it('declares the web tool next to function tools (function tools first)', async () => {
-    await collect(openaiProvider.stream(CFG, { model: 'm', messages: [], tools: [{ name: 'f', description: 'd', parameters: {} }], webSearch: WEB }, signal()));
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).tools).toEqual([
-      { type: 'function', function: { name: 'f', description: 'd', parameters: {} } },
-      WEB_SEARCH_TOOL,
-    ]);
   });
 
   it('streams search progress as events and the calls + citations on the finish delta', async () => {

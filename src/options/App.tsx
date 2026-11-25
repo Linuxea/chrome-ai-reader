@@ -30,7 +30,6 @@ const SYNCED_KEYS: readonly SettingKey[] = [
   'systemPrompt',
   'citations',
   'webSearch',
-  'agentMode',
   'ttsAppId',
   'ttsAccessKey',
   'ttsResourceId',

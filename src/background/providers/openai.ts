@@ -17,32 +17,20 @@
 
 import { createSSEParser } from '../../shared/sse';
 import { buildWebResult, parseServerToolEvent } from '../../shared/web-search';
-import type { ChatMessage, MessageContentPart, ToolCall, WebResult } from '../../shared/types';
+import type { ChatMessage, MessageContentPart, WebResult } from '../../shared/types';
 import type { FinishReason, TokenUsage } from '../../shared/protocol';
 import type { ChatDelta, ChatProvider, ChatRequest, ProviderConfig } from './types';
 import { ProviderError } from './types';
 import { hasCapabilityIssue, markCapabilityIssue, type Capability } from './capabilities';
 
-/** OpenAI wire message (tool_calls in the nested `function` form). */
+/** OpenAI wire message. */
 type WireMessage = {
   role: string;
   content: string | MessageContentPart[] | null;
-  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
-  tool_call_id?: string;
-  name?: string;
 };
 
 export function toOpenAIMessages(messages: ChatMessage[]): WireMessage[] {
-  return messages.map((m) => {
-    const out: WireMessage = { role: m.role, content: m.content };
-    if (m.tool_calls?.length) {
-      out.tool_calls = m.tool_calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } }));
-      if (out.content === '') out.content = null;
-    }
-    if (m.tool_call_id) out.tool_call_id = m.tool_call_id;
-    if (m.name) out.name = m.name;
-    return out;
-  });
+  return messages.map((m) => ({ role: m.role, content: m.content }));
 }
 
 /** DeepSeek's server-side web search tool — declaring it lets the model search; it does not make it search. */
@@ -71,7 +59,6 @@ function mapFinish(reason: string | null | undefined): FinishReason {
   switch (reason) {
     case 'stop': return 'stop';
     case 'length': return 'length';
-    case 'tool_calls': case 'function_call': return 'tool_calls';
     case 'content_filter': return 'refusal';
     default: return 'other';
   }
@@ -85,7 +72,6 @@ interface ChunkJSON {
       reasoning_content?: string | null;
       /** Some providers (OpenRouter, vLLM) name it `reasoning`. */
       reasoning?: string | null;
-      tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[];
       /** F15 (DeepSeek): complete server-side tool calls, on the chunk that carries `finish_reason`. */
       server_tool_calls?: unknown;
       /** F15 (DeepSeek): `url_citation` items, code-point ranges into `content`. */
@@ -134,12 +120,10 @@ export const openaiProvider: ChatProvider = {
       };
       if (req.jsonMode && !hasCapabilityIssue(key, 'jsonMode')) { body.response_format = { type: 'json_object' }; sent.push('jsonMode'); }
       if (!hasCapabilityIssue(key, 'streamUsage')) { body.stream_options = { include_usage: true }; sent.push('streamUsage'); }
-      // F15: the web tool is declared next to any function tools (the API
-      // accepts both in one request). Nothing else changes: `temperature`
-      // and the sampling params are simply ignored while it is declared.
-      const functionTools = req.tools?.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) ?? [];
-      if (req.webSearch) body.tools = [...functionTools, WEB_SEARCH_TOOL];
-      else if (functionTools.length) body.tools = functionTools;
+      // F15: declaring the web tool lets the model search; it does not make
+      // it search. Nothing else changes: `temperature` and the sampling
+      // params are simply ignored while it is declared.
+      if (req.webSearch) body.tools = [WEB_SEARCH_TOOL];
       return { body, sent };
     };
 
@@ -160,7 +144,6 @@ export const openaiProvider: ChatProvider = {
     const parser = createSSEParser();
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
     let finish: FinishReason | null = null;
     let usage: TokenUsage | undefined;
     let sawDone = false;
@@ -195,19 +178,6 @@ export const openaiProvider: ChatProvider = {
       const reasoning = d?.reasoning_content ?? d?.reasoning;
       if (reasoning) yield { type: 'thinking', text: reasoning };
       if (d?.content) yield { type: 'text', text: d.content };
-      for (const tc of d?.tool_calls ?? []) {
-        // Some OpenAI-compatible servers omit `index` (single call) — key the
-        // accumulator by 0 then, so the call still lands in the map.
-        const idx = tc.index ?? 0;
-        const cur = toolCalls.get(idx) ?? { id: '', name: '', arguments: '' };
-        if (tc.id) cur.id = tc.id;
-        if (tc.function?.name) cur.name += tc.function.name;
-        if (tc.function?.arguments) cur.arguments += tc.function.arguments;
-        // And some never send an id at all — without one the next round's
-        // `tool_call_id` would be empty and strict providers reject the turn.
-        if (!cur.id) cur.id = `call_${idx}`;
-        toolCalls.set(idx, cur);
-      }
       if (choice.finish_reason) {
         finish = mapFinish(choice.finish_reason);
         // F15: the complete tool calls + citations ride once on this chunk.
@@ -222,8 +192,6 @@ export const openaiProvider: ChatProvider = {
     }
     if (!sawDone) for (const ev of parser.flush()) yield* handle(ev.data);
 
-    const calls: ToolCall[] = [...toolCalls.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c);
-    for (const call of calls) yield { type: 'tool_call', call };
-    yield { type: 'finish', reason: finish ?? (calls.length ? 'tool_calls' : 'stop'), usage, ...(web ? { web } : {}) };
+    yield { type: 'finish', reason: finish ?? 'stop', usage, ...(web ? { web } : {}) };
   },
 };

@@ -21,7 +21,6 @@ export interface Settings {
   apiBase: string;
   modelName: string;
   systemPrompt: string;
-  agentMode: boolean;
   citations: boolean;
   /**
    * F15: web search on the chat mainline — DeepSeek's server-side
@@ -70,7 +69,6 @@ export const DEFAULT_ANTHROPIC_API_BASE = 'https://api.anthropic.com';
 export const SETTING_DEFAULTS: Partial<Settings> = {
   provider: 'openai',
   apiBase: DEFAULT_API_BASE,
-  agentMode: false,
   citations: true,
   webSearch: true,
   suggestQuestions: true,
@@ -154,13 +152,15 @@ export async function removeSettings(keys: readonly string[]): Promise<void> {
 
 /**
  * Settings retired with their features: the related-reading (知识关联) keys
- * and legacy `pageRecords` blob, plus `fastModelName` (light work now runs
- * on the main model). Cleared from both storage areas by the service worker
- * at startup so nothing lingers on users' machines.
+ * and legacy `pageRecords` blob, `fastModelName` (light work now runs on the
+ * main model), and `agentMode` (the F11 agent tool loop was removed,
+ * 2026-11). Cleared from both storage areas by the service worker at
+ * startup so nothing lingers on users' machines.
  */
 const REMOVED_SETTING_KEYS = [
   'embeddingEnabled', 'embeddingApiKey', 'embeddingApiBase', 'embeddingModel',
   'embeddingThreshold', 'embeddingMaxPages', 'pageRecords', 'fastModelName',
+  'agentMode',
 ];
 
 /** One-time cleanup for retired settings (idempotent; runs at SW startup). */

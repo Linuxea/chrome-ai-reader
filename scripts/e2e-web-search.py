@@ -104,7 +104,7 @@ def launch(p):
 SEED = """async ({ key, article }) => {
   await chrome.storage.local.set({ apiKey: key });
   await chrome.storage.sync.set({ provider: 'openai', apiBase: '', modelName: 'deepseek-flash', language: 'zh' });
-  // Remove anything a previous run left, so the defaults apply (search ON, suggestions ON, agent OFF).
+  // Remove anything a previous run left, so the defaults apply (search ON, suggestions ON).
   await chrome.storage.sync.remove(['webSearch', 'suggestQuestions', 'agentMode', 'citations']);
   const tab = await chrome.tabs.getCurrent();
   const paragraphs = article.split(/\\n\\n\\s*/).map(s => s.trim()).filter(Boolean);

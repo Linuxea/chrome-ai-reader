@@ -343,7 +343,7 @@ describe('toApiMessage', () => {
   it('keeps the web search record out of the request', async () => {
     const { toApiMessage } = await import('../../src/panel/lib/history-ops');
     const web: WebResult = { steps: [], sources: [{ url: 'https://a.test/', title: 'A' }], citations: [], searches: 1, pages: 0 };
-    const out = toApiMessage({ role: 'assistant', content: 'answer', web, finish: { reason: 'stop' }, agentTrace: [] });
+    const out = toApiMessage({ role: 'assistant', content: 'answer', web, finish: { reason: 'stop' } });
     expect(out).toEqual({ role: 'assistant', content: 'answer' });
   });
 

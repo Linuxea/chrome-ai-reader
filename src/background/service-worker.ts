@@ -45,8 +45,6 @@ registerPort(PORT_NAMES.AI_CHAT, 'extension', async (msg, port) => {
     await callOpenAI(req.messages, port, {
       response_format: req.response_format as Record<string, unknown> | undefined,
       temperature: req.temperature,
-      purpose: req.purpose,
-      tools: req.purpose === 'agent' ? req.tools : undefined,
       webSearch: req.webSearch,
     });
   }

@@ -32,13 +32,12 @@ describe('buildExportData', () => {
 
   it('carries checkboxes only when stored, text only when truthy', () => {
     const data = buildExportData(
-      { webSearch: false, citations: true, agentMode: false, modelName: '', systemPrompt: 'p' },
+      { webSearch: false, citations: true, podcastDirect: false, modelName: '', systemPrompt: 'p' },
       undefined,
       false,
     );
     expect(data.webSearch).toBe(false); // false still exports — it is set
     expect(data.citations).toBe(true);
-    expect(data.agentMode).toBe(false);
     expect(data.modelName).toBeUndefined(); // empty text is skipped
     expect(data.systemPrompt).toBe('p');
   });
@@ -56,11 +55,11 @@ describe('buildExportData', () => {
       expect.arrayContaining([
         'provider', 'apiKey', 'apiBase', 'modelName', 'systemPrompt',
         'ttsAppId', 'ttsAccessKey', 'ttsResourceId', 'podcastResourceId', 'ttsSpeaker',
-        'suggestQuestions', 'ttsAutoPlay', 'citations', 'webSearch', 'agentMode', 'podcastDirect',
+        'suggestQuestions', 'ttsAutoPlay', 'citations', 'webSearch', 'podcastDirect',
         'themeName', 'language', 'composerTools',
       ]),
     );
-    expect(BACKUP_FIELDS).toHaveLength(19);
+    expect(BACKUP_FIELDS).toHaveLength(18);
   });
 });
 
@@ -78,12 +77,10 @@ describe('planImport', () => {
     const plan = planImport({ version: 1, webSearch: true });
     expect(plan.toRemove).not.toContain('webSearch');
     expect(plan.toRemove).toContain('citations');
-    expect(plan.toRemove).toContain('agentMode');
 
     const state = importedFormState(plan);
     expect(state.webSearch).toBe(true);
     expect(state.citations).toBe(CHECKBOX_DEFAULTS.citations);
-    expect(state.agentMode).toBe(false);
   });
 
   it('filters composerTools against the tool table and keeps order rules to the panel', () => {

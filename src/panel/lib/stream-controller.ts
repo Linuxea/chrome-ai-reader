@@ -9,9 +9,6 @@
  *   one that produced nothing is a failure (disconnect) or a quiet no-op
  *   (stop) that rolls the unanswered user turn back out of history.
  * - A refusal with no text is surfaced as an error, not an empty answer.
- * - Agent tool calls run in the panel (they need TabState) and answer on
- *   the same port; the trace is flushed in CALL order even when tools
- *   finish out of order (arrival-order queue behind a done map).
  * - Stop pressed before the port opened (during page extraction) is a
  *   pending abort consumed by the send pipeline.
  *
@@ -21,11 +18,10 @@
  * rendering is derived from state for whichever tab is active.
  */
 import { t } from '@/shared/i18n.js';
-import type { AgentTraceStep, ChatMessage, ToolCall, WebResult, WebStep } from '@/shared/types';
+import type { ChatMessage, WebResult, WebStep } from '@/shared/types';
 import { webResultFromSteps } from '@/shared/web-search';
 import type { StreamMessage, FinishReason, TokenUsage } from '@/shared/protocol';
 import { openAIChatPort } from '@/platform/ports';
-import { AGENT_TOOL_SPECS, runAgentTool } from '@/panel/lib/agent-tools';
 import * as historyOps from '@/panel/lib/history-ops';
 import { useStreamStore } from '@/panel/stores/stream-store';
 import { useTabsStore } from '@/panel/stores/tabs-store';
@@ -36,7 +32,7 @@ import { saveCurrentChat } from './chat-save';
 import { generateSuggestionsFor } from './suggest';
 
 type Outcome =
-  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; limit?: 'steps'; web?: WebResult }
+  | { kind: 'done'; finishReason?: FinishReason; usage?: TokenUsage; model?: string; web?: WebResult }
   | { kind: 'error'; errorText: string; errorKey?: string }
   | { kind: 'aborted' }
   /** The service worker's end went away (worker restart / crash). */
@@ -49,9 +45,7 @@ const _activeStreams = new Map<number, { abort: () => void }>();
 const _pendingAborts = new Set<number>();
 
 export interface CallAIOptions {
-  /** Agent mode: offer the panel's tools; the worker loops until an answer. */
-  agent?: boolean;
-  /** F15: ask the worker to declare DeepSeek's web search tool (never together with `agent`). */
+  /** F15: ask the worker to declare DeepSeek's web search tool. */
   webSearch?: boolean;
 }
 
@@ -85,14 +79,8 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
   const assistantId = useStreamStore.getState().start(tabId);
   const streamApi = useStreamStore.getState();
 
-  // F11: the tools this answer used — persisted with it as the evidence trail.
-  const agentTrace: AgentTraceStep[] = [];
-  let agentRound = 0;
-
   const port = openAIChatPort();
-  port.postMessage(options.agent
-    ? { type: 'chat', messages, purpose: 'agent', tools: AGENT_TOOL_SPECS }
-    : { type: 'chat', messages, ...(options.webSearch ? { webSearch: true } : {}) });
+  port.postMessage({ type: 'chat', messages, ...(options.webSearch ? { webSearch: true } : {}) });
 
   // Window-global TTS autoplay: claim the audio resource for this answer
   // before the first chunk (a running podcast stops; a previous playback is
@@ -109,11 +97,6 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
     } else if (msg.type === 'chunk') {
       streamApi.appendAnswer(tabId, msg.content || '');
       ttsAutoplayChunk(msg.content || '');
-    } else if (msg.type === 'agent_round') {
-      agentRound = msg.round;
-      streamApi.startRound(tabId, msg.round);
-    } else if (msg.type === 'tool_call') {
-      void handleAgentToolCall(msg.call);
     } else if (msg.type === 'search_event') {
       // F15: web search progress — shown in the trace while the answer is pending.
       streamApi.addSearchEvent(tabId, msg.event);
@@ -124,7 +107,7 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
       streamApi.restart(tabId);
       useUIStore.getState().pushToast(t('ai.retrying'));
     } else if (msg.type === 'done') {
-      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, limit: msg.limit, web: msg.web });
+      finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, web: msg.web });
     } else if (msg.type === 'error') {
       finalize({
         kind: 'error',
@@ -137,36 +120,6 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
   // Fires only when the service worker's end goes away — never for our own
   // disconnect() (see abortGeneration).
   port.onDisconnect.addListener(() => finalize({ kind: 'disconnected' }));
-
-  /** Run one tool call and answer the worker on the same port. */
-  async function handleAgentToolCall(call: ToolCall): Promise<void> {
-    if (agentRound === 0) {
-      agentRound = 1;
-      streamApi.startRound(tabId, 1);
-    }
-    // Trace entries are flushed in call order (a done map behind an
-    // arrival-order queue) so the persisted trail matches the live display
-    // even when tools finish out of order.
-    traceQueue.push(call.id);
-    streamApi.addToolCall(tabId, call);
-    const content = await runAgentTool(call.name, call.arguments, tabId);
-    if (finished) return;
-    streamApi.setToolResult(tabId, call.id, excerpt(content));
-    pushTraceEntry(call.id, { name: call.name, args: shortArgs(call.arguments), result: excerpt(content), round: agentRound });
-    try { port.postMessage({ type: 'tool_result', toolCallId: call.id, name: call.name, content }); } catch { /* stream ended */ }
-  }
-
-  const traceQueue: string[] = [];
-  const traceDone = new Map<string, AgentTraceStep>();
-
-  function pushTraceEntry(callId: string, step: AgentTraceStep): void {
-    traceDone.set(callId, step);
-    while (traceQueue.length > 0 && traceDone.has(traceQueue[0]!)) {
-      const next = traceQueue.shift()!;
-      agentTrace.push(traceDone.get(next)!);
-      traceDone.delete(next);
-    }
-  }
 
   /**
    * The single end-of-stream path (done / error / user stop / worker gone).
@@ -197,7 +150,7 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
         : webResultFromSteps(live?.webSteps.filter((step): step is WebStep => step.status !== 'running') ?? []);
       // Append to THAT tab's history (it may be a background tab) — never
       // through the active-tab-scoped store wrappers. The finish info
-      // (usage / truncation / step-limit) persists with the message so the
+      // (usage / truncation) persists with the message so the
       // usage footer and notes survive reloads.
       historyOps.appendMessage(tabState, {
         id: assistantId,
@@ -207,12 +160,9 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
         // this it vanished the moment the stream entry was folded into
         // history. Display only (toApiMessage never sends it back).
         ...(live?.thinking ? { reasoning: live.thinking } : {}),
-        // F11: persist the evidence trail with the answer (only when the
-        // model actually used tools) so reloads can rebuild the trace block.
-        ...(agentTrace.length ? { agentTrace } : {}),
         ...(web ? { web } : {}),
         ...(outcome.kind === 'done'
-          ? { finish: { reason: outcome.finishReason, limit: outcome.limit, usage: outcome.usage, model: outcome.model } }
+          ? { finish: { reason: outcome.finishReason, usage: outcome.usage, model: outcome.model } }
           : {}),
       }, tabId);
       useStreamStore.getState().clear(tabId);
@@ -257,21 +207,5 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
     historyOps.rollbackTrailingUserMessage(tabState, tabId);
     useStreamStore.getState().fail(tabId, errorText, failedUserMessage, errorKey);
     useTabsStore.getState().setGeneratingForTab(tabId, false);
-  }
-}
-
-// --- small pure helpers (kept local; display-shaping only) ------------------
-
-function excerpt(content: string): string {
-  return content.length > 200 ? `${content.slice(0, 200)}…` : content;
-}
-
-function shortArgs(argsJson: string): string {
-  try {
-    const parsed = JSON.parse(argsJson || '{}') as Record<string, unknown>;
-    const keys = Object.entries(parsed).map(([k, v]) => (typeof v === 'string' && v.length > 40 ? `${k}=${v.slice(0, 40)}…` : `${k}=${String(v)}`));
-    return keys.join(' ') || '{}';
-  } catch {
-    return argsJson.slice(0, 60);
   }
 }

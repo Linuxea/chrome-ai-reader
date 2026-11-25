@@ -42,7 +42,6 @@ describe('settings-store load()', () => {
     expect(s.webSearch).toBe(true); // on by default — no HTML checked attr anymore
     expect(s.citations).toBe(true);
     expect(s.suggestQuestions).toBe(true);
-    expect(s.agentMode).toBe(false);
     expect(s.ttsAutoPlay).toBe(false);
     expect(s.podcastDirect).toBe(false);
     expect(s.provider).toBe('openai');
@@ -118,7 +117,7 @@ describe('settings-store immediate writes (toggles / selects)', () => {
 
   it('a failed write surfaces as an error status', async () => {
     const spy = vi.spyOn(chrome.storage.sync, 'set').mockRejectedValueOnce(new Error('quota'));
-    useSettingsStore.getState().setToggle('agentMode', true);
+    useSettingsStore.getState().setToggle('citations', false);
     await vi.waitFor(() =>
       expect(useSettingsStore.getState().status?.type).toBe('error'),
     );

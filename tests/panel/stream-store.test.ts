@@ -65,10 +65,9 @@ describe('stream-store', () => {
     s.addSearchEvent(1, STARTED);
     s.appendThinking(1, 'half a thought');
     s.appendAnswer(1, 'text that must not exist at this point');
-    s.startRound(1, 1);
     s.restart(1);
     expect(useStreamStore.getState().streams[1]).toEqual({
-      tabId: 1, assistantId, thinking: '', answer: '', rounds: [], webSteps: [], status: 'streaming',
+      tabId: 1, assistantId, thinking: '', answer: '', webSteps: [], status: 'streaming',
     });
     // Still streaming: new events of the retried attempt are accepted.
     s.addSearchEvent(1, STARTED);
@@ -91,20 +90,6 @@ describe('stream-store', () => {
     expect(streams[1]!.thinking).toBe('hmm hmm more');
     expect(streams[1]!.answer).toBe('Hello');
     expect(streams[2]!.answer).toBe('Other tab');
-  });
-
-  it('agent rounds: startRound is idempotent per round; calls append to the last round', () => {
-    const s = useStreamStore.getState();
-    s.start(1);
-    s.startRound(1, 1);
-    s.startRound(1, 1); // duplicate wire message — ignored
-    s.addToolCall(1, { id: 'c1', type: 'function', function: { name: 'search', arguments: '{}' } } as never);
-    s.startRound(1, 2);
-    s.addToolCall(1, { id: 'c2', type: 'function', function: { name: 'read', arguments: '{}' } } as never);
-    const rounds = useStreamStore.getState().streams[1]!.rounds;
-    expect(rounds.map(r => r.round)).toEqual([1, 2]);
-    expect(rounds[0]!.calls.map(c => c.function.name)).toEqual(['search']);
-    expect(rounds[1]!.calls.map(c => c.function.name)).toEqual(['read']);
   });
 
   it('finish keeps accumulated text, records usage/model/finishReason, freezes appends', () => {

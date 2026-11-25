@@ -151,17 +151,15 @@ export async function sendToAI(
 
     const messages: ChatMessage[] = [];
     const pageContent = tabState.pageContent || '';
-    const { citations, agentMode, webSearch } = await readSettings(['citations', 'agentMode', 'webSearch']);
+    const { citations, webSearch } = await readSettings(['citations', 'webSearch']);
     const lang = getCurrentLang();
-    // The rules message is sent whenever there is an article to ground it —
-    // or, in agent mode, even without one (see AGENTS.md F11 note).
-    if (pageContent || agentMode) {
+    // The rules message is sent whenever there is an article to ground it.
+    if (pageContent) {
       const customSystemPrompt = core.getCustomSystemPrompt();
       const customBlock = [
         // The citation rule references [#N] labels — it only makes sense
         // when the labelled article message follows.
-        pageContent && citations ? getPrompt('citations.rule', lang) : '',
-        agentMode ? getPrompt('agent.rule', lang) : '',
+        citations ? getPrompt('citations.rule', lang) : '',
         customSystemPrompt ? getPrompt('default.custom', lang, { custom: customSystemPrompt }) : '',
       ].filter(Boolean).join('\n');
       messages.push({ role: 'system', content: getPrompt('default', lang, { custom: customBlock }) });
@@ -201,12 +199,9 @@ export async function sendToAI(
       if (totalBytes > MAX_IMAGE_PAYLOAD_BYTES) throw new Error(t('error.visionPayloadTooLarge'));
     }
 
-    // F15: web search is on by default. While it is on, the request goes out
-    // as plain chat + search and the agent tools are NOT offered (R-10: a
-    // product choice — agent mode is on its way out, and running both tool
-    // mechanisms in one request has never been validated). With search off,
-    // agent mode applies as before.
-    await callAI(messages, startTabId, { agent: agentMode === true && webSearch !== true, webSearch: webSearch === true });
+    // F15: web search is on by default; the request goes out as plain chat
+    // + search (whether to search is the model's call).
+    await callAI(messages, startTabId, { webSearch: webSearch === true });
   } catch (e: unknown) {
     takePendingAbort(startTabId); // a Stop racing the failure is moot now
     const errMsg = toErrorMessage(e);

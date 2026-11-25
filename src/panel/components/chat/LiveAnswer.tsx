@@ -5,7 +5,6 @@ import type { ChatMessage } from '@/shared/types';
 import type { LiveStream } from '@/panel/stores/stream-store';
 import { useThrottledText } from '@/panel/hooks/useThrottledText';
 import { MarkdownView } from './MarkdownView';
-import { AgentTraceView } from './AgentTraceView';
 import { WebTraceView } from './WebTraceView';
 import { TypingIndicator } from './TypingIndicator';
 import { ThinkingBlock } from './AssistantBubble';
@@ -23,7 +22,7 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
   const streaming = live.status === 'streaming';
   // A running web search is activity too: it replaces the typing indicator
   // with its own "searching…" line.
-  const started = live.thinking !== '' || live.answer !== '' || live.rounds.length > 0 || live.webSteps.length > 0;
+  const started = live.thinking !== '' || live.answer !== '' || live.webSteps.length > 0;
 
   // A failed send: the user bubble renders as its own right-aligned turn
   // (like any user message) with the error card below it.
@@ -32,7 +31,6 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
       <>
         {live.failedUserMessage && <FailedUserBubble msg={live.failedUserMessage} />}
         <div className="ai-msg">
-          {live.rounds.length > 0 && <AgentTraceView rounds={live.rounds} />}
           {live.webSteps.length > 0 && <WebTraceView steps={live.webSteps} />}
           <ErrorCard live={live} />
         </div>
@@ -52,7 +50,6 @@ export function LiveAnswer({ live }: { live: LiveStream }) {
 
   return (
     <div className="ai-msg">
-      <AgentTraceView rounds={live.rounds} />
       <WebTraceView steps={live.webSteps} live />
       {/* One slot for the whole stream: the block must stay mounted when the
           answer starts — a remount would reset its state and re-open what the

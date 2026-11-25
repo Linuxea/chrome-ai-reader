@@ -13,11 +13,6 @@
 
 /**
  * A single chat message in the OpenAI-compatible chat-completion format.
- *
- * The optional agent fields below (`tool_calls`, `tool_call_id`, `name`,
- * `providerContent`, `agentTrace`) are populated by agent mode (F11): the
- * worker's tool loop round-trips `tool_calls` / `role: 'tool'` messages,
- * and the panel records the executed tools as `agentTrace`.
  */
 /**
  * 一个多模态内容块。视觉消息的 `content` 是此类型的数组；
@@ -35,7 +30,7 @@ export interface ChatMessage {
    * which get one on restore (ensureMessageIds). Never sent to the API.
    */
   id?: string;
-  role: 'system' | 'user' | 'assistant' | 'tool';
+  role: 'system' | 'user' | 'assistant';
   /**
    * 纯文字消息为 `string`；视觉/多模态消息为 `MessageContentPart[]`
    *（OpenAI 兼容格式：text 块 + image_url 块）。
@@ -54,25 +49,6 @@ export interface ChatMessage {
    * sent to the API (see toApiMessage).
    */
   meta?: UserMessageMeta;
-  /** Tool calls the model emitted (agent mode F11; normalized to OpenAI style). */
-  tool_calls?: ToolCall[];
-  /** When role is 'tool', the id of the tool call this result responds to. */
-  tool_call_id?: string;
-  /** Optional function/tool name (used with role 'tool' or 'assistant' tool_calls). */
-  name?: string;
-  /**
-   * Agent loop only: the provider's native assistant content for this turn
-   * (e.g. Anthropic thinking + tool_use blocks), replayed verbatim to the same
-   * provider on the next request. Never persisted, never shown.
-   */
-  providerContent?: unknown;
-  /**
-   * Assistant messages only (agent mode, F11): the tools this answer used,
-   * recorded live and persisted with the chat so a reload can show the
-   * collapsed "verification steps" block. Never sent to the API
-   * (toApiMessage copies only the wire fields).
-   */
-  agentTrace?: AgentTraceStep[];
   /**
    * Assistant messages only (F15 web search): the server-side searches this
    * answer used, the sources it cites and where. Recorded when the stream
@@ -92,14 +68,12 @@ export interface ChatMessage {
   reasoning?: string;
   /**
    * Assistant messages only: how the answer ended + token usage — drives
-   * the usage footer and the truncation / step-limit notes. Local-only,
+   * the usage footer and the truncation notes. Local-only,
    * stripped by toApiMessage; duplicated literals (not imported from
    * protocol.ts) to keep types.ts a leaf.
    */
   finish?: {
-    reason?: 'stop' | 'length' | 'tool_calls' | 'refusal' | 'other';
-    /** 'steps' qualifies reason 'length' as the agent round cap. */
-    limit?: 'steps';
+    reason?: 'stop' | 'length' | 'refusal' | 'other';
     usage?: { inputTokens: number; outputTokens: number };
     model?: string;
   };
@@ -164,18 +138,6 @@ export interface WebResult {
   pages: number;
 }
 
-/** One tool execution recorded for an answer's agent trace. */
-export interface AgentTraceStep {
-  /** Tool name as the model called it (e.g. 'search_page'). */
-  name: string;
-  /** Human-readable argument summary (describeArgs), shown in the step list. */
-  args: string;
-  /** Excerpt of the tool result — shown when the step is expanded. */
-  result: string;
-  /** 1-based loop round the call belonged to. */
-  round: number;
-}
-
 export interface UserMessageMeta {
   /** Text handed to sendToAI (a quick action's prompt, or the typed text). */
   rawText: string;
@@ -185,18 +147,6 @@ export interface UserMessageMeta {
   quote?: string;
   /** Other tabs attached as context (F4); re-read on retry. */
   tabs?: { id: number; title: string; url: string }[];
-}
-
-/**
- * A tool/function call the model requests the host to execute (agent mode F11).
- */
-export interface ToolCall {
-  /** Unique id for this call (model-provided). */
-  id: string;
-  /** The callable name (must match a registered tool). */
-  name: string;
-  /** JSON-encoded arguments string (per OpenAI convention). */
-  arguments: string;
 }
 
 export interface BranchSet {

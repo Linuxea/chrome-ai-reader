@@ -1,8 +1,7 @@
 /**
- * The one chat pipeline in the service worker for plain (non-agent) chat.
- * Every model call — the chat port, suggestions, podcast script,
- * annotation, translation, quizzes — runs through here, whatever the
- * provider:
+ * The one chat pipeline in the service worker. Every model call — the chat
+ * port, suggestions, podcast script, annotation, translation, quizzes — runs
+ * through here, whatever the provider:
  *
  *   settings → provider + model
  *   → provider.stream() deltas → port messages / collected text
@@ -10,8 +9,7 @@
  * It owns what used to be scattered or missing: abort on port disconnect,
  * an idle watchdog (a silent upstream no longer leaves the panel
  * "generating" forever), finish reason + token usage on `done`, and usage
- * accounting. The agent tool loop (F11) lives in agent-runner.ts on the
- * Vercel AI SDK.
+ * accounting.
  */
 
 import { safePostMessage } from './sw-utils';
@@ -32,9 +30,6 @@ export const IDLE_TIMEOUT_MS = 90_000;
 
 /** Requests per chat turn: the first, plus one retry when the connection drops before any answer text. */
 export const MAX_ATTEMPTS = 2;
-
-/** Labels the ai-chat request kind; 'agent' is routed to agent-runner.ts. */
-export type Purpose = 'chat' | 'agent';
 
 export interface RunOptions {
   messages: ChatMessage[];

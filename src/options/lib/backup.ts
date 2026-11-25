@@ -43,7 +43,6 @@ export const BACKUP_FIELDS: readonly string[] = [
   'ttsAutoPlay',
   'citations',
   'webSearch',
-  'agentMode',
   'podcastDirect',
   'themeName',
   'language',
@@ -55,7 +54,6 @@ const CHECKBOX_FIELDS: readonly string[] = [
   'ttsAutoPlay',
   'citations',
   'webSearch',
-  'agentMode',
   'podcastDirect',
 ];
 
@@ -65,7 +63,6 @@ export const CHECKBOX_DEFAULTS: Record<string, boolean> = {
   ttsAutoPlay: false,
   citations: true,
   webSearch: true,
-  agentMode: false,
   podcastDirect: false,
 };
 

@@ -63,31 +63,6 @@ describe('providers/anthropic message mapping', () => {
       { role: 'assistant', content: 'an image' },
     ]);
   });
-
-  it('replays native assistant content verbatim and groups tool results in one user turn', () => {
-    const native = [{ type: 'thinking', thinking: '', signature: 's' }, { type: 'tool_use', id: 't1', name: 'f', input: {} }];
-    const { messages } = toAnthropicMessages([
-      { role: 'user', content: 'q' },
-      { role: 'assistant', content: '', tool_calls: [{ id: 't1', name: 'f', arguments: '{}' }, { id: 't2', name: 'g', arguments: '{"a":1}' }], providerContent: native },
-      { role: 'tool', tool_call_id: 't1', name: 'f', content: 'r1' },
-      { role: 'tool', tool_call_id: 't2', name: 'g', content: 'r2' },
-    ]);
-    expect(messages[1]).toEqual({ role: 'assistant', content: native });
-    expect(messages[2]).toEqual({ role: 'user', content: [
-      { type: 'tool_result', tool_use_id: 't1', content: 'r1' },
-      { type: 'tool_result', tool_use_id: 't2', content: 'r2' },
-    ] });
-  });
-
-  it('builds tool_use blocks when there is no native content', () => {
-    const { messages } = toAnthropicMessages([
-      { role: 'assistant', content: 'let me look', tool_calls: [{ id: 't1', name: 'f', arguments: '{"q":"x"}' }] },
-    ]);
-    expect(messages[0].content).toEqual([
-      { type: 'text', text: 'let me look' },
-      { type: 'tool_use', id: 't1', name: 'f', input: { q: 'x' } },
-    ]);
-  });
 });
 
 describe('providers/anthropic request params', () => {
@@ -109,37 +84,29 @@ describe('providers/anthropic request params', () => {
     expect(supportsAdaptiveThinking('claude-3-5-sonnet-latest')).toBe(false);
   });
 
-  it('asks for JSON via the system prompt in JSON mode and maps tools', () => {
+  it('asks for JSON via the system prompt in JSON mode', () => {
     const p = buildAnthropicParams({
       model: 'claude-sonnet-5', messages: [{ role: 'system', content: 'S' }], jsonMode: true,
-      tools: [{ name: 'f', description: 'd', parameters: { type: 'object' } }],
     }, 'https://api.anthropic.com');
     expect(p.system).toMatch(/^S\n\nRespond with a single JSON object/);
-    expect(p.tools).toEqual([{ name: 'f', description: 'd', input_schema: { type: 'object' }, eager_input_streaming: true }]);
   });
 });
 
 describe('providers/anthropic stream', () => {
-  it('maps text / thinking / tool_use events, stop reason and usage', async () => {
+  it('maps text / thinking events, stop reason and usage', async () => {
     script.events = [
       { type: 'message_start', message: { usage: { input_tokens: 12, output_tokens: 0 } } },
       { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } },
       { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'plan' } },
       { type: 'content_block_start', index: 1, content_block: { type: 'text' } },
       { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Looking' } },
-      { type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 't1', name: 'search_page' } },
-      { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"query":' } },
-      { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '"x"}' } },
-      { type: 'content_block_stop', index: 2 },
-      { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 30 } },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
     ];
-    script.final = { content: [{ type: 'tool_use', id: 't1' }] };
     const out = await collect(anthropicProvider.stream({ apiKey: 'k', apiBase: 'https://api.anthropic.com' }, { model: 'claude-sonnet-5', messages: [] }, new AbortController().signal));
     expect(out).toEqual([
       { type: 'thinking', text: 'plan' },
       { type: 'text', text: 'Looking' },
-      { type: 'tool_call', call: { id: 't1', name: 'search_page', arguments: '{"query":"x"}' } },
-      { type: 'finish', reason: 'tool_calls', usage: { inputTokens: 12, outputTokens: 30 }, providerContent: [{ type: 'tool_use', id: 't1' }] },
+      { type: 'finish', reason: 'stop', usage: { inputTokens: 12, outputTokens: 30 } },
     ]);
     expect(streamCalls[0].ctor).toMatchObject({ apiKey: 'k', baseURL: 'https://api.anthropic.com', dangerouslyAllowBrowser: true });
   });
