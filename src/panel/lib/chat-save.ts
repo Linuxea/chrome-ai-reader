@@ -46,6 +46,20 @@ export function displayMessagesFromHistory(history: ChatMessage[]): DisplayMessa
 let _saveQueue: Promise<void> = Promise.resolve();
 
 /**
+ * F17: several surfaces (side panel + fullscreen tab) each run their own
+ * save queue against the SAME IndexedDB record. A get→put read-modify-write
+ * from two contexts loses updates (a finalize-save racing a passive rename
+ * could drop the answer). Web Locks serialize the critical section across
+ * extension pages; environments without a LockManager (jsdom) run unlocked.
+ */
+async function withChatRecordLock<T>(chatId: string, fn: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && typeof navigator.locks?.request === 'function') {
+    return navigator.locks.request(`chat-record:${chatId}`, () => fn());
+  }
+  return fn();
+}
+
+/**
  * Snapshot + persist one tab's chat. Defaults to the active tab; the stream
  * controller passes the STREAM's tab explicitly (an answer finishing in a
  * background tab must save THAT tab's chat — the active tab's snapshot
@@ -92,34 +106,36 @@ async function writeChat(snap: {
   id: string; isNew: boolean; now: number; messages: DisplayMessage[];
   chatTitle: string; pageTitle: string; pageUrl?: string; conversationHistory: ChatMessage[];
 }): Promise<void> {
-  const existing = await getChat(snap.id);
-  if (existing) {
-    await putChat({
-      ...existing,
-      messages: snap.messages,
-      conversationHistory: snap.conversationHistory,
-      pageTitle: snap.pageTitle,
-      pageUrl: snap.pageUrl || existing.pageUrl,
-      // F16: once the conversation carries a live title it is the single
-      // source of truth — later saves propagate renames into the record.
-      title: snap.chatTitle || existing.title,
-      updatedAt: snap.now,
-    });
-  } else if (snap.isNew) {
-    await putChat({
-      id: snap.id,
-      // The LLM title may not have landed yet (or failed) — the first-user
-      // heuristic is the interim/fallback title, same as pre-F16.
-      title: snap.chatTitle || generateTitle(snap.messages),
-      pageTitle: snap.pageTitle,
-      pageUrl: snap.pageUrl,
-      messages: snap.messages,
-      conversationHistory: snap.conversationHistory,
-      createdAt: snap.now,
-      updatedAt: snap.now,
-    });
-  }
-  // else: the chat was deleted meanwhile — don't resurrect it
+  await withChatRecordLock(snap.id, async () => {
+    const existing = await getChat(snap.id);
+    if (existing) {
+      await putChat({
+        ...existing,
+        messages: snap.messages,
+        conversationHistory: snap.conversationHistory,
+        pageTitle: snap.pageTitle,
+        pageUrl: snap.pageUrl || existing.pageUrl,
+        // F16: once the conversation carries a live title it is the single
+        // source of truth — later saves propagate renames into the record.
+        title: snap.chatTitle || existing.title,
+        updatedAt: snap.now,
+      });
+    } else if (snap.isNew) {
+      await putChat({
+        id: snap.id,
+        // The LLM title may not have landed yet (or failed) — the first-user
+        // heuristic is the interim/fallback title, same as pre-F16.
+        title: snap.chatTitle || generateTitle(snap.messages),
+        pageTitle: snap.pageTitle,
+        pageUrl: snap.pageUrl,
+        messages: snap.messages,
+        conversationHistory: snap.conversationHistory,
+        createdAt: snap.now,
+        updatedAt: snap.now,
+      });
+    }
+    // else: the chat was deleted meanwhile — don't resurrect it
+  });
 }
 
 /**
@@ -134,13 +150,13 @@ export function syncChatTitleToRecord(tabId: number): void {
   const chatId = ts?.currentChatId;
   const title = ts?.chatTitle?.trim();
   if (!chatId || !title) return;
-  const run = _saveQueue.then(async () => {
+  const run = _saveQueue.then(() => withChatRecordLock(chatId, async () => {
     const existing = await getChat(chatId);
     // No record (never saved / deleted meanwhile) — nothing to update.
     if (existing && existing.title !== title) {
       await putChat({ ...existing, title });
     }
-  });
+  }));
   _saveQueue = run.catch(() => { /* keep the queue alive */ });
 }
 
