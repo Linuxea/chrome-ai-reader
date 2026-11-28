@@ -48,6 +48,7 @@ export interface TabsStoreState {
   setPageTitle: (v: string) => void;
   setSelectedText: (v: string) => void;
   setCurrentChatId: (v: string | null) => void;
+  setChatTitle: (v: string) => void;
   setImageIndex: (v: number) => void;
   setIsPodcastGenerating: (v: boolean) => void;
   setCustomSystemPrompt: (v: string) => void;
@@ -117,6 +118,7 @@ export const useTabsStore = create<TabsStoreState>()((set, get) => ({
   setPageTitle: v => { core.setPageTitle(v); get().bump(); },
   setSelectedText: v => { core.setSelectedText(v); get().bump(); },
   setCurrentChatId: v => { core.setCurrentChatId(v); get().bump(); },
+  setChatTitle: v => { core.setChatTitle(v); get().bump(); },
   setImageIndex: v => { core.setImageIndex(v); get().bump(); },
   setIsPodcastGenerating: v => { core.setIsPodcastGenerating(v); get().bump(); },
   setCustomSystemPrompt: v => { core.setCustomSystemPrompt(v); set({ customSystemPrompt: v }); },

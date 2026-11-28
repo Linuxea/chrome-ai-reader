@@ -174,6 +174,13 @@ export interface TabState {
   branches?: Record<string, BranchSet>;
   conversationHistory: ChatMessage[];
   currentChatId: string | null;
+  /**
+   * The conversation's title (F16): LLM-generated after the first exchange,
+   * or user-renamed. One source for the panel header, saved-chat records,
+   * audio download filenames and markdown export. Empty until then — the
+   * first user message is the fallback everywhere it is needed.
+   */
+  chatTitle?: string;
   selectedText: string;
   isGenerating: boolean;
   isPodcastGenerating: boolean;

@@ -55,6 +55,7 @@ function createFreshTabState(): TabState {
     pageExcerpt: '',
     conversationHistory: [],
     currentChatId: null,
+    chatTitle: '',
     selectedText: '',
     isGenerating: false,
     isPodcastGenerating: false,
@@ -293,6 +294,27 @@ export function setGeneratingForTab(tabId: number, v: boolean): void {
 
 export function getCurrentChatId(): string | null { return _activeState?.currentChatId ?? null; }
 export function setCurrentChatId(v: string | null): void { if (!_activeState) return; _activeState.currentChatId = v; schedulePersist(); }
+
+// --- Conversation title (F16) --------------------------------------------------
+// One title per conversation, following the TabState (survives tab switches
+// and panel restarts through the session persist). Read via the active-scoped
+// getter; the tab-scoped setter exists because the LLM generation may land
+// while the tab is in the background (same reason as setCurrentChatIdForTab).
+
+export function getChatTitle(): string { return _activeState?.chatTitle ?? ''; }
+export function setChatTitle(v: string): void { if (!_activeState) return; _activeState.chatTitle = v; schedulePersist(); }
+
+/**
+ * Tab-scoped title writer: an async title generation (or a rename committed
+ * just before a tab switch) must stamp ITS OWN tab — the active-scoped
+ * setter would hijack the ACTIVE tab's title. Persists immediately.
+ */
+export function setChatTitleForTab(tabId: number, v: string): void {
+  const ts = _tabStates.get(tabId);
+  if (!ts) return;
+  ts.chatTitle = v;
+  persistForTab(tabId);
+}
 
 /**
  * Tab-scoped chat id writer: a background tab's first save must stamp ITS
