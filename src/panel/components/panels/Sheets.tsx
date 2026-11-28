@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, Trash2, MessageSquare, Download, StickyNote, Highlighter } from 'lucide-react';
+import { ChevronLeft, Download, StickyNote, Highlighter, Trash2 } from 'lucide-react';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { useTabsStore } from '@/panel/stores/tabs-store';
-import { listChatHistory, loadChat, deleteChatById, exportCurrentChat, type ChatHistoryEntry } from '@/panel/lib/chat-save';
+import { exportCurrentChat } from '@/panel/lib/chat-save';
 import { listNotes, highlightCurrentSelection, updateNote, deleteNote, exportAllNotes } from '@/panel/lib/notes';
 import { useComposerStore } from '@/panel/stores/composer-store';
+import { HistoryList } from './HistoryList';
 import type { Highlight } from '@/shared/highlights';
-import { formatDate } from '@/shared/format';
 import { t } from '@/shared/i18n.js';
 
 /**
@@ -49,21 +49,6 @@ function SheetHeader({ title, onClose, extra }: { title: string; onClose: () => 
 }
 
 function HistorySheet({ onClose }: { onClose: () => void }) {
-  const [chats, setChats] = useState<ChatHistoryEntry[] | null>(null);
-  // Two-step delete (legacy armed pattern): the first click lights the
-  // button up, only the second within the window deletes. IndexedDB has no
-  // undo — a stray click must not destroy a saved conversation.
-  const [armedId, setArmedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (armedId == null) return;
-    const t = setTimeout(() => setArmedId(null), 2500);
-    return () => clearTimeout(t);
-  }, [armedId]);
-
-  const refresh = () => { void listChatHistory().then(setChats); };
-  useEffect(refresh, []);
-
   return (
     <>
       <SheetHeader
@@ -76,34 +61,7 @@ function HistorySheet({ onClose }: { onClose: () => void }) {
         }
       />
       <div className="sheet-body">
-        {chats === null && <div className="sheet-empty">…</div>}
-        {chats?.length === 0 && <div className="sheet-empty">{t('sidebar.historyEmpty')}</div>}
-        {chats?.map(chat => (
-          <div key={chat.id} className="history-item">
-            <button
-              className="history-item-main"
-              onClick={() => { void loadChat(chat.id).then(ok => { if (ok) onClose(); }); }}
-            >
-              <MessageSquare size={13} className="history-item-icon" />
-              <span className="history-item-title">{chat.title}</span>
-              <span className="history-item-date">{formatDate(chat.updatedAt)}</span>
-            </button>
-            <button
-              className={`icon-mini delete-confirm${armedId === chat.id ? ' armed' : ''}`}
-              title={armedId === chat.id ? t('action.delete') : ''}
-              onClick={() => {
-                if (armedId === chat.id) {
-                  setArmedId(null);
-                  void deleteChatById(chat.id).then(refresh);
-                } else {
-                  setArmedId(chat.id);
-                }
-              }}
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        ))}
+        <HistoryList onLoaded={onClose} />
       </div>
     </>
   );

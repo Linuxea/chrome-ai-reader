@@ -1178,6 +1178,12 @@
   transition: border-color 0.15s ease;
 }
 .history-item-main:hover { border-color: var(--primary); }
+/* F17: the active conversation, agreed on by both surfaces (sheet + fullscreen sidebar). */
+.history-item-main.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
 .history-item-icon { color: var(--text-secondary); flex-shrink: 0; }
 .history-item-title {
   flex: 1;
