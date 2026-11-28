@@ -1,48 +1,24 @@
 import { useState } from 'react';
-import { MessageSquarePlus, Moon, Sun, Settings as SettingsIcon, History, StickyNote } from 'lucide-react';
+import { MessageSquarePlus, Moon, Sun, Settings as SettingsIcon, History, StickyNote, Maximize2 } from 'lucide-react';
 import { useTabsStore, useActiveTabState } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
-import { useComposerStore } from '@/panel/stores/composer-store';
-import { saveCurrentChat, syncChatTitleToRecord } from '@/panel/lib/chat-save';
-import { removeSuggestions } from '@/panel/lib/suggest';
+import { startNewChat } from '@/panel/lib/new-chat';
+import { openFullscreenChat } from '@/panel/lib/fullscreen';
+import { syncChatTitleToRecord } from '@/panel/lib/chat-save';
 import { applyTheme, getThemeState } from '@/shared/theme';
 import { t } from '@/shared/i18n.js';
 
 /**
  * Panel header. F16: the header shows the CONVERSATION's title (generated
  * after the first exchange, renamable by clicking) — not the app name, which
- * Chrome's side-panel toolbar already displays. New chat / sheets / theme /
- * settings actions unchanged.
+ * Chrome's side-panel toolbar already displays. F17: the leading action
+ * detaches the conversation into a fullscreen tab (live-synced back).
  */
 export function Header() {
-  const isGenerating = useTabsStore(s => s.isGenerating);
   const sheet = useUIStore(s => s.sheet);
   const openSheet = useUIStore(s => s.openSheet);
 
-  const newChat = () => {
-    const store = useTabsStore.getState();
-    if (isGenerating) {
-      useUIStore.getState().pushToast(t('toast.busyGenerating'));
-      return;
-    }
-    void saveCurrentChat();
-    // Legacy newChat also dropped the outgoing conversation's suggestion
-    // chips and pending image previews — they must not leak into the new
-    // chat (a stray chip would fill the input with the OLD page's question;
-    // a pending image would silently ride the new chat's first message).
-    const tabId = store.activeTabId;
-    if (tabId != null) removeSuggestions(tabId);
-    useComposerStore.setState({ images: [], tabs: [] });
-    store.setPageContent('');
-    store.setPageExcerpt('');
-    store.setPageTitle('');
-    store.clearConversation();
-    store.setCurrentChatId(null);
-    // The new conversation has no title yet — the placeholder shows until
-    // its first answer completes.
-    store.setChatTitle('');
-    store.setSelectedText('');
-  };
+  const newChat = () => startNewChat();
 
   const toggleTheme = () => {
     const { isDark, themeName } = getThemeState();
@@ -53,6 +29,9 @@ export function Header() {
     <header className="panel-header">
       <ConversationTitle />
       <div className="header-actions">
+        <button className="icon-btn" title={t('fs.open')} onClick={() => void openFullscreenChat()}>
+          <Maximize2 size={16} />
+        </button>
         <button className={`icon-btn${sheet === 'history' ? ' active' : ''}`} title={t('sidebar.history')} onClick={() => openSheet('history')}>
           <History size={16} />
         </button>
@@ -80,8 +59,9 @@ export function Header() {
  * Enter (IME-guarded) or blur commits, Escape cancels; an empty commit is a
  * cancel. A rename is the user's word for the conversation: it writes the
  * same field generation writes, so nothing overwrites it afterwards.
+ * F17: exported — the fullscreen page's top bar reuses it verbatim.
  */
-function ConversationTitle() {
+export function ConversationTitle() {
   const tabState = useActiveTabState();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
