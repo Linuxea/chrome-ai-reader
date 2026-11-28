@@ -4,7 +4,7 @@ import { useTabsStore, useActiveTabState } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { useAutoResize } from '@/panel/hooks/useAutoResize';
 import { sendMessage, submit } from '@/panel/lib/send';
-import { abortGeneration } from '@/panel/lib/stream-controller';
+import { requestGenerationStop } from '@/panel/lib/stream-controller';
 import { readImageFiles, imagesFromTransfer } from '@/panel/lib/images';
 import { readSettings, onSettingsChange, COMPOSER_TOOL_IDS, type ComposerToolId } from '@/platform/settings';
 import {
@@ -158,7 +158,7 @@ export function Composer() {
           generating={isGenerating}
           canSend={canSend}
           onSend={() => void sendMessage()}
-          onStop={() => activeTabId != null && abortGeneration(activeTabId)}
+          onStop={() => activeTabId != null && requestGenerationStop(activeTabId)}
         />
       </div>
     </div>

@@ -22,6 +22,7 @@ import type { ChatMessage, WebResult, WebStep } from '@/shared/types';
 import { webResultFromSteps } from '@/shared/web-search';
 import type { StreamMessage, FinishReason, TokenUsage } from '@/shared/protocol';
 import { openAIChatPort } from '@/platform/ports';
+import { sendMessage } from '@/platform/messaging';
 import * as historyOps from '@/panel/lib/history-ops';
 import { useStreamStore } from '@/panel/stores/stream-store';
 import { useTabsStore } from '@/panel/stores/tabs-store';
@@ -44,6 +45,57 @@ const _activeStreams = new Map<number, { abort: () => void }>();
 
 /** Stops requested before a stream existed (page extraction still running). */
 const _pendingAborts = new Set<number>();
+
+/**
+ * F17: does THIS page own the live generation for `tabId`? With several
+ * surfaces (side panel + fullscreen tab) sharing one TabState, only the
+ * page that opened the ai-chat port may finalize / abort it; the others
+ * mirror it (lib/sync.ts).
+ */
+export function ownsGeneration(tabId: number): boolean {
+  return _activeStreams.has(tabId);
+}
+
+/**
+ * F17 cross-surface stop. The send/stop button routes through here on every
+ * surface: the page that owns the stream aborts it directly (identical to
+ * the pre-F17 behavior); a passive surface asks the owner over the runtime
+ * channel — and if no owner honors the request within the window (its page
+ * was closed mid-stream, leaving a stale in-flight flag behind), the
+ * surface self-heals so it can never get stuck "generating".
+ */
+export function requestGenerationStop(tabId: number): void {
+  if (ownsGeneration(tabId)) {
+    abortGeneration(tabId);
+    return;
+  }
+  void sendMessage({ action: 'sync.stopRequest', tabId }).catch(() => { /* no other surface open */ });
+  setTimeout(() => {
+    if (!ownsGeneration(tabId) && core.getStateForTab(tabId)?.isGenerating) {
+      // Nobody owned the stream: release this surface's (stale) busy flag.
+      // A live owner never applies a remote flag it owns (lib/sync.ts), so
+      // this cannot cancel a stream that is actually running elsewhere.
+      useTabsStore.getState().setGeneratingForTab(tabId, false);
+    }
+  }, STOP_RELAY_GRACE_MS);
+}
+
+/** How long a passive stop waits for the owning surface before self-healing. */
+export const STOP_RELAY_GRACE_MS = 800;
+
+/**
+ * F17: relay one stream event to the OTHER surfaces bound to this tab.
+ * Fire-and-forget — with no other surface open the message simply lands
+ * nowhere (the SW router ignores unknown actions).
+ */
+function relayStreamEvent(tabId: number, msg: StreamMessage): void {
+  void sendMessage({ action: 'sync.stream', tabId, msg }).catch(() => { /* no receiver */ });
+}
+
+/** F17: relay an end-of-stream outcome so passive surfaces can settle their mirror. */
+function relayStreamEnd(tabId: number, payload: Record<string, unknown>): void {
+  void sendMessage({ action: 'sync.streamEnd', tabId, payload }).catch(() => { /* no receiver */ });
+}
 
 export interface CallAIOptions {
   /** F15: ask the worker to declare DeepSeek's web search tool. */
@@ -83,6 +135,10 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
   const port = openAIChatPort();
   port.postMessage({ type: 'chat', messages, ...(options.webSearch ? { webSearch: true } : {}) });
 
+  // F17: tell the other surfaces a generation is starting so their mirror
+  // entry (typing indicator) exists before the first token relays in.
+  void sendMessage({ action: 'sync.streamStart', tabId, assistantId }).catch(() => { /* no receiver */ });
+
   // Window-global TTS autoplay: claim the audio resource for this answer
   // before the first chunk (a running podcast stops; a previous playback is
   // taken over by the player's single takeover point).
@@ -95,18 +151,22 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
     if (finished) return;
     if (msg.type === 'thinking') {
       streamApi.appendThinking(tabId, msg.content || '');
+      relayStreamEvent(tabId, msg);
     } else if (msg.type === 'chunk') {
       streamApi.appendAnswer(tabId, msg.content || '');
       ttsAutoplayChunk(msg.content || '');
+      relayStreamEvent(tabId, msg);
     } else if (msg.type === 'search_event') {
       // F15: web search progress — shown in the trace while the answer is pending.
       streamApi.addSearchEvent(tabId, msg.event);
+      relayStreamEvent(tabId, msg);
     } else if (msg.type === 'retry') {
       // The worker restarted the request after the connection dropped before
       // any answer text: the reasoning / search events of the dead attempt are
       // void. The user message stays in history and the tab stays generating.
       streamApi.restart(tabId);
       useUIStore.getState().pushToast(t('ai.retrying'));
+      relayStreamEvent(tabId, msg);
     } else if (msg.type === 'done') {
       finalize({ kind: 'done', finishReason: msg.finishReason, usage: msg.usage, model: msg.model, web: msg.web });
     } else if (msg.type === 'error') {
@@ -168,6 +228,13 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
       }, tabId);
       useStreamStore.getState().clear(tabId);
       useTabsStore.getState().setGeneratingForTab(tabId, false);
+      // F17: the kept answer is already appended + persisted above, so the
+      // passive surfaces' storage apply will fold their mirror into history;
+      // the relay makes their live entry settle instantly instead.
+      relayStreamEnd(tabId, {
+        kind: 'done',
+        ...(outcome.kind === 'done' ? { finishReason: outcome.finishReason, usage: outcome.usage, model: outcome.model } : {}),
+      });
       // F16: the first kept answer (done, or a stop/disconnect that already
       // produced text) is the moment the conversation can be titled. The
       // generator itself is a no-op once a title exists.
@@ -202,6 +269,7 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
       historyOps.rollbackTrailingUserMessage(tabState, tabId);
       useStreamStore.getState().abort(tabId, t('ai.stopped'), failedUser);
       useTabsStore.getState().setGeneratingForTab(tabId, false);
+      relayStreamEnd(tabId, { kind: 'aborted', note: t('ai.stopped'), failedUserMessage: failedUser });
       return;
     }
 
@@ -212,5 +280,6 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
     historyOps.rollbackTrailingUserMessage(tabState, tabId);
     useStreamStore.getState().fail(tabId, errorText, failedUserMessage, errorKey);
     useTabsStore.getState().setGeneratingForTab(tabId, false);
+    relayStreamEnd(tabId, { kind: 'error', errorText, errorKey, failedUserMessage });
   }
 }
