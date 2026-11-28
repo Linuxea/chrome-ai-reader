@@ -59,6 +59,47 @@
   font-weight: 700;
   letter-spacing: 0.3px;
   color: var(--text);
+  /* F16: the conversation title can be long — truncate between the actions. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-title-btn {
+  display: block;
+  max-width: 100%;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.panel-title-btn:hover {
+  color: var(--primary);
+}
+
+.panel-title-input {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: inherit;
+  color: var(--text);
+  outline: none;
 }
 
 .header-actions {
