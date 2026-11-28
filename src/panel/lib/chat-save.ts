@@ -12,7 +12,7 @@
 import { t, getCurrentLang } from '@/shared/i18n.js';
 import { genId } from '@/shared/ids';
 import { stripImagesForPersistence } from '@/shared/strip-images';
-import { downloadFile } from '@/shared/download';
+import { downloadFile, sanitizeFilename } from '@/shared/download';
 import type { ChatMessage } from '@/shared/types';
 import {
   listChats, getChat, putChat, deleteChatRecord,
@@ -75,6 +75,7 @@ export function saveCurrentChat(tabIdArg?: number): Promise<void> {
     isNew,
     now,
     messages,
+    chatTitle: ts.chatTitle ?? '',
     pageTitle: ts.pageTitle,
     pageUrl: ts.pageUrl,
     conversationHistory: ts.conversationHistory
@@ -89,7 +90,7 @@ export function saveCurrentChat(tabIdArg?: number): Promise<void> {
 
 async function writeChat(snap: {
   id: string; isNew: boolean; now: number; messages: DisplayMessage[];
-  pageTitle: string; pageUrl?: string; conversationHistory: ChatMessage[];
+  chatTitle: string; pageTitle: string; pageUrl?: string; conversationHistory: ChatMessage[];
 }): Promise<void> {
   const existing = await getChat(snap.id);
   if (existing) {
@@ -99,12 +100,17 @@ async function writeChat(snap: {
       conversationHistory: snap.conversationHistory,
       pageTitle: snap.pageTitle,
       pageUrl: snap.pageUrl || existing.pageUrl,
+      // F16: once the conversation carries a live title it is the single
+      // source of truth — later saves propagate renames into the record.
+      title: snap.chatTitle || existing.title,
       updatedAt: snap.now,
     });
   } else if (snap.isNew) {
     await putChat({
       id: snap.id,
-      title: generateTitle(snap.messages),
+      // The LLM title may not have landed yet (or failed) — the first-user
+      // heuristic is the interim/fallback title, same as pre-F16.
+      title: snap.chatTitle || generateTitle(snap.messages),
       pageTitle: snap.pageTitle,
       pageUrl: snap.pageUrl,
       messages: snap.messages,
@@ -114,6 +120,28 @@ async function writeChat(snap: {
     });
   }
   // else: the chat was deleted meanwhile — don't resurrect it
+}
+
+/**
+ * Rewrite the tab's saved record with its live title (F16). Used when the
+ * title arrives AFTER the save that created the record (LLM generation is
+ * slower than the save) and after a manual rename — otherwise the record
+ * would keep the interim heuristic title until the next message. Serialized
+ * through the save queue so it can never interleave with a save.
+ */
+export function syncChatTitleToRecord(tabId: number): void {
+  const ts = core.getStateForTab(tabId);
+  const chatId = ts?.currentChatId;
+  const title = ts?.chatTitle?.trim();
+  if (!chatId || !title) return;
+  const run = _saveQueue.then(async () => {
+    const existing = await getChat(chatId);
+    // No record (never saved / deleted meanwhile) — nothing to update.
+    if (existing && existing.title !== title) {
+      await putChat({ ...existing, title });
+    }
+  });
+  _saveQueue = run.catch(() => { /* keep the queue alive */ });
 }
 
 export function generateTitle(messages: DisplayMessage[]): string {
@@ -160,6 +188,9 @@ export async function loadChat(id: string): Promise<boolean> {
   // back with their original text/quote and working retry/edit.
   store.setPageTitle(chat.pageTitle || '');
   store.setCurrentChatId(chat.id);
+  // F16: the conversation's title follows it into the tab — the header,
+  // later saves and audio downloads all read the same field.
+  store.setChatTitle(chat.title || '');
   store.setConversationHistory(chat.conversationHistory || []);
   return true;
 }
@@ -172,7 +203,7 @@ export function exportCurrentChat(): void {
     useUIStore.getState().pushToast(t('sidebar.historyEmpty'));
     return;
   }
-  const lines: string[] = [`# ${ts.pageTitle || t('app.fullName')}`, ''];
+  const lines: string[] = [`# ${ts.chatTitle || ts.pageTitle || t('app.fullName')}`, ''];
   for (const m of ts.conversationHistory) {
     if (m.role === 'user') {
       lines.push(`## ${t('chat.user') || 'Q'}`, '', m.meta?.displayText ?? (typeof m.content === 'string' ? m.content : ''), '');
@@ -181,7 +212,11 @@ export function exportCurrentChat(): void {
     }
   }
   const date = new Date().toISOString().slice(0, 10);
-  downloadFile(lines.join('\n'), `chat_${date}.md`, 'text/markdown;charset=utf-8');
+  // F16: the file is named after the conversation's title (the header /
+  // history / audio downloads all use the same one); pre-F16 records and
+  // untitled chats keep the generic name.
+  const titlePart = sanitizeFilename(ts.chatTitle || '').trim();
+  downloadFile(lines.join('\n'), `${titlePart || 'chat'}_${date}.md`, 'text/markdown;charset=utf-8');
 }
 
 export { getCurrentLang };

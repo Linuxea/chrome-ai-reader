@@ -13,9 +13,10 @@
  *   not exist yet).
  */
 import { t } from '@/shared/i18n.js';
-import { downloadFile } from '@/shared/download';
+import { downloadFile, sanitizeFilename } from '@/shared/download';
 import { readSettings, writeSettings } from '@/platform/settings';
 import { onSyncChange } from '@/platform/storage';
+import * as core from '@/panel/state';
 import { stripMarkdown, splitToSegments } from '@/panel/lib/tts/utils';
 import { TTSSynthEngine, getTTSVoice } from '@/panel/lib/tts/engine';
 import {
@@ -46,6 +47,17 @@ import { stopPodcastIfRunning } from '@/panel/lib/audio-resource';
 let _downloadEngine: TTSSynthEngine | null = null;
 let _downloadChunks: ArrayBuffer[] = [];
 
+/**
+ * F16: the downloaded audio is named after the conversation's title (the
+ * same one the header / history list show). No title yet → the legacy
+ * timestamped name. Pure so the naming rule is unit-testable.
+ */
+export function ttsDownloadFilename(chatTitle: string, now: Date = new Date()): string {
+  const safe = sanitizeFilename(chatTitle).trim();
+  if (safe) return `${safe}_${now.toISOString().slice(0, 10)}.mp3`;
+  return `voice-${now.toISOString().replace(/[:.]/g, '-').slice(0, 19)}.mp3`;
+}
+
 export function stopTTSDownload(): void {
   _downloadEngine?.abort();
   _downloadEngine = null;
@@ -70,8 +82,11 @@ function startDownload(origin: { tabId: number | null; msgId: string | null }, m
     onDrained: () => {
       if (_downloadChunks.length > 0) {
         const blob = new Blob(_downloadChunks, { type: 'audio/mpeg' });
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        downloadFile(blob, `voice-${timestamp}.mp3`, 'audio/mpeg');
+        // The message's own tab first; a null tabId falls back to the
+        // active tab's title (legacy bubbles carry no tab).
+        const ts = origin.tabId != null ? core.getStateForTab(origin.tabId) : null;
+        const chatTitle = ts?.chatTitle ?? core.getChatTitle();
+        downloadFile(blob, ttsDownloadFilename(chatTitle ?? ''), 'audio/mpeg');
       }
       stopTTSDownload();
     },
