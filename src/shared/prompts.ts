@@ -38,6 +38,10 @@ export type PromptKey =
   | 'suggest'
   | 'suggest.userLabel'
   | 'suggest.aiLabel'
+  | 'title.gen'
+  | 'title.pageLabel'
+  | 'title.questionLabel'
+  | 'title.answerLabel'
   | 'outline'
   | 'default.custom'
   | 'default.partial'
@@ -139,6 +143,23 @@ const ZH: PromptTable = {
 
   'suggest.userLabel': '用户问题：',
   'suggest.aiLabel': 'AI 回复：',
+
+  // F16 conversation title — one-shot JSON call after the first exchange.
+  // The title is user-facing everywhere (panel header, history list, audio
+  // download names), so it must be short, plain and quote-free.
+  'title.gen': [
+    '为下面的对话生成一个简短的标题，概括对话的核心主题。',
+    '',
+    '只输出一个 JSON 对象，格式为 {"title": "标题文字"}，不要输出其他任何内容。',
+    '要求：',
+    '1. 标题不超过 16 个字；使用对话的主要语言。',
+    '2. 不要书名号、引号或其他包裹符号，不要以句末标点结尾。',
+    '3. 优先体现对话讨论的具体内容（如概念、事件、问题），而不是"提问"或"阅读"这类泛化词。',
+  ].join('\n'),
+
+  'title.pageLabel': '【页面标题】',
+  'title.questionLabel': '【用户提问】',
+  'title.answerLabel': '【AI 回答】',
 
   // Appended to a quick action / quick command prompt when the input box
   // still holds a draft — the draft rides along as extra instructions.
@@ -399,6 +420,21 @@ const EN: Partial<PromptTable> = {
 
   'suggest.userLabel': 'User question: ',
   'suggest.aiLabel': 'AI response: ',
+
+  // F16 conversation title — see the note on the zh variant.
+  'title.gen': [
+    'Generate a short title for the conversation below that captures its core topic.',
+    '',
+    'Output ONLY one JSON object of the form {"title": "title text"} and nothing else.',
+    'Requirements:',
+    '1. At most 40 characters; use the conversation\'s primary language.',
+    '2. No quotation marks or wrapping symbols, and no trailing punctuation.',
+    '3. Prefer what the conversation is actually about (a concept, event or question) over generic words like "question" or "reading".',
+  ].join('\n'),
+
+  'title.pageLabel': '[Page title]',
+  'title.questionLabel': '[User question]',
+  'title.answerLabel': '[AI answer]',
 
   'draft.supplement': '[Additional instructions from the user]\n{draft}',
 

@@ -29,6 +29,7 @@ import { useUIStore } from '@/panel/stores/ui-store';
 import * as core from '@/panel/state';
 import { ttsAutoplayStart, ttsAutoplayChunk, ttsAutoplayFinish, ttsAutoplayAbort } from './tts-controller';
 import { saveCurrentChat } from './chat-save';
+import { ensureChatTitle } from './chat-title';
 import { generateSuggestionsFor } from './suggest';
 
 type Outcome =
@@ -167,6 +168,10 @@ export async function callAI(messages: ChatMessage[], tabId: number, options: Ca
       }, tabId);
       useStreamStore.getState().clear(tabId);
       useTabsStore.getState().setGeneratingForTab(tabId, false);
+      // F16: the first kept answer (done, or a stop/disconnect that already
+      // produced text) is the moment the conversation can be titled. The
+      // generator itself is a no-op once a title exists.
+      ensureChatTitle(tabId);
       if (outcome.kind === 'done') {
         // Autoplay tail flush + suggestion chips attach here.
         ttsAutoplayFinish();
