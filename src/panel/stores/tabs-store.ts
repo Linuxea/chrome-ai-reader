@@ -36,7 +36,7 @@ export interface TabsStoreState {
   quickCommands: QuickCommand[];
   suggestQuestionsEnabled: boolean;
 
-  init: () => Promise<void>;
+  init: (bindTabId?: number) => Promise<void>;
   switchToTab: (tabId: number) => Promise<void>;
   /** Force subscribers to re-read core state (after core mutations made
    * outside this store — e.g. a stream finishing in a background tab). */
@@ -100,9 +100,11 @@ export const useTabsStore = create<TabsStoreState>()((set, get) => ({
   quickCommands: [],
   suggestQuestionsEnabled: true,
 
-  init: async () => {
+  init: async (bindTabId?: number) => {
     installBridge();
-    await core.initState();
+    // F17: the fullscreen page binds the conversation's tab (its URL's `tab`
+    // param) — itself being a tab, the active-tab query would resolve to it.
+    await core.initState(bindTabId != null ? { bindTabId } : undefined);
     set(s => ({ ...mirrorCore(), version: s.version + 1 }));
   },
 

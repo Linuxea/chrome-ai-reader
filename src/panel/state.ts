@@ -146,9 +146,19 @@ export async function switchToTab(newTabId: number): Promise<void> {
   notify('isGenerating', _activeState.isGenerating);
 }
 
-export async function initState(): Promise<void> {
+export interface InitStateOptions {
+  /**
+   * F17: bind this surface to an explicit tab instead of the window's active
+   * tab. The fullscreen page is itself a tab, so `tabs.query({active:true,
+   * currentWindow:true})` would resolve to ITSELF — it must bind the
+   * conversation's tab (carried in its URL) instead.
+   */
+  bindTabId?: number;
+}
+
+export async function initState(opts: InitStateOptions = {}): Promise<void> {
   // All four reads are independent — start them together. Only the
-  // session.get below depends on tabs.query's result.
+  // session.get below depends on the tab binding's result.
   const [data, tabs, local, syncData] = await Promise.all([
     chrome.storage.sync.get(['systemPrompt']),
     chrome.tabs.query({ active: true, currentWindow: true }),
@@ -160,7 +170,12 @@ export async function initState(): Promise<void> {
   if (local.quickCommands) _quickCommands = local.quickCommands as QuickCommand[];
   if (syncData.suggestQuestions !== undefined) _suggestQuestionsEnabled = syncData.suggestQuestions as boolean;
 
-  if (tabs[0]?.id != null) {
+  if (opts.bindTabId != null) {
+    _activeTabId = opts.bindTabId;
+    const stored = await chrome.storage.session.get(`tabState_${opts.bindTabId}`);
+    _activeState = restoreTabState(stored[`tabState_${opts.bindTabId}`] as TabState | undefined);
+    _tabStates.set(opts.bindTabId, _activeState);
+  } else if (tabs[0]?.id != null) {
     const tabId = tabs[0].id;
     _activeTabId = tabId;
     const stored = await chrome.storage.session.get(`tabState_${tabId}`);
