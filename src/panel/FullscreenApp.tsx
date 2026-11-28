@@ -5,31 +5,36 @@
  * left (new chat on top, settings entry at the bottom), the chat column
  * on the right, centered at comfortable reading width.
  *
- * Every chat feature works unchanged: the page binds the conversation's
- * REAL tab id (URL param), so page extraction, citations, annotation and
- * immersive translation target the same page the side panel would.
+ * This surface is a PURE chat (`lib/surface.ts`): it never grounds its
+ * requests on the linked page — no extraction, no article, no citation
+ * rule, and none of the page-reading features (quick actions, quiz,
+ * podcast, annotation, immersive translation, page capture) render here;
+ * those live in the side panel, attached to the page. The conversation's
+ * history still contains whatever the side panel asked before the detach,
+ * and TTS / web search / suggestions work as anywhere else.
  */
 import { MotionConfig } from 'motion/react';
 import { MessageSquarePlus, Moon, Sun, Settings as SettingsIcon, StickyNote } from 'lucide-react';
 import { ConversationTitle } from './components/layout/Header';
-import { QuickActions } from './components/layout/QuickActions';
 import { Toasts } from './components/layout/Toasts';
 import { TtsIndicator } from './components/layout/TtsIndicator';
 import { MessageList } from './components/chat/MessageList';
 import { Composer } from './components/composer/Composer';
 import { Sheets } from './components/panels/Sheets';
 import { ShareModal } from './components/panels/ShareModal';
-import { QuizCard } from './components/panels/QuizCard';
-import { PodcastCard } from './components/panels/PodcastCard';
-import { PodcastMiniPlayer } from './components/panels/PodcastMiniPlayer';
 import { HistoryList } from './components/panels/HistoryList';
 import { usePanelLiftoff } from './hooks/usePanelLiftoff';
 import { startNewChat } from '@/panel/lib/new-chat';
+import { markFullscreenSurface } from '@/panel/lib/surface';
 import { applyTheme, getThemeState } from '@/shared/theme';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { t } from '@/shared/i18n.js';
 
 export function FullscreenApp({ bindTabId }: { bindTabId: number }) {
+  // Rendering the fullscreen surface IS the mark: the send pipeline and the
+  // composer read it (no page grounding, no page capture). Idempotent.
+  markFullscreenSurface();
+
   // Fullscreen semantics: bound to the conversation's tab (URL param) and
   // pinned to it — tab activations in the browser must not yank the chat.
   usePanelLiftoff({ bindTabId, followTabActivation: false, panelActions: false });
@@ -71,15 +76,11 @@ export function FullscreenApp({ bindTabId }: { bindTabId: number }) {
           <header className="fs-main-head">
             <ConversationTitle />
           </header>
-          <QuickActions />
           <TtsIndicator />
           <div className="fs-main-col">
             <MessageList />
-            <QuizCard />
-            <PodcastCard />
             <Composer />
           </div>
-          <PodcastMiniPlayer />
         </main>
 
         <Sheets />

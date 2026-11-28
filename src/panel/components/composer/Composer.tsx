@@ -5,6 +5,7 @@ import { useUIStore } from '@/panel/stores/ui-store';
 import { useAutoResize } from '@/panel/hooks/useAutoResize';
 import { sendMessage, submit } from '@/panel/lib/send';
 import { requestGenerationStop } from '@/panel/lib/stream-controller';
+import { isFullscreenSurface } from '@/panel/lib/surface';
 import { readImageFiles, imagesFromTransfer } from '@/panel/lib/images';
 import { readSettings, onSettingsChange, COMPOSER_TOOL_IDS, type ComposerToolId } from '@/platform/settings';
 import {
@@ -51,6 +52,10 @@ export function Composer() {
   // must not trick the length check into "everything shown" — that would
   // make the folded-out tools unreachable.
   const hasOverflow = new Set(toolbarTools).size < COMPOSER_TOOL_IDS.length;
+  // F17: page capture targets the browser's active tab — from the fullscreen
+  // tab that is ITSELF (the chat UI). The fullscreen surface is page-free,
+  // so the capture tools stay side-panel-only.
+  const canCapture = !isFullscreenSurface();
 
   const ingest = (files: FileList | File[]) => readImageFiles(files, uris => { addImages(uris); });
 
@@ -114,14 +119,14 @@ export function Composer() {
             void submit({ prompt, display, draft });
           }}
         />
-        {show('capture') && <CaptureButton onUri={uri => addImages([uri])} />}
-        {show('captureFull') && <FullPageCaptureButton onUris={uris => addImages(uris)} />}
+        {canCapture && show('capture') && <CaptureButton onUri={uri => addImages([uri])} />}
+        {canCapture && show('captureFull') && <FullPageCaptureButton onUris={uris => addImages(uris)} />}
         {show('upload') && <UploadButton onFiles={ingest} />}
         {show('tabs') && <TabPickerButton onOpen={() => setTabPickerOpen(v => !v)} />}
         {hasOverflow && (
           <MoreToolsMenu>
-            {!show('capture') && <CaptureButton onUri={uri => addImages([uri])} labeled />}
-            {!show('captureFull') && <FullPageCaptureButton onUris={uris => addImages(uris)} labeled />}
+            {canCapture && !show('capture') && <CaptureButton onUri={uri => addImages([uri])} labeled />}
+            {canCapture && !show('captureFull') && <FullPageCaptureButton onUris={uris => addImages(uris)} labeled />}
             {!show('upload') && <UploadButton onFiles={ingest} labeled />}
             {!show('tabs') && (
               <TabPickerButton labeled onOpen={() => setTabPickerOpen(true)} />

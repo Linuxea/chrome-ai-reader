@@ -190,6 +190,12 @@ describe('FullscreenApp', () => {
     // Main: the conversation title placeholder.
     expect(screen.getByRole('button', { name: '重命名对话' }).textContent).toBe('新对话');
 
+    // F17: the fullscreen surface is a PURE chat — none of the page-reading
+    // quick actions render, and the page-capture tools stay side-panel-only.
+    expect(document.querySelector('.quick-actions')).toBeNull();
+    expect(screen.queryByTitle('截取当前画面')).toBeNull();
+    expect(screen.queryByTitle('整页截屏')).toBeNull();
+
     // Settings entry opens the existing options page.
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(openOptionsMock).toHaveBeenCalledTimes(1);
