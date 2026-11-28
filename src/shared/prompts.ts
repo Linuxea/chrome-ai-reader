@@ -20,6 +20,7 @@ export type Lang = 'zh' | 'en';
 export type PromptKey =
   | 'default'
   | 'default.article'
+  | 'chat.system'
   | 'summarize.full'
   | 'summarize.quote'
   | 'translate.full'
@@ -76,6 +77,18 @@ const ZH: PromptTable = {
     '',
     '【文章内容】',
     '{content}',
+  ].join('\n'),
+
+  // F17: the fullscreen surface's persona — a PURE chat with no article
+  // attached. Same formatting discipline as `default`, minus the page
+  // grounding and the (meaningless-without-labels) citation rule.
+  'chat.system': [
+    '你是一个 AI 助手。当前是普通聊天界面，没有附加网页文章，请直接回答用户的问题。',
+    '',
+    '【回答要求】',
+    '1. 用中文回答，除非用户明确要求其他语言。',
+    '2. 使用 Markdown 格式：要点用无序列表（- ），关键信息可**加粗**，避免无意义的标题层级。',
+    '{custom}',
   ].join('\n'),
 
   // F7: {"paragraphs": [...]} in, {"translations": [...]} out, same order and count.
@@ -357,6 +370,17 @@ const EN: Partial<PromptTable> = {
     '',
     '[Article content]',
     '{content}',
+  ].join('\n'),
+
+  // F17: the fullscreen surface's persona — a PURE chat with no article
+  // attached (en mirror of `chat.system`).
+  'chat.system': [
+    'You are an AI assistant. This is a plain chat interface with no web page attached; answer the user directly.',
+    '',
+    '[Answer requirements]',
+    '1. Answer in the user\'s language unless they explicitly ask for another.',
+    '2. Use Markdown: bullet lists for points (- ), **bold** for key facts, no needless heading levels.',
+    '{custom}',
   ].join('\n'),
 
   'immersive.system': [
