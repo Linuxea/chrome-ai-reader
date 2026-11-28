@@ -33,6 +33,7 @@ import { useTabsStore } from '@/panel/stores/tabs-store';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { useStreamStore } from '@/panel/stores/stream-store';
 import { ensurePageContent, extractTabContent } from '@/panel/lib/page-extractor';
+import { isFullscreenSurface } from './surface';
 import { callAI, takePendingAbort } from './stream-controller';
 import { removeSuggestions } from './suggest';
 
@@ -133,29 +134,43 @@ export async function sendToAI(
   if (quoteForContext) useTabsStore.getState().setSelectedText('');
 
   try {
-    // Ensure the page has been extracted at least once for this tab — the
-    // single entry point for extraction; only the pageContent cache decides.
-    const extractResult = await ensurePageContent(startTabId);
-    if (takePendingAbort(startTabId)) {
-      // Stop was pressed while the page was being extracted: nothing was
-      // sent — roll the turn back, leave the bubble + a quiet stop note
-      // (the stream entry is created here: callAI never ran, so abort()
-      // would otherwise no-op and the turn would vanish silently).
-      historyOps.rollbackTrailingUserMessage(tabState, startTabId);
-      if (!useStreamStore.getState().streams[startTabId]) useStreamStore.getState().start(startTabId);
-      useStreamStore.getState().abort(startTabId, t('ai.stopped'));
-      useTabsStore.getState().setGeneratingForTab(startTabId, false);
-      return;
+    // F17: the fullscreen surface is a PURE chat — no page extraction (a
+    // send must not fail because the tab can't host a script), no article,
+    // no citation rule. The page cache still lives in the synced TabState
+    // for the side panel; this surface just never grounds on it.
+    const fullscreen = isFullscreenSurface();
+    if (!fullscreen) {
+      // Ensure the page has been extracted at least once for this tab — the
+      // single entry point for extraction; only the pageContent cache decides.
+      const extractResult = await ensurePageContent(startTabId);
+      if (takePendingAbort(startTabId)) {
+        // Stop was pressed while the page was being extracted: nothing was
+        // sent — roll the turn back, leave the bubble + a quiet stop note
+        // (the stream entry is created here: callAI never ran, so abort()
+        // would otherwise no-op and the turn would vanish silently).
+        historyOps.rollbackTrailingUserMessage(tabState, startTabId);
+        if (!useStreamStore.getState().streams[startTabId]) useStreamStore.getState().start(startTabId);
+        useStreamStore.getState().abort(startTabId, t('ai.stopped'));
+        useTabsStore.getState().setGeneratingForTab(startTabId, false);
+        return;
+      }
+      if (!extractResult.ok) throw extractResult.error;
     }
-    if (!extractResult.ok) throw extractResult.error;
 
     const messages: ChatMessage[] = [];
-    const pageContent = tabState.pageContent || '';
+    const pageContent = fullscreen ? '' : (tabState.pageContent || '');
     const { citations, webSearch } = await readSettings(['citations', 'webSearch']);
     const lang = getCurrentLang();
-    // The rules message is sent whenever there is an article to ground it.
-    if (pageContent) {
-      const customSystemPrompt = core.getCustomSystemPrompt();
+    const customSystemPrompt = core.getCustomSystemPrompt();
+    if (fullscreen) {
+      // Plain-chat persona: the same formatting discipline, minus the
+      // article grounding and the citation rule (nothing is labelled [#N]).
+      // The custom prompt is the user's standing instruction — it applies
+      // wherever they ask from.
+      const customBlock = customSystemPrompt ? getPrompt('default.custom', lang, { custom: customSystemPrompt }) : '';
+      messages.push({ role: 'system', content: getPrompt('chat.system', lang, { custom: customBlock }) });
+    } else if (pageContent) {
+      // The rules message is sent whenever there is an article to ground it.
       const customBlock = [
         // The citation rule references [#N] labels — it only makes sense
         // when the labelled article message follows.

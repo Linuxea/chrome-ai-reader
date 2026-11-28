@@ -81,7 +81,8 @@ import { useComposerStore } from '@/panel/stores/composer-store';
 import { useStreamStore } from '@/panel/stores/stream-store';
 import { useUIStore } from '@/panel/stores/ui-store';
 import { submit } from '@/panel/lib/send';
-import { abortGeneration } from '@/panel/lib/stream-controller';
+import { abortGeneration, ownsGeneration } from '@/panel/lib/stream-controller';
+import { markFullscreenSurface, resetSurfaceMode } from '@/panel/lib/surface';
 import { setTTSAutoPlay, isTTSPlaying, stopTTSPlayback } from '@/panel/lib/tts/player';
 
 async function flush(): Promise<void> {
@@ -468,5 +469,95 @@ describe('panel send pipeline', () => {
     expect(hist[1]).toMatchObject({ id: assistantId, role: 'assistant', content: 'answer', web: { searches: 1 } });
     // …and only ITS reasoning is saved with it — the dead attempt's is gone.
     expect(hist[1]!.reasoning).toBe('a fresh thought');
+  });
+});
+
+// --- F17: the fullscreen surface is a PURE chat (no page grounding) -------
+
+describe('fullscreen surface pipeline (F17)', () => {
+  // The outer describe's beforeEach lives INSIDE it — this one re-seeds what
+  // these tests need: leftover history from the panel-pipeline tests would
+  // ride into the request via trimHistory and break the shape assertions.
+  const tabsSendMessage = (globalThis as unknown as { chrome: { tabs: { sendMessage: ReturnType<typeof vi.fn> } } }).chrome.tabs.sendMessage;
+
+  beforeEach(async () => {
+    store.session = {}; store.sync = {}; store.local = {};
+    connectMock.mockClear();
+    getPort()?.postMessage.mockClear();
+    tabsSendMessage.mockClear();
+    // A previous test's unfinished stream leaves the tab "generating" — the
+    // busy guard would swallow this describe's sends.
+    if (ownsGeneration(42)) abortGeneration(42);
+    useTabsStore.getState().setGeneratingForTab(42, false);
+    useStreamStore.setState({ streams: {} });
+    useUIStore.setState({ sheet: null, toasts: [] });
+    useComposerStore.setState({ draftText: '', images: [], tabs: [] });
+    useTabsStore.getState().setCustomSystemPrompt('');
+    useTabsStore.getState().setConversationHistory([]);
+    // A cached page is exactly what must NOT leak into a fullscreen request.
+    useTabsStore.getState().setPageContent('cached page');
+    useTabsStore.getState().setPageTitle('T');
+    useTabsStore.getState().setSelectedText('');
+  });
+
+  afterEach(() => {
+    resetSurfaceMode();
+  });
+
+  it('never sends the cached article: the chat persona replaces the reading persona', async () => {
+    markFullscreenSurface();
+    useComposerStore.getState().setDraftText('你好');
+    await submit();
+    await flush();
+
+    const req = getPort().postMessage.mock.calls[0]![0] as { messages: { role: string; content: string }[] };
+    // One persona system message + the user message — no article block, no
+    // citation rule, none of the cached page text.
+    expect(req.messages).toHaveLength(2);
+    expect(req.messages[0]!.role).toBe('system');
+    expect(req.messages[0]!.content).toContain('普通聊天界面');
+    expect(req.messages[0]!.content).not.toContain('cached page');
+    expect(req.messages[0]!.content).not.toContain('【文章内容】');
+    expect(req.messages[0]!.content).not.toContain('[#N]');
+    expect(req.messages.map(m => m.content).join('\n')).not.toContain('cached page');
+  });
+
+  it('the custom system prompt rides the chat persona', async () => {
+    markFullscreenSurface();
+    useTabsStore.getState().setCustomSystemPrompt('回答要简短');
+    useComposerStore.getState().setDraftText('hi');
+    await submit();
+    await flush();
+
+    const req = getPort().postMessage.mock.calls[0]![0] as { messages: { role: string; content: string }[] };
+    expect(req.messages[0]!.content).toContain('回答要简短');
+    useTabsStore.getState().setCustomSystemPrompt('');
+  });
+
+  it('no extraction attempt: a send with NO page cache still succeeds', async () => {
+    markFullscreenSurface();
+    // In the side panel this state would trigger extraction (and a send to a
+    // page without a content script FAILS); fullscreen must not care.
+    useTabsStore.getState().setPageContent('');
+    useComposerStore.getState().setDraftText('你好');
+    await submit();
+    await flush();
+
+    expect(tabsSendMessage).not.toHaveBeenCalled();
+    expect(connectMock).toHaveBeenCalledWith({ name: 'ai-chat' });
+    expect(core.getConversationHistory()).toHaveLength(1);
+    expect(useUIStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('a quoted selection still prefixes the message (explicit user content, not page embedding)', async () => {
+    markFullscreenSurface();
+    useTabsStore.getState().setSelectedText('页面上的某句话');
+    useComposerStore.getState().setDraftText('怎么看');
+    await submit();
+    await flush();
+
+    const msg = core.getConversationHistory()[0]!;
+    expect(msg.content).toContain('页面上的某句话');
+    expect(msg.meta!.quote).toBe('页面上的某句话');
   });
 });
